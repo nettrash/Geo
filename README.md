@@ -1,1 +1,1 @@
-![build](https://github.com/nettrash/Geo/tree/main/.github/workflows/ios.yml/badge.svg)
+![build](https://github.com/nettrash/Geo/actions/workflows/ios.yml/badge.svg)
