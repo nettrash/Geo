@@ -8,11 +8,31 @@
 import SwiftUI
 
 struct GeoInfoView: View {
+    @State var app: GeoAppDelegate?
+        
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        ZStack(content: {
+            Image("GeoBig")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .opacity(0.1)
+            VStack {
+                Text("Information")
+                    .font(.largeTitle)
+                    .padding()
+                ScrollView {
+                    BarometerInformationView(barometer: app?.barometer)
+                    
+                    SatelliteInformationView(location: app?.location)
+                        .onAppear(perform: {
+                            app?.location?.initialize()
+                        })
+                }
+            }
+        })
     }
 }
 
 #Preview {
-    GeoInfoView()
+    GeoInfoView(app: nil)
 }

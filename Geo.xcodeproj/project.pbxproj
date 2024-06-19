@@ -7,8 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E57221F72C21C77E008D466B /* GeoInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57221F62C21C77E008D466B /* GeoInfoView.swift */; };
+		E57221F92C21C7B7008D466B /* GeoStatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57221F82C21C7B7008D466B /* GeoStatView.swift */; };
+		E57221FB2C21C7E9008D466B /* GeoMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57221FA2C21C7E9008D466B /* GeoMapView.swift */; };
+		E57221FD2C21C82C008D466B /* GeoNatureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57221FC2C21C82C008D466B /* GeoNatureView.swift */; };
+		E57222002C21DBCB008D466B /* BarometerInformationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57221FF2C21DBCB008D466B /* BarometerInformationView.swift */; };
+		E57222022C21F20F008D466B /* SatelliteInformationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57222012C21F20F008D466B /* SatelliteInformationView.swift */; };
+		E584D8E82B3EEFB10004973A /* Barometer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E584D8E72B3EEFB10004973A /* Barometer.swift */; };
+		E584D8ED2B3EF0C20004973A /* CoreMotion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E584D8EC2B3EF0C20004973A /* CoreMotion.framework */; };
+		E584D8F12B3EFA5A0004973A /* GeoAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E584D8F02B3EFA5A0004973A /* GeoAppDelegate.swift */; };
+		E58E03B32C232C00002909A4 /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E58E03B22C232C00002909A4 /* CoreLocation.framework */; };
+		E58E03B52C232E30002909A4 /* Location.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58E03B42C232E30002909A4 /* Location.swift */; };
 		E5AAD28D2AAB5D950052522B /* GeoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD28C2AAB5D950052522B /* GeoApp.swift */; };
-		E5AAD28F2AAB5D950052522B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD28E2AAB5D950052522B /* ContentView.swift */; };
+		E5AAD28F2AAB5D950052522B /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD28E2AAB5D950052522B /* MainView.swift */; };
 		E5AAD2912AAB5D980052522B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E5AAD2902AAB5D980052522B /* Assets.xcassets */; };
 		E5AAD2942AAB5D980052522B /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E5AAD2932AAB5D980052522B /* Preview Assets.xcassets */; };
 		E5AAD2962AAB5D980052522B /* Persistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2952AAB5D980052522B /* Persistence.swift */; };
@@ -16,6 +27,7 @@
 		E5AAD2A42AAB5D980052522B /* GeoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2A32AAB5D980052522B /* GeoTests.swift */; };
 		E5AAD2AE2AAB5D980052522B /* GeoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2AD2AAB5D980052522B /* GeoUITests.swift */; };
 		E5AAD2B02AAB5D980052522B /* GeoUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2AF2AAB5D980052522B /* GeoUITestsLaunchTests.swift */; };
+		E5C78A132C22E0BC006453C7 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5C78A122C22E0BC006453C7 /* MapKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,9 +48,20 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		E57221F62C21C77E008D466B /* GeoInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoInfoView.swift; sourceTree = "<group>"; };
+		E57221F82C21C7B7008D466B /* GeoStatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoStatView.swift; sourceTree = "<group>"; };
+		E57221FA2C21C7E9008D466B /* GeoMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoMapView.swift; sourceTree = "<group>"; };
+		E57221FC2C21C82C008D466B /* GeoNatureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoNatureView.swift; sourceTree = "<group>"; };
+		E57221FF2C21DBCB008D466B /* BarometerInformationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarometerInformationView.swift; sourceTree = "<group>"; };
+		E57222012C21F20F008D466B /* SatelliteInformationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SatelliteInformationView.swift; sourceTree = "<group>"; };
+		E584D8E72B3EEFB10004973A /* Barometer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Barometer.swift; sourceTree = "<group>"; };
+		E584D8EC2B3EF0C20004973A /* CoreMotion.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMotion.framework; path = System/Library/Frameworks/CoreMotion.framework; sourceTree = SDKROOT; };
+		E584D8F02B3EFA5A0004973A /* GeoAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoAppDelegate.swift; sourceTree = "<group>"; };
+		E58E03B22C232C00002909A4 /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
+		E58E03B42C232E30002909A4 /* Location.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Location.swift; sourceTree = "<group>"; };
 		E5AAD2892AAB5D950052522B /* Geo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Geo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5AAD28C2AAB5D950052522B /* GeoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoApp.swift; sourceTree = "<group>"; };
-		E5AAD28E2AAB5D950052522B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E5AAD28E2AAB5D950052522B /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		E5AAD2902AAB5D980052522B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E5AAD2932AAB5D980052522B /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		E5AAD2952AAB5D980052522B /* Persistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Persistence.swift; sourceTree = "<group>"; };
@@ -49,6 +72,7 @@
 		E5AAD2A92AAB5D980052522B /* GeoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GeoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5AAD2AD2AAB5D980052522B /* GeoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoUITests.swift; sourceTree = "<group>"; };
 		E5AAD2AF2AAB5D980052522B /* GeoUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		E5C78A122C22E0BC006453C7 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +80,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E58E03B32C232C00002909A4 /* CoreLocation.framework in Frameworks */,
+				E5C78A132C22E0BC006453C7 /* MapKit.framework in Frameworks */,
+				E584D8ED2B3EF0C20004973A /* CoreMotion.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -76,6 +103,34 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		E57221FE2C21DBB1008D466B /* Information */ = {
+			isa = PBXGroup;
+			children = (
+				E57221FF2C21DBCB008D466B /* BarometerInformationView.swift */,
+				E57222012C21F20F008D466B /* SatelliteInformationView.swift */,
+			);
+			path = Information;
+			sourceTree = "<group>";
+		};
+		E584D8E62B3EEF970004973A /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				E584D8E72B3EEFB10004973A /* Barometer.swift */,
+				E58E03B42C232E30002909A4 /* Location.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		E584D8EB2B3EF0C20004973A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				E58E03B22C232C00002909A4 /* CoreLocation.framework */,
+				E5C78A122C22E0BC006453C7 /* MapKit.framework */,
+				E584D8EC2B3EF0C20004973A /* CoreMotion.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		E5AAD2802AAB5D950052522B = {
 			isa = PBXGroup;
 			children = (
@@ -83,6 +138,7 @@
 				E5AAD2A22AAB5D980052522B /* GeoTests */,
 				E5AAD2AC2AAB5D980052522B /* GeoUITests */,
 				E5AAD28A2AAB5D950052522B /* Products */,
+				E584D8EB2B3EF0C20004973A /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -99,13 +155,20 @@
 		E5AAD28B2AAB5D950052522B /* Geo */ = {
 			isa = PBXGroup;
 			children = (
+				E57221FE2C21DBB1008D466B /* Information */,
+				E584D8E62B3EEF970004973A /* Core */,
 				E5AAD28C2AAB5D950052522B /* GeoApp.swift */,
-				E5AAD28E2AAB5D950052522B /* ContentView.swift */,
+				E5AAD28E2AAB5D950052522B /* MainView.swift */,
 				E5AAD2902AAB5D980052522B /* Assets.xcassets */,
 				E5AAD2952AAB5D980052522B /* Persistence.swift */,
 				E5AAD29A2AAB5D980052522B /* Info.plist */,
 				E5AAD2972AAB5D980052522B /* Geo.xcdatamodeld */,
 				E5AAD2922AAB5D980052522B /* Preview Content */,
+				E584D8F02B3EFA5A0004973A /* GeoAppDelegate.swift */,
+				E57221F62C21C77E008D466B /* GeoInfoView.swift */,
+				E57221F82C21C7B7008D466B /* GeoStatView.swift */,
+				E57221FA2C21C7E9008D466B /* GeoMapView.swift */,
+				E57221FC2C21C82C008D466B /* GeoNatureView.swift */,
 			);
 			path = Geo;
 			sourceTree = "<group>";
@@ -199,7 +262,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1430;
-				LastUpgradeCheck = 1500;
+				LastUpgradeCheck = 1540;
 				TargetAttributes = {
 					E5AAD2882AAB5D950052522B = {
 						CreatedOnToolsVersion = 14.3.1;
@@ -266,8 +329,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				E5AAD2962AAB5D980052522B /* Persistence.swift in Sources */,
-				E5AAD28F2AAB5D950052522B /* ContentView.swift in Sources */,
+				E584D8E82B3EEFB10004973A /* Barometer.swift in Sources */,
+				E57221FB2C21C7E9008D466B /* GeoMapView.swift in Sources */,
+				E57221FD2C21C82C008D466B /* GeoNatureView.swift in Sources */,
+				E5AAD28F2AAB5D950052522B /* MainView.swift in Sources */,
+				E57221F72C21C77E008D466B /* GeoInfoView.swift in Sources */,
+				E58E03B52C232E30002909A4 /* Location.swift in Sources */,
 				E5AAD28D2AAB5D950052522B /* GeoApp.swift in Sources */,
+				E584D8F12B3EFA5A0004973A /* GeoAppDelegate.swift in Sources */,
+				E57221F92C21C7B7008D466B /* GeoStatView.swift in Sources */,
+				E57222022C21F20F008D466B /* SatelliteInformationView.swift in Sources */,
+				E57222002C21DBCB008D466B /* BarometerInformationView.swift in Sources */,
 				E5AAD2992AAB5D980052522B /* Geo.xcdatamodeld in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -309,6 +381,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -371,6 +444,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -435,12 +509,19 @@
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Geo/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Geo;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "To receive your altitude by satellite we need an access to information about location.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "To receive your altitude by satellite we need an access to information about location.";
+				INFOPLIST_KEY_NSLocationUsageDescription = "To receive your altitude by satellite we need an access to information about location.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "To receive your altitude by satellite we need an access to information about location.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "To calculate altitude and show information about atmospheric pressure we should have an access to the barometer sensor.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -453,6 +534,7 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -471,12 +553,19 @@
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Geo/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Geo;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "To receive your altitude by satellite we need an access to information about location.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "To receive your altitude by satellite we need an access to information about location.";
+				INFOPLIST_KEY_NSLocationUsageDescription = "To receive your altitude by satellite we need an access to information about location.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "To receive your altitude by satellite we need an access to information about location.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "To calculate altitude and show information about atmospheric pressure we should have an access to the barometer sensor.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -489,6 +578,7 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;

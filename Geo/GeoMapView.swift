@@ -6,10 +6,24 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct GeoMapView: View {
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        ZStack {
+            Map {
+                
+            }
+            .mapControlVisibility(.visible)
+            
+            VStack {
+                Text("Geo Information")
+                    .font(.largeTitle)
+                    .padding()
+                
+                Spacer()
+            }
+        }
     }
 }
 

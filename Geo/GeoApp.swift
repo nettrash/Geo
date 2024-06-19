@@ -9,12 +9,14 @@ import SwiftUI
 
 @main
 struct GeoApp: App {
+    @UIApplicationDelegateAdaptor private var appDelegate: GeoAppDelegate
     let persistenceController = PersistenceController.shared
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainView(app: appDelegate)
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                .preferredColorScheme(.dark)
         }
     }
 }
