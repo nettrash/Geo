@@ -9,21 +9,19 @@ import SwiftUI
 import MapKit
 
 struct GeoMapView: View {
+    
+    @State var cameraPosition = MapCameraPosition.userLocation(followsHeading: false, fallback: MapCameraPosition.automatic)
+    
     var body: some View {
-        ZStack {
-            Map {
-                
-            }
+        Map(position: $cameraPosition, interactionModes: .all)
+            .scrollDisabled(true)
             .mapControlVisibility(.visible)
-            
-            VStack {
-                Text("Geo Information")
-                    .font(.largeTitle)
-                    .padding()
-                
-                Spacer()
+            .mapControls {
+                MapCompass()
+                MapUserLocationButton()
+                MapScaleView()
+                MapPitchToggle()
             }
-        }
     }
 }
 

@@ -15,11 +15,11 @@ struct GeoInfoView: View {
             Image("GeoBig")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .opacity(0.1)
-            VStack {
+                .opacity(0.02)
+            /*VStack {
                 Text("Information")
                     .font(.largeTitle)
-                    .padding()
+                    .padding()*/
                 ScrollView {
                     BarometerInformationView(barometer: app?.barometer)
                     
@@ -28,7 +28,7 @@ struct GeoInfoView: View {
                             app?.location?.initialize()
                         })
                 }
-            }
+            /*}*/
         })
     }
 }

@@ -14,10 +14,10 @@ struct MainView: View {
     
     var body: some View {
         ZStack(content: {
-            Image("GeoBig")
+            /*Image("GeoBig")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .opacity(0.1)
+                .opacity(0.01)*/
             
             TabView {
                 GeoInfoView(app: app)
