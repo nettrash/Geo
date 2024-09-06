@@ -28,7 +28,6 @@
 		E5AAD2AE2AAB5D980052522B /* GeoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2AD2AAB5D980052522B /* GeoUITests.swift */; };
 		E5AAD2B02AAB5D980052522B /* GeoUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2AF2AAB5D980052522B /* GeoUITestsLaunchTests.swift */; };
 		E5C78A132C22E0BC006453C7 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5C78A122C22E0BC006453C7 /* MapKit.framework */; };
-		E5E6CC292C8B1AE300779817 /* Model.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = E5E6CC272C8B1AE300779817 /* Model.xcdatamodeld */; };
 		E5ED16F72C382C0E004C2E94 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E5ED16F62C382C0E004C2E94 /* Launch Screen.storyboard */; };
 		E5ED16F92C382FC7004C2E94 /* CloudKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5ED16F82C382FC7004C2E94 /* CloudKit.framework */; };
 		E5ED16FB2C382FD3004C2E94 /* CoreData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5ED16FA2C382FD3004C2E94 /* CoreData.framework */; };
@@ -77,7 +76,6 @@
 		E5AAD2AD2AAB5D980052522B /* GeoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoUITests.swift; sourceTree = "<group>"; };
 		E5AAD2AF2AAB5D980052522B /* GeoUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		E5C78A122C22E0BC006453C7 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
-		E5E6CC282C8B1AE300779817 /* Model.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = Model.xcdatamodel; sourceTree = "<group>"; };
 		E5ED16F62C382C0E004C2E94 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
 		E5ED16F82C382FC7004C2E94 /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
 		E5ED16FA2C382FD3004C2E94 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = System/Library/Frameworks/CoreData.framework; sourceTree = SDKROOT; };
@@ -182,7 +180,6 @@
 				E57221FA2C21C7E9008D466B /* GeoMapView.swift */,
 				E57221FC2C21C82C008D466B /* GeoNatureView.swift */,
 				E5ED16F62C382C0E004C2E94 /* Launch Screen.storyboard */,
-				E5E6CC272C8B1AE300779817 /* Model.xcdatamodeld */,
 			);
 			path = Geo;
 			sourceTree = "<group>";
@@ -346,7 +343,6 @@
 				E5AAD2962AAB5D980052522B /* Persistence.swift in Sources */,
 				E584D8E82B3EEFB10004973A /* Barometer.swift in Sources */,
 				E57221FB2C21C7E9008D466B /* GeoMapView.swift in Sources */,
-				E5E6CC292C8B1AE300779817 /* Model.xcdatamodeld in Sources */,
 				E57221FD2C21C82C008D466B /* GeoNatureView.swift in Sources */,
 				E5AAD28F2AAB5D950052522B /* MainView.swift in Sources */,
 				E57221F72C21C77E008D466B /* GeoInfoView.swift in Sources */,
@@ -728,17 +724,6 @@
 			);
 			currentVersion = E5AAD2982AAB5D980052522B /* Geo.xcdatamodel */;
 			path = Geo.xcdatamodeld;
-			sourceTree = "<group>";
-			versionGroupType = wrapper.xcdatamodel;
-		};
-		E5E6CC272C8B1AE300779817 /* Model.xcdatamodeld */ = {
-			isa = XCVersionGroup;
-			children = (
-				E5E6CC282C8B1AE300779817 /* Model.xcdatamodel */,
-			);
-			currentVersion = E5E6CC282C8B1AE300779817 /* Model.xcdatamodel */;
-			name = Model.xcdatamodeld;
-			path = /Users/nettrash/Develop/nettrash.me/Geo/Geo/Model.xcdatamodeld;
 			sourceTree = "<group>";
 			versionGroupType = wrapper.xcdatamodel;
 		};
