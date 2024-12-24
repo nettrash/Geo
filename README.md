@@ -26,7 +26,7 @@ $$T$$ - absolute air temperature $$K$$,
 $$t$$ - temperature in $$C$$
 $$h$$ is the height m  
 
-Convert the formula to calculate the height at a known pressure.    
+Convert the formula to calculate the height at a known pressure.
 
 $$\frac{P} {P_0} = e^\frac{-M g h} {R T}$ $\rightarrow$ $\ln \frac{P} {P_0} = \frac{_M g h} {R T}$ $\rightarrow$ ${R T} \ln \frac{P} {P_0} = -{M g h}$ $\rightarrow$ $h = \frac{{R T} \ln \frac{P} {P_0}} {-{M g}}$$
 
@@ -50,4 +50,3 @@ $$\log \frac{x} {y} = -\log \frac{y} {x}$$
 | SOUTH WEST | 203 | 247 |
 | WEST | 248 | 292 |
 | NORD WEST | 293 | 337 |
-
