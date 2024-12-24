@@ -30,7 +30,7 @@ Convert the formula to calculate the height at a known pressure.
 
 $$\frac{P} {P_0} = e^\frac{-M g h} {R T}$ $\rightarrow$ $\ln \frac{P} {P_0} = \frac{_M g h} {R T}$ $\rightarrow$ ${R T} \ln \frac{P} {P_0} = -{M g h}$ $\rightarrow$ $h = \frac{{R T} \ln \frac{P} {P_0}} {-{M g}}$$
 
-Simplistically, you can write as: ![equation](http://latex.codecogs.com/gif.latex?P_h%20%3D%20P_0%2010%5E%7B-0.000052%20h%7D)  
+Simplistically, you can write as: $$P_h = P_0 10^{-0.000052 h}$$  
 
 ![equation](http://latex.codecogs.com/gif.latex?P_h%20%3D%20P_0%2010%5E%7B-0.000052%20h%7D%24%20%24%5Crightarrow%24%20%24%5Cfrac%7BP_h%7D%20%7BP_0%7D%20%3D%2010%5E%7B-0.000052%20h%7D%24%20%24%5Crightarrow%24%20%24%5Clg%20%5Cfrac%7BP_h%7D%20%7BP_0%7D%20%3D%20%7B-0.000052%20h%7D%24%20%24%5Crightarrow%24%20%24h%20%3D%20%5Cfrac%7B%5Clg%20%5Cfrac%7BP_h%7D%20%7BP_0%7D%7D%20%7B-0.000052%7D%24%20%24%5Crightarrow%24%20%24h%20%3D%20%5Cfrac%7B%5Cln%20%5Cfrac%7BP_0%7D%20%7BP_h%7D%7D%20%7B0.000052%20%5Cln%2010%7D%24%20%24%5Crightarrow%24%20%24h%20%5Capprox%20%5Cfrac%7B%5Cln%20%5Cfrac%7BP_0%7D%20%7BP_h%7D%7D%20%7B0.00012%7D)
 
