@@ -32,7 +32,7 @@ $$\frac{P} {P_0} = e^\frac{-M g h} {R T}$ $\rightarrow$ $\ln \frac{P} {P_0} = \f
 
 Simplistically, you can write as: $$P_h = P_0 10^{-0.000052 h}$$  
 
-![equation](http://latex.codecogs.com/gif.latex?P_h%20%3D%20P_0%2010%5E%7B-0.000052%20h%7D%24%20%24%5Crightarrow%24%20%24%5Cfrac%7BP_h%7D%20%7BP_0%7D%20%3D%2010%5E%7B-0.000052%20h%7D%24%20%24%5Crightarrow%24%20%24%5Clg%20%5Cfrac%7BP_h%7D%20%7BP_0%7D%20%3D%20%7B-0.000052%20h%7D%24%20%24%5Crightarrow%24%20%24h%20%3D%20%5Cfrac%7B%5Clg%20%5Cfrac%7BP_h%7D%20%7BP_0%7D%7D%20%7B-0.000052%7D%24%20%24%5Crightarrow%24%20%24h%20%3D%20%5Cfrac%7B%5Cln%20%5Cfrac%7BP_0%7D%20%7BP_h%7D%7D%20%7B0.000052%20%5Cln%2010%7D%24%20%24%5Crightarrow%24%20%24h%20%5Capprox%20%5Cfrac%7B%5Cln%20%5Cfrac%7BP_0%7D%20%7BP_h%7D%7D%20%7B0.00012%7D)
+$$P_h = P_0 10^{-0.000052 h}$ $\rightarrow$ $\frac{P_h} {P_0} = 10^{-0.000052 h}$ $\rightarrow$ $\lg \frac{P_h} {P_0} = {-0.000052 h}$ $\rightarrow$ $h = \frac{\lg \frac{P_h} {P_0}} {-0.000052}$ $\rightarrow$ $h = \frac{\ln \frac{P_0} {P_h}} {0.000052 \ln 10}$ $\rightarrow$ $h \approx \frac{\ln \frac{P_0} {P_h}} {0.00012}$$
 
 ![equation](http://latex.codecogs.com/gif.latex?lg%20x%20%3D%20%5Cfrac%7B%5Cln%20x%7D%20%7Bln%2010%7D)  
 
