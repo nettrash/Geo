@@ -22,7 +22,8 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         self.barometer = Barometer()
         self.barometer?.Start()
     
-        self.location = Location();
+        self.location = Location()
+        self.location?.barometer = self.barometer
     }
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {

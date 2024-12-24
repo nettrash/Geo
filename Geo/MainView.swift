@@ -25,12 +25,12 @@ struct MainView: View {
                         Image(systemName: "ruler")
                         Text("Info")
                     }
-                GeoStatView()
+                GeoStatView(history: History())
                     .tabItem {
                         Image(systemName: "chart.xyaxis.line")
                         Text("Stat")
                     }
-                GeoMapView()
+                GeoMapView(history: History())
                     .tabItem {
                         Image(systemName: "map")
                         Text("Map")

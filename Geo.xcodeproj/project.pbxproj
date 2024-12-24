@@ -18,6 +18,8 @@
 		E584D8F12B3EFA5A0004973A /* GeoAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E584D8F02B3EFA5A0004973A /* GeoAppDelegate.swift */; };
 		E58E03B32C232C00002909A4 /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E58E03B22C232C00002909A4 /* CoreLocation.framework */; };
 		E58E03B52C232E30002909A4 /* Location.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58E03B42C232E30002909A4 /* Location.swift */; };
+		E590928F2CD5398C00499EFF /* DataSetShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = E590928E2CD5396700499EFF /* DataSetShape.swift */; };
+		E59092912CD53A0500499EFF /* DataItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59092902CD53A0100499EFF /* DataItem.swift */; };
 		E5AAD28D2AAB5D950052522B /* GeoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD28C2AAB5D950052522B /* GeoApp.swift */; };
 		E5AAD28F2AAB5D950052522B /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD28E2AAB5D950052522B /* MainView.swift */; };
 		E5AAD2912AAB5D980052522B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E5AAD2902AAB5D980052522B /* Assets.xcassets */; };
@@ -28,9 +30,12 @@
 		E5AAD2AE2AAB5D980052522B /* GeoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2AD2AAB5D980052522B /* GeoUITests.swift */; };
 		E5AAD2B02AAB5D980052522B /* GeoUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2AF2AAB5D980052522B /* GeoUITestsLaunchTests.swift */; };
 		E5C78A132C22E0BC006453C7 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5C78A122C22E0BC006453C7 /* MapKit.framework */; };
+		E5E6CC2B2C8B2C7100779817 /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E6CC2A2C8B2C7100779817 /* History.swift */; };
 		E5ED16F72C382C0E004C2E94 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E5ED16F62C382C0E004C2E94 /* Launch Screen.storyboard */; };
 		E5ED16F92C382FC7004C2E94 /* CloudKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5ED16F82C382FC7004C2E94 /* CloudKit.framework */; };
 		E5ED16FB2C382FD3004C2E94 /* CoreData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5ED16FA2C382FD3004C2E94 /* CoreData.framework */; };
+		E5EE4DD32CA5B315006EC1DE /* GraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EE4DD22CA5B30B006EC1DE /* GraphView.swift */; };
+		E5EE4DD52CA5B7D9006EC1DE /* AxisShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EE4DD42CA5B7D5006EC1DE /* AxisShape.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +67,8 @@
 		E584D8F02B3EFA5A0004973A /* GeoAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoAppDelegate.swift; sourceTree = "<group>"; };
 		E58E03B22C232C00002909A4 /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
 		E58E03B42C232E30002909A4 /* Location.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Location.swift; sourceTree = "<group>"; };
+		E590928E2CD5396700499EFF /* DataSetShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataSetShape.swift; sourceTree = "<group>"; };
+		E59092902CD53A0100499EFF /* DataItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataItem.swift; sourceTree = "<group>"; };
 		E5AAD2892AAB5D950052522B /* Geo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Geo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5AAD28C2AAB5D950052522B /* GeoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoApp.swift; sourceTree = "<group>"; };
 		E5AAD28E2AAB5D950052522B /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
@@ -76,9 +83,12 @@
 		E5AAD2AD2AAB5D980052522B /* GeoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoUITests.swift; sourceTree = "<group>"; };
 		E5AAD2AF2AAB5D980052522B /* GeoUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		E5C78A122C22E0BC006453C7 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
+		E5E6CC2A2C8B2C7100779817 /* History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = History.swift; sourceTree = "<group>"; };
 		E5ED16F62C382C0E004C2E94 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
 		E5ED16F82C382FC7004C2E94 /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
 		E5ED16FA2C382FD3004C2E94 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = System/Library/Frameworks/CoreData.framework; sourceTree = SDKROOT; };
+		E5EE4DD22CA5B30B006EC1DE /* GraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphView.swift; sourceTree = "<group>"; };
+		E5EE4DD42CA5B7D5006EC1DE /* AxisShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxisShape.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -114,6 +124,9 @@
 		E57221FE2C21DBB1008D466B /* Information */ = {
 			isa = PBXGroup;
 			children = (
+				E590928E2CD5396700499EFF /* DataSetShape.swift */,
+				E5EE4DD42CA5B7D5006EC1DE /* AxisShape.swift */,
+				E5EE4DD22CA5B30B006EC1DE /* GraphView.swift */,
 				E57221FF2C21DBCB008D466B /* BarometerInformationView.swift */,
 				E57222012C21F20F008D466B /* SatelliteInformationView.swift */,
 			);
@@ -123,8 +136,10 @@
 		E584D8E62B3EEF970004973A /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				E59092902CD53A0100499EFF /* DataItem.swift */,
 				E584D8E72B3EEFB10004973A /* Barometer.swift */,
 				E58E03B42C232E30002909A4 /* Location.swift */,
+				E5E6CC2A2C8B2C7100779817 /* History.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -273,7 +288,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1430;
-				LastUpgradeCheck = 1540;
+				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					E5AAD2882AAB5D950052522B = {
 						CreatedOnToolsVersion = 14.3.1;
@@ -342,11 +357,16 @@
 			files = (
 				E5AAD2962AAB5D980052522B /* Persistence.swift in Sources */,
 				E584D8E82B3EEFB10004973A /* Barometer.swift in Sources */,
+				E5E6CC2B2C8B2C7100779817 /* History.swift in Sources */,
 				E57221FB2C21C7E9008D466B /* GeoMapView.swift in Sources */,
+				E59092912CD53A0500499EFF /* DataItem.swift in Sources */,
 				E57221FD2C21C82C008D466B /* GeoNatureView.swift in Sources */,
+				E5EE4DD32CA5B315006EC1DE /* GraphView.swift in Sources */,
 				E5AAD28F2AAB5D950052522B /* MainView.swift in Sources */,
+				E590928F2CD5398C00499EFF /* DataSetShape.swift in Sources */,
 				E57221F72C21C77E008D466B /* GeoInfoView.swift in Sources */,
 				E58E03B52C232E30002909A4 /* Location.swift in Sources */,
+				E5EE4DD52CA5B7D9006EC1DE /* AxisShape.swift in Sources */,
 				E5AAD28D2AAB5D950052522B /* GeoApp.swift in Sources */,
 				E584D8F12B3EFA5A0004973A /* GeoAppDelegate.swift in Sources */,
 				E57221F92C21C7B7008D466B /* GeoStatView.swift in Sources */,
@@ -536,7 +556,7 @@
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -581,7 +601,7 @@
 				INFOPLIST_KEY_UIStatusBarHidden = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -602,13 +622,12 @@
 		E5AAD2B72AAB5D980052522B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = nettrash.GeoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -622,13 +641,12 @@
 		E5AAD2B82AAB5D980052522B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = nettrash.GeoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -642,11 +660,11 @@
 		E5AAD2BA2AAB5D980052522B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = nettrash.GeoUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -660,11 +678,11 @@
 		E5AAD2BB2AAB5D980052522B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = nettrash.GeoUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";

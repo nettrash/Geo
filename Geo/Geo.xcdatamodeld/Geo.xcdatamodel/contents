@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="22758" systemVersion="23G93" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithCloudKit="YES" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="0">
     <entity name="HistoryItem" representedClassName="HistoryItem" syncable="YES" codeGenerationType="class">
-        <attribute name="barometerAltitude" optional="YES" attributeType="Decimal" defaultValueString="0.0"/>
-        <attribute name="barometerPressure" optional="YES" attributeType="Decimal" defaultValueString="0.0"/>
-        <attribute name="gpsAltitude" optional="YES" attributeType="Decimal" defaultValueString="0.0"/>
-        <attribute name="gpsLatitude" optional="YES" attributeType="Decimal" defaultValueString="0.0"/>
-        <attribute name="gpsLongitude" optional="YES" attributeType="Decimal" defaultValueString="0.0"/>
+        <attribute name="barometerAltitude" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="barometerPressure" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="gpsAltitude" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="gpsLatitude" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="gpsLongitude" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="gpsVelocity" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="recordDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
     </entity>
 </model>

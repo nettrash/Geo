@@ -11,6 +11,7 @@ import CoreLocation
 @Observable
 class Location: NSObject, CLLocationManagerDelegate {
     
+    var barometer: Barometer? = nil
     var locationManager: CLLocationManager? = nil
     var location: CLLocation? = nil
     private var stepLocation: CLLocation? = nil
@@ -45,12 +46,35 @@ class Location: NSObject, CLLocationManagerDelegate {
             self.location = locations[locations.count - 1]
             if self.stepLocation == nil {
                 self.stepLocation = CLLocation(latitude: self.location!.coordinate.latitude, longitude: self.location!.coordinate.longitude)
-                //refreshData()
+                refreshData()
             } else if self.stepLocation!.distance(from: self.location!) > 100.0 { // > 100 m
                 self.stepLocation = CLLocation(latitude: self.location!.coordinate.latitude, longitude: self.location!.coordinate.longitude)
-                //refreshData()
+                refreshData()
             }
             //refreshView()
+        }
+    }
+    
+    func refreshData() {
+        if (self.stepLocation != nil) {
+            let controller = PersistenceController.shared
+            let historyItem = HistoryItem(context: controller.container.viewContext)
+            historyItem.recordDate = Date()
+            if (self.barometer != nil) {
+                historyItem.barometerAltitude = self.barometer!.height
+                historyItem.barometerPressure = self.barometer!.pressure
+            }
+            historyItem.gpsLatitude = self.stepLocation!.coordinate.latitude
+            historyItem.gpsLongitude = self.stepLocation!.coordinate.longitude
+            historyItem.gpsAltitude = self.stepLocation!.altitude
+            historyItem.gpsVelocity = self.stepLocation!.speed
+            
+            do {
+                try controller.container.viewContext.save()
+            } catch {
+                let nsError = error as NSError
+                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            }
         }
     }
     
