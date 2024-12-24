@@ -32,7 +32,7 @@ $$\frac{P} {P_0} = e^\frac{-M g h} {R T} \rightarrow \ln \frac{P} {P_0} = \frac{
 
 Simplistically, you can write as: $$P_h = P_0 10^{-0.000052 h}$$  
 
-$$P_h = P_0 10^{-0.000052 h}$ $\rightarrow$ $\frac{P_h} {P_0} = 10^{-0.000052 h}$ $\rightarrow$ $\lg \frac{P_h} {P_0} = {-0.000052 h}$ $\rightarrow$ $h = \frac{\lg \frac{P_h} {P_0}} {-0.000052}$ $\rightarrow$ $h = \frac{\ln \frac{P_0} {P_h}} {0.000052 \ln 10}$ $\rightarrow$ $h \approx \frac{\ln \frac{P_0} {P_h}} {0.00012}$$
+$$P_h = P_0 10^{-0.000052 h} \rightarrow \frac{P_h} {P_0} = 10^{-0.000052 h} \rightarrow \lg \frac{P_h} {P_0} = {-0.000052 h} \rightarrow h = \frac{\lg \frac{P_h} {P_0}} {-0.000052} \rightarrow h = \frac{\ln \frac{P_0} {P_h}} {0.000052 \ln 10} \rightarrow h \approx \frac{\ln \frac{P_0} {P_h}} {0.00012}$$
 
 $$lg x = \frac{\ln x} {ln 10}$$  
 
