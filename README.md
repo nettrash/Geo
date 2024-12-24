@@ -14,7 +14,7 @@ And the most interesting, the application saves the parameter data locally on th
 
 $$P=P_0 e^\frac{-M g h} {R T}$$
 
-where ![equation](http://latex.codecogs.com/gif.latex?P_0) pressure at sea level (Pa)  
+where $$P_0$$ pressure at sea level (Pa)  
 ![equation](http://latex.codecogs.com/gif.latex?P) is the pressure at height ![equation](http://latex.codecogs.com/gif.latex?h) (Pa)  
 ![equation](http://latex.codecogs.com/gif.latex?M) - molar mass of dry air,  
 ![equation](http://latex.codecogs.com/gif.latex?M%20%3D%200.029%20%5Cfrac%7BKg%7D%20%7Bmol%7D)  
