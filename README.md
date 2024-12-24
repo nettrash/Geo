@@ -15,16 +15,16 @@ And the most interesting, the application saves the parameter data locally on th
 $$P=P_0 e^\frac{-M g h} {R T}$$
 
 where $$P_0$$ pressure at sea level (Pa)  
-![equation](http://latex.codecogs.com/gif.latex?P) is the pressure at height ![equation](http://latex.codecogs.com/gif.latex?h) (Pa)  
-![equation](http://latex.codecogs.com/gif.latex?M) - molar mass of dry air,  
-![equation](http://latex.codecogs.com/gif.latex?M%20%3D%200.029%20%5Cfrac%7BKg%7D%20%7Bmol%7D)  
-![equation](http://latex.codecogs.com/gif.latex?g) - acceleration of free fall,  
-![equation](http://latex.codecogs.com/gif.latex?g%20%3D%209.81%20%5Cfrac%7Bm%7D%20%7Bs%5E2%7D)  
-![equation](http://latex.codecogs.com/gif.latex?R) is the universal gas constant,  
-![equation](http://latex.codecogs.com/gif.latex?T%20%3D%20273.15%20%2B%20t),  
-![equation](http://latex.codecogs.com/gif.latex?T) - absolute air temperature ![equation](http://latex.codecogs.com/gif.latex?K),  
-![equation](http://latex.codecogs.com/gif.latex?t) - temperature in ![equation](http://latex.codecogs.com/gif.latex?C)
-![equation](http://latex.codecogs.com/gif.latex?h) is the height m  
+$$P$$ is the pressure at height $$h$$ (Pa)  
+$$M$$ - molar mass of dry air,  
+$$M = 0.029 \frac{Kg} {mol}$$  
+$$g$$ - acceleration of free fall,  
+$$g = 9.81 \frac{m} {s^2}$$  
+$$R$$ is the universal gas constant,  
+$$T = 273.15 + t$$,  
+$$T$$ - absolute air temperature $$K$$,  
+$$t$$ - temperature in $$C$$
+$$h$$ is the height m  
 
 Convert the formula to calculate the height at a known pressure.    
 
