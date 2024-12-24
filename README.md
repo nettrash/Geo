@@ -28,7 +28,7 @@ $$h$$ is the height m
 
 Convert the formula to calculate the height at a known pressure.    
 
-![equation](http://latex.codecogs.com/gif.latex?%5Cfrac%7BP%7D%20%7BP_0%7D%20%3D%20e%5E%5Cfrac%7B-M%20g%20h%7D%20%7BR%20T%7D%24%20%24%5Crightarrow%24%20%24%5Cln%20%5Cfrac%7BP%7D%20%7BP_0%7D%20%3D%20%5Cfrac%7B_M%20g%20h%7D%20%7BR%20T%7D%24%20%24%5Crightarrow%24%20%24%7BR%20T%7D%20%5Cln%20%5Cfrac%7BP%7D%20%7BP_0%7D%20%3D%20-%7BM%20g%20h%7D%24%20%24%5Crightarrow%24%20%24h%20%3D%20%5Cfrac%7B%7BR%20T%7D%20%5Cln%20%5Cfrac%7BP%7D%20%7BP_0%7D%7D%20%7B-%7BM%20g%7D%7D)
+$$\frac{P} {P_0} = e^\frac{-M g h} {R T}$ $\rightarrow$ $\ln \frac{P} {P_0} = \frac{_M g h} {R T}$ $\rightarrow$ ${R T} \ln \frac{P} {P_0} = -{M g h}$ $\rightarrow$ $h = \frac{{R T} \ln \frac{P} {P_0}} {-{M g}}$$
 
 Simplistically, you can write as: ![equation](http://latex.codecogs.com/gif.latex?P_h%20%3D%20P_0%2010%5E%7B-0.000052%20h%7D)  
 
