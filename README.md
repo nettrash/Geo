@@ -28,7 +28,7 @@ $$h$$ is the height m
 
 Convert the formula to calculate the height at a known pressure.
 
-$$\frac{P} {P_0} = e^\frac{-M g h} {R T}$ $\rightarrow$ $\ln \frac{P} {P_0} = \frac{_M g h} {R T}$ $\rightarrow$ ${R T} \ln \frac{P} {P_0} = -{M g h}$ $\rightarrow$ $h = \frac{{R T} \ln \frac{P} {P_0}} {-{M g}}$$
+$$\frac{P} {P_0} = e^\frac{-M g h} {R T} \rightarrow \ln \frac{P} {P_0} = \frac{_M g h} {R T} \rightarrow {R T} \ln \frac{P} {P_0} = -{M g h} \rightarrow h = \frac{{R T} \ln \frac{P} {P_0}} {-{M g}}$$
 
 Simplistically, you can write as: $$P_h = P_0 10^{-0.000052 h}$$  
 
