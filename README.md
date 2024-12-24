@@ -36,7 +36,7 @@ $$P_h = P_0 10^{-0.000052 h}$ $\rightarrow$ $\frac{P_h} {P_0} = 10^{-0.000052 h}
 
 $$lg x = \frac{\ln x} {ln 10}$$  
 
-![equation](http://latex.codecogs.com/gif.latex?%5Clog%20%5Cfrac%7Bx%7D%20%7By%7D%20%3D%20-%5Clog%20%5Cfrac%7By%7D%20%7Bx%7D)  
+$$\log \frac{x} {y} = -\log \frac{y} {x}$$  
 
 ## Compass Points
 
