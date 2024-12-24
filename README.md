@@ -12,7 +12,6 @@ And the most interesting, the application saves the parameter data locally on th
 
 ## Calculation  
 
-![equation](http://latex.codecogs.com/gif.latex?P%3DP_0%20e%5E%5Cfrac%7B-M%20g%20h%7D%20%7BR%20T%7D)
 $$P=P_0 e^\frac{-M g h} {R T}$$
 
 where ![equation](http://latex.codecogs.com/gif.latex?P_0) pressure at sea level (Pa)  
