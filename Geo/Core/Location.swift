@@ -45,10 +45,11 @@ class Location: NSObject, CLLocationManagerDelegate {
         if locations.count > 0 {
             self.location = locations[locations.count - 1]
             if self.stepLocation == nil {
-                self.stepLocation = CLLocation(latitude: self.location!.coordinate.latitude, longitude: self.location!.coordinate.longitude)
+                self.stepLocation = self.location!.copy() as! CLLocation
                 refreshData()
-            } else if self.stepLocation!.distance(from: self.location!) > 100.0 { // > 100 m
-                self.stepLocation = CLLocation(latitude: self.location!.coordinate.latitude, longitude: self.location!.coordinate.longitude)
+            } else if self.stepLocation!.distance(from: self.location!) > 100.0 || // > 100 m
+                        abs(self.stepLocation!.altitude - self.location!.altitude) > 10.0 { // > 10 m
+                self.stepLocation = self.location!.copy() as! CLLocation
                 refreshData()
             }
             //refreshView()
@@ -56,7 +57,7 @@ class Location: NSObject, CLLocationManagerDelegate {
     }
     
     func refreshData() {
-        if (self.stepLocation != nil) {
+        if (self.stepLocation != nil && self.barometer!.pressure > 0) {
             let controller = PersistenceController.shared
             let historyItem = HistoryItem(context: controller.container.viewContext)
             historyItem.recordDate = Date()
@@ -75,6 +76,8 @@ class Location: NSObject, CLLocationManagerDelegate {
                 let nsError = error as NSError
                 fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
             }
+        } else {
+            self.stepLocation = nil
         }
     }
     

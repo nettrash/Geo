@@ -17,9 +17,13 @@ struct GeoStatView: View {
                 .aspectRatio(contentMode: .fit)
                 .opacity(0.02)
             ScrollView {
-                GraphView(Caption: "PRESSURE", Data: pressureDataSet())
-                GraphView(Caption: "ALTITUDE BAROMETER", Data: barometerDataSet())
-                GraphView(Caption: "ALTITUDE GPS", Data: gpsDataSet())
+                GraphView(Caption: "PRESSURE", Data: pressureDataSet(),
+                          min: 0.0, max: 200.0, measurement: "kPa")
+                GraphView(Caption: "ALTITUDE BAROMETER", Data: barometerDataSet(),
+                          min: 0.0, max: 10000.0, measurement: "m")
+                GraphView(Caption: "ALTITUDE GPS", Data: gpsDataSet(), min: 0.0, max: 10000.0, measurement: "m")
+            }.onAppear {
+                RefreshHistory()
             }
         })
     }

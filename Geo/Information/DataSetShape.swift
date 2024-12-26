@@ -13,6 +13,10 @@ struct DataSetShape: InsettableShape {
     var shiftX: CGFloat = 0
     var shiftY: CGFloat = 0
     var data: [DataItem] = []
+    var min: CGFloat = 0
+    var max: CGFloat = 10000
+    var markVertexes: Bool = false
+    var vertexRadius: CGFloat = 2.5
 
     func inset(by amount: CGFloat) -> Self {
         let line = self
@@ -24,11 +28,11 @@ struct DataSetShape: InsettableShape {
             return Path()
         }
         let borders = borders()
-        
+
         var path = Path()
 
         let stepSizeY = height / (borders.max - borders.min)
-        let stepSizeX = height / CGFloat(data.count)
+        let stepSizeX = (rect.maxX - 2 * shiftX) / CGFloat(data.count)
         var stepN = 0
         
         var prevPoint: CGPoint = CGPoint()
@@ -43,7 +47,10 @@ struct DataSetShape: InsettableShape {
                 prevPoint = currentPoint
                 currentPoint = CGPoint(x: rect.minX + shiftX + stepSizeX * CGFloat(stepN), y: rect.midY + (height / 2) - stepSizeY * (dataItem.Value - borders.min))
                 path.addLine(to: currentPoint)
-                path.addEllipse(in: CGRect(x: currentPoint.x, y: currentPoint.y, width: 2.0, height: 2.0))
+            }
+            if markVertexes {
+                path.addEllipse(in: CGRect(x: currentPoint.x-vertexRadius, y: currentPoint.y-vertexRadius, width: 2*vertexRadius, height: 2*vertexRadius))
+                path.move(to: currentPoint)
             }
             stepN+=1
         }
@@ -52,16 +59,16 @@ struct DataSetShape: InsettableShape {
     }
     
     func borders() -> (min: Double, max: Double) {
-        var min = data[0].Value;
-        var max = data[0].Value;
+        var minimum = self.min;
+        var maximum = self.max;
         for dataItem in data {
-            if dataItem.Value > max {
-                max = dataItem.Value
+            if dataItem.Value > maximum {
+                maximum = dataItem.Value
             }
-            if dataItem.Value < min {
-                min = dataItem.Value
+            if dataItem.Value < minimum {
+                minimum = dataItem.Value
             }
         }
-        return (min: min, max: max)
+        return (min: minimum, max: maximum)
     }
 }
