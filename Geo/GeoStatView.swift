@@ -8,7 +8,10 @@
 import SwiftUI
 
 struct GeoStatView: View {
-    @State var history: History
+    @State @ObservedObject var history: History
+    var pressureDataSet: [DataItem] = []
+    var altitudeBarometerDataSet: [DataItem] = []
+    var altitudeGPSDataSet: [DataItem] = []
     var decimal: Decimal = 0.0
     var body: some View {
         ZStack(content: {
@@ -17,13 +20,11 @@ struct GeoStatView: View {
                 .aspectRatio(contentMode: .fit)
                 .opacity(0.02)
             ScrollView {
-                GraphView(Caption: "PRESSURE", Data: pressureDataSet(),
-                          min: 0.0, max: 200.0, measurement: "kPa")
-                GraphView(Caption: "ALTITUDE BAROMETER", Data: barometerDataSet(),
-                          min: 0.0, max: 10000.0, measurement: "m")
-                GraphView(Caption: "ALTITUDE GPS", Data: gpsDataSet(), min: 0.0, max: 10000.0, measurement: "m")
-            }.onAppear {
-                RefreshHistory()
+                GraphView(Caption: "PRESSURE", Data: pressureDataSet,
+                          min: 700.0, max: 810.0, measurement: "mm Hg", useGreenBorder: true, useYellowBorder: false, useRedBorder: false, greenValue: 762, greenText: "normal")
+                GraphView(Caption: "ALTITUDE BAROMETER", Data: altitudeBarometerDataSet,
+                          min: 0.0, max: 10000.0, measurement: "m", useGreenBorder: false, useYellowBorder: true, useRedBorder: true, yellowValue: 2500, redValue: 7980, yellowText: "thin air", redText: "death zone")
+                GraphView(Caption: "ALTITUDE GPS", Data: altitudeGPSDataSet, min: 0.0, max: 10000.0, measurement: "m", useGreenBorder: false, useYellowBorder: true, useRedBorder: true, yellowValue: 2500, redValue: 7980, yellowText: "thin air", redText: "death zone")
             }
         })
     }
@@ -32,39 +33,36 @@ struct GeoStatView: View {
         self.history = history
         RefreshHistory()
     }
-
-    func RefreshHistory() {
+    
+    mutating func RefreshHistory() {
         self.history.Refresh()
+        pressureDataSetRefresh()
+        barometerDataSetRefresh()
+        gpsDataSetRefresh()
     }
     
-    func pressureDataSet() -> [DataItem] {
-        var data: [DataItem] = []
+    mutating func pressureDataSetRefresh() {
+        pressureDataSet.removeAll()
         
-        for historyItem in history.historyItems {
-            data.append(DataItem(Value: historyItem.barometerPressure, Legend: historyItem.description))
+        for historyItem in history.historyItems.suffix(7) {
+            pressureDataSet.append(DataItem(Value: historyItem.barometerPressure * 7.50062, Legend: historyItem.description))
         }
-        
-        return data
     }
     
-    func barometerDataSet() -> [DataItem] {
-        var data: [DataItem] = []
+    mutating func barometerDataSetRefresh() {
+        altitudeBarometerDataSet.removeAll()
         
-        for historyItem in history.historyItems {
-            data.append(DataItem(Value: historyItem.barometerAltitude, Legend: historyItem.recordDate?.ISO8601Format() ?? ""))
+        for historyItem in history.historyItems.suffix(7) {
+            altitudeBarometerDataSet.append(DataItem(Value: historyItem.barometerAltitude, Legend: historyItem.recordDate?.ISO8601Format() ?? ""))
         }
-        
-        return data
     }
     
-    func gpsDataSet() -> [DataItem] {
-        var data: [DataItem] = []
+    mutating func gpsDataSetRefresh() {
+        altitudeGPSDataSet.removeAll()
         
-        for historyItem in history.historyItems {
-            data.append(DataItem(Value: historyItem.gpsAltitude, Legend: historyItem.recordDate?.ISO8601Format() ?? ""))
+        for historyItem in history.historyItems.suffix(7) {
+            altitudeGPSDataSet.append(DataItem(Value: historyItem.gpsAltitude, Legend: historyItem.recordDate?.ISO8601Format() ?? ""))
         }
-        
-        return data
     }
 }
 

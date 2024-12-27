@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E54BF87D2D1DA246001AB8AB /* BorderShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54BF87C2D1DA246001AB8AB /* BorderShape.swift */; };
 		E57221F72C21C77E008D466B /* GeoInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57221F62C21C77E008D466B /* GeoInfoView.swift */; };
 		E57221F92C21C7B7008D466B /* GeoStatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57221F82C21C7B7008D466B /* GeoStatView.swift */; };
 		E57221FB2C21C7E9008D466B /* GeoMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57221FA2C21C7E9008D466B /* GeoMapView.swift */; };
@@ -29,6 +30,7 @@
 		E5AAD2A42AAB5D980052522B /* GeoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2A32AAB5D980052522B /* GeoTests.swift */; };
 		E5AAD2AE2AAB5D980052522B /* GeoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2AD2AAB5D980052522B /* GeoUITests.swift */; };
 		E5AAD2B02AAB5D980052522B /* GeoUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD2AF2AAB5D980052522B /* GeoUITestsLaunchTests.swift */; };
+		E5BC6D632D1EB6F0006992D8 /* BorderText.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BC6D622D1EB6EB006992D8 /* BorderText.swift */; };
 		E5C78A132C22E0BC006453C7 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5C78A122C22E0BC006453C7 /* MapKit.framework */; };
 		E5E6CC2B2C8B2C7100779817 /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E6CC2A2C8B2C7100779817 /* History.swift */; };
 		E5ED16F72C382C0E004C2E94 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E5ED16F62C382C0E004C2E94 /* Launch Screen.storyboard */; };
@@ -56,6 +58,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		E54BF87C2D1DA246001AB8AB /* BorderShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorderShape.swift; sourceTree = "<group>"; };
 		E57221F62C21C77E008D466B /* GeoInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoInfoView.swift; sourceTree = "<group>"; };
 		E57221F82C21C7B7008D466B /* GeoStatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoStatView.swift; sourceTree = "<group>"; };
 		E57221FA2C21C7E9008D466B /* GeoMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoMapView.swift; sourceTree = "<group>"; };
@@ -82,6 +85,7 @@
 		E5AAD2A92AAB5D980052522B /* GeoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GeoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5AAD2AD2AAB5D980052522B /* GeoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoUITests.swift; sourceTree = "<group>"; };
 		E5AAD2AF2AAB5D980052522B /* GeoUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		E5BC6D622D1EB6EB006992D8 /* BorderText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorderText.swift; sourceTree = "<group>"; };
 		E5C78A122C22E0BC006453C7 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
 		E5E6CC2A2C8B2C7100779817 /* History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = History.swift; sourceTree = "<group>"; };
 		E5ED16F62C382C0E004C2E94 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
@@ -124,8 +128,10 @@
 		E57221FE2C21DBB1008D466B /* Information */ = {
 			isa = PBXGroup;
 			children = (
+				E5BC6D622D1EB6EB006992D8 /* BorderText.swift */,
 				E590928E2CD5396700499EFF /* DataSetShape.swift */,
 				E5EE4DD42CA5B7D5006EC1DE /* AxisShape.swift */,
+				E54BF87C2D1DA246001AB8AB /* BorderShape.swift */,
 				E5EE4DD22CA5B30B006EC1DE /* GraphView.swift */,
 				E57221FF2C21DBCB008D466B /* BarometerInformationView.swift */,
 				E57222012C21F20F008D466B /* SatelliteInformationView.swift */,
@@ -357,6 +363,7 @@
 			files = (
 				E5AAD2962AAB5D980052522B /* Persistence.swift in Sources */,
 				E584D8E82B3EEFB10004973A /* Barometer.swift in Sources */,
+				E5BC6D632D1EB6F0006992D8 /* BorderText.swift in Sources */,
 				E5E6CC2B2C8B2C7100779817 /* History.swift in Sources */,
 				E57221FB2C21C7E9008D466B /* GeoMapView.swift in Sources */,
 				E59092912CD53A0500499EFF /* DataItem.swift in Sources */,
@@ -372,6 +379,7 @@
 				E57221F92C21C7B7008D466B /* GeoStatView.swift in Sources */,
 				E57222022C21F20F008D466B /* SatelliteInformationView.swift in Sources */,
 				E57222002C21DBCB008D466B /* BarometerInformationView.swift in Sources */,
+				E54BF87D2D1DA246001AB8AB /* BorderShape.swift in Sources */,
 				E5AAD2992AAB5D980052522B /* Geo.xcdatamodeld in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

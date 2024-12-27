@@ -9,7 +9,7 @@ import Foundation
 import CoreData
 
 @Observable
-class History: NSObject {
+class History: NSObject, ObservableObject {
     
     var historyItems: [HistoryItem] = []
     
