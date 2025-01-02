@@ -14,6 +14,12 @@ class Location: NSObject, CLLocationManagerDelegate {
     var barometer: Barometer? = nil
     var locationManager: CLLocationManager? = nil
     var location: CLLocation? = nil
+    var mountainsData: MountainData? = nil
+    var closestMountain: MountainInfo? = nil
+    var closestMountainDistance: Double? = nil
+    var highestMountain: MountainInfo? = nil
+    var highestMountainDistance: Double? = nil
+
     private var stepLocation: CLLocation? = nil
     
     func initialize() {
@@ -28,6 +34,11 @@ class Location: NSObject, CLLocationManagerDelegate {
             } else {
                 self.locationManager!.requestAlwaysAuthorization()
             }
+        }
+        if (self.mountainsData?.highest?.mountains?.count ?? 0) > 0 {
+            self.highestMountain = self.mountainsData?.highest?.mountains?[0]
+        } else {
+            self.highestMountain = nil
         }
     }
     
@@ -44,6 +55,7 @@ class Location: NSObject, CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         if locations.count > 0 {
             self.location = locations[locations.count - 1]
+            refreshCloserMountain()
             if self.stepLocation == nil {
                 self.stepLocation = self.location!.copy() as! CLLocation
                 refreshData()
@@ -78,6 +90,28 @@ class Location: NSObject, CLLocationManagerDelegate {
             }
         } else {
             self.stepLocation = nil
+        }
+    }
+    
+    func refreshCloserMountain() {
+        guard let loc = self.location else {
+            self.closestMountain = nil
+            return
+        }
+        var m: [MountainInfo] = []
+        m.append(contentsOf: self.mountainsData?.highest?.mountains ?? [])
+        m.append(contentsOf: self.mountainsData?.sevenPeaks?.mountains ?? [])
+        m.append(contentsOf: self.mountainsData?.snowLeopardOfRussia?.mountains ?? [])
+        if let v = m.min(by: { (a: MountainInfo, b: MountainInfo) -> Bool in
+            loc.distance(from: CLLocation(latitude: a.coordinates?.latitude ?? 0, longitude: a.coordinates?.longitude ?? 0)) < loc.distance(from: CLLocation(latitude: b.coordinates?.latitude ?? 0, longitude: b.coordinates?.longitude ?? 0))
+        }) {
+            self.closestMountain = v
+            let distance = loc.distance(from: CLLocation(latitude: v.coordinates?.latitude ?? 0, longitude: v.coordinates?.longitude ?? 0))
+            self.closestMountainDistance = distance
+            let distanceH = loc.distance(from: CLLocation(latitude: self.highestMountain?.coordinates?.latitude ?? 0, longitude: self.highestMountain?.coordinates?.longitude ?? 0))
+            self.highestMountainDistance = distanceH
+        } else {
+            self.closestMountain = nil
         }
     }
     

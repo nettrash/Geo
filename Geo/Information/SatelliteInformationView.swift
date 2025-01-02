@@ -12,11 +12,6 @@ struct SatelliteInformationView: View {
 
     var body: some View {
         ZStack {
-            /*Image("Satellite")
-                .resizable()
-                .frame(width: 200, height: 200)
-                .aspectRatio(contentMode: .fit)
-                .opacity(0.12)*/
             
             Text("S A T E L L I T E")
                 .opacity(0.2)
@@ -25,23 +20,6 @@ struct SatelliteInformationView: View {
                 .padding()
 
             VStack {
-                /*ZStack {
-                 Color.gray
-                 .opacity(0.5)
-                 .frame(height: 60)
-                 
-                 VStack {
-                 Spacer()
-                 .frame(height: 2)
-                 
-                 HStack {
-                 Text("Satellite")
-                 .font(.headline)
-                 Spacer()
-                 }
-                 .padding()
-                 }
-                 }*/
                 
                 HStack(alignment: .top) {
                     Text("Coordinates")

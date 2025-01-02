@@ -27,6 +27,10 @@ struct GeoInfoView: View {
                         .onAppear(perform: {
                             app?.location?.initialize()
                         })
+                    
+                    ClosestMountainInformationView(location: app?.location)
+                    
+                    HighestMountainInformationView(location: app?.location)
                 }
             /*}*/
         })

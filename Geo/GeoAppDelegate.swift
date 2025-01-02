@@ -11,6 +11,9 @@ import CoreLocation
 
 class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
 
+    //Mountains data
+    var mountainsData: MountainData? = nil
+    
     // Instance of barometer representation.
     var barometer: Barometer?
     
@@ -19,11 +22,14 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     
     // Initializing main stuctures for the app.
     func initialize() {
+        loadMountains()
+        
         self.barometer = Barometer()
         self.barometer?.Start()
-    
+        
         self.location = Location()
         self.location?.barometer = self.barometer
+        self.location?.mountainsData = self.mountainsData
     }
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
@@ -32,4 +38,21 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         return true;
     }
     
+    private func loadMountains() {
+        do {
+            guard let listPath = Bundle.main.path(forResource: "list", ofType: "json") else {
+                return
+            }
+            let listUrl = URL(fileURLWithPath: listPath)
+            guard let jsonData = try? Data(contentsOf: listUrl) else {
+                return
+            }
+            let decoder = JSONDecoder()
+            self.mountainsData = try decoder.decode(MountainData.self, from: jsonData)
+        }
+        catch {
+            self.mountainsData = nil
+        }
+    }
+
 }

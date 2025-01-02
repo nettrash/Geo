@@ -11,13 +11,7 @@ struct BarometerInformationView: View {
     @State var barometer: Barometer?;
     
     var body: some View {
-        ZStack {
-            /*Image("Barometer")
-                .resizable()
-                .frame(width: 200, height: 200)
-                .aspectRatio(contentMode: .fit)
-                .opacity(0.12)*/
-            
+        ZStack {            
             Text("B A R O M E T E R")
                 .opacity(0.2)
                 .font(.title)
@@ -25,23 +19,6 @@ struct BarometerInformationView: View {
                 .padding()
 
             VStack {
-                /*ZStack {
-                 Color.gray
-                 .opacity(0.5)
-                 .frame(height: 60)
-                 
-                 VStack {
-                 Spacer()
-                 .frame(height: 2)
-                 
-                 HStack {
-                 Text("Barometer")
-                 .font(.headline)
-                 Spacer()
-                 }
-                 .padding()
-                 }
-                 }*/
                 
                 HStack(alignment: .top) {
                     Text("Pressure")

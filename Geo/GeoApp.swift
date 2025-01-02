@@ -11,7 +11,7 @@ import SwiftUI
 struct GeoApp: App {
     @UIApplicationDelegateAdaptor private var appDelegate: GeoAppDelegate
     let persistenceController = PersistenceController.shared
-
+    
     var body: some Scene {
         WindowGroup {
             MainView(app: appDelegate)

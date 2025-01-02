@@ -62,13 +62,31 @@ struct GraphView: View {
                 
                 VStack {
                     Spacer()
-                        .frame(height: 245)
+                        .frame(height: 215)
                     HStack {
                         Spacer()
-                            .frame(width: 26)
+                            .frame(width: 18)
                         Text(ordinateLabel0())
-                            .font(.system(size: 8))
+                            .font(.system(size: 6))
                             .bold()
+                            .multilineTextAlignment(.leading)
+                            .frame(width: 120)
+                            .frame(width: 10)
+                            .rotationEffect( .degrees(-90))
+                        Spacer()
+                    }
+                }
+                
+                VStack {
+                    Spacer()
+                        .frame(height: 250)
+                    HStack {
+                        Spacer()
+                            .frame(width: 30)
+                        Text(ordinateLabelS())
+                            .font(.system(size: 6))
+                            .bold()
+                            .multilineTextAlignment(.leading)
                         Spacer()
                     }
                 }
@@ -126,9 +144,10 @@ struct GraphView: View {
                         .frame(height: 250)
                     HStack {
                         Spacer()
-                        Text("now")
-                            .font(.system(size: 8))
+                        Text(ordinateLabelF())
+                            .font(.system(size: 6))
                             .bold()
+                            .multilineTextAlignment(.leading)
                         Spacer()
                             .frame(width: 26)
                     }
@@ -215,6 +234,20 @@ struct GraphView: View {
     
     func greenShift() -> CGFloat {
         return (-8 + (230 / 2) - (230 / (max - min)) * (greenValue - min))
+    }
+    
+    func ordinateLabelS() -> String {
+        if Data.count == 0 {
+            return ""
+        }
+        return Data[0].Legend
+    }
+    
+    func ordinateLabelF() -> String {
+        if Data.count == 0 {
+            return ""
+        }
+        return Data[Data.count - 1].Legend
     }
 }
 

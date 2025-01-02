@@ -13,6 +13,14 @@ struct GeoStatView: View {
     var altitudeBarometerDataSet: [DataItem] = []
     var altitudeGPSDataSet: [DataItem] = []
     var decimal: Decimal = 0.0
+    
+    private let dateFormatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            return formatter
+        }()
+    
     var body: some View {
         ZStack(content: {
             Image("GeoBig")
@@ -21,10 +29,10 @@ struct GeoStatView: View {
                 .opacity(0.02)
             ScrollView {
                 GraphView(Caption: "PRESSURE", Data: pressureDataSet,
-                          min: 700.0, max: 810.0, measurement: "mm Hg", useGreenBorder: true, useYellowBorder: false, useRedBorder: false, greenValue: 762, greenText: "normal")
+                          min: 150.0, max: 850.0, measurement: "mm Hg", useGreenBorder: true, useYellowBorder: false, useRedBorder: false, greenValue: 762, greenText: "normal")
                 GraphView(Caption: "ALTITUDE BAROMETER", Data: altitudeBarometerDataSet,
-                          min: 0.0, max: 10000.0, measurement: "m", useGreenBorder: false, useYellowBorder: true, useRedBorder: true, yellowValue: 2500, redValue: 7980, yellowText: "thin air", redText: "death zone")
-                GraphView(Caption: "ALTITUDE GPS", Data: altitudeGPSDataSet, min: 0.0, max: 10000.0, measurement: "m", useGreenBorder: false, useYellowBorder: true, useRedBorder: true, yellowValue: 2500, redValue: 7980, yellowText: "thin air", redText: "death zone")
+                          min: 0.0, max: 10000.0, measurement: "m", useGreenBorder: false, useYellowBorder: true, useRedBorder: true, yellowValue: 4500, redValue: 7980, yellowText: "thin air", redText: "death zone")
+                GraphView(Caption: "ALTITUDE GPS", Data: altitudeGPSDataSet, min: 0.0, max: 10000.0, measurement: "m", useGreenBorder: false, useYellowBorder: true, useRedBorder: true, yellowValue: 4500, redValue: 7980, yellowText: "thin air", redText: "death zone")
             }
         })
     }
@@ -44,24 +52,24 @@ struct GeoStatView: View {
     mutating func pressureDataSetRefresh() {
         pressureDataSet.removeAll()
         
-        for historyItem in history.historyItems.suffix(7) {
-            pressureDataSet.append(DataItem(Value: historyItem.barometerPressure * 7.50062, Legend: historyItem.description))
+        for historyItem in history.historyItems.suffix(15) {
+            pressureDataSet.append(DataItem(Value: historyItem.barometerPressure * 7.50062, Legend: dateFormatter.string(from: historyItem.recordDate ?? Date())))
         }
     }
     
     mutating func barometerDataSetRefresh() {
         altitudeBarometerDataSet.removeAll()
         
-        for historyItem in history.historyItems.suffix(7) {
-            altitudeBarometerDataSet.append(DataItem(Value: historyItem.barometerAltitude, Legend: historyItem.recordDate?.ISO8601Format() ?? ""))
+        for historyItem in history.historyItems.suffix(15) {
+            altitudeBarometerDataSet.append(DataItem(Value: historyItem.barometerAltitude, Legend: dateFormatter.string(from: historyItem.recordDate ?? Date())))
         }
     }
     
     mutating func gpsDataSetRefresh() {
         altitudeGPSDataSet.removeAll()
         
-        for historyItem in history.historyItems.suffix(7) {
-            altitudeGPSDataSet.append(DataItem(Value: historyItem.gpsAltitude, Legend: historyItem.recordDate?.ISO8601Format() ?? ""))
+        for historyItem in history.historyItems.suffix(15) {
+            altitudeGPSDataSet.append(DataItem(Value: historyItem.gpsAltitude, Legend: dateFormatter.string(from: historyItem.recordDate ?? Date())))
         }
     }
 }
