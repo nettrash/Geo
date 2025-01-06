@@ -14,10 +14,6 @@ struct MainView: View {
     
     var body: some View {
         ZStack(content: {
-            /*Image("GeoBig")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .opacity(0.01)*/
             
             TabView {
                 GeoInfoView(app: app)
@@ -25,12 +21,12 @@ struct MainView: View {
                         Image(systemName: "ruler")
                         Text("Info")
                     }
-                GeoStatView(history: History())
+                GeoStatView(history: app!.history)
                     .tabItem {
                         Image(systemName: "chart.xyaxis.line")
                         Text("Stat")
                     }
-                GeoMapView(history: History())
+                GeoMapView(app: app)
                     .tabItem {
                         Image(systemName: "map")
                         Text("Map")
@@ -47,6 +43,6 @@ struct MainView: View {
 
 struct MainView_Previews: PreviewProvider {
     static var previews: some View {
-        MainView(app: nil).environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+        MainView(app: GeoAppDelegate()).environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
     }
 }

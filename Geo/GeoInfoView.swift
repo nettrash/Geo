@@ -16,10 +16,6 @@ struct GeoInfoView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .opacity(0.02)
-            /*VStack {
-                Text("Information")
-                    .font(.largeTitle)
-                    .padding()*/
                 ScrollView {
                     BarometerInformationView(barometer: app?.barometer)
                     

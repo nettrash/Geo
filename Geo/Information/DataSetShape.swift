@@ -50,6 +50,8 @@ struct DataSetShape: InsettableShape {
             }
             if markVertexes {
                 path.addEllipse(in: CGRect(x: currentPoint.x-vertexRadius, y: currentPoint.y-vertexRadius, width: 2*vertexRadius, height: 2*vertexRadius))
+                path.addEllipse(in: CGRect(x: currentPoint.x-vertexRadius/2, y: currentPoint.y-vertexRadius/2, width: vertexRadius, height: vertexRadius))
+                path.addEllipse(in: CGRect(x: currentPoint.x-vertexRadius/4, y: currentPoint.y-vertexRadius/4, width: vertexRadius/2, height: vertexRadius/2))
                 path.move(to: currentPoint)
             }
             stepN+=1

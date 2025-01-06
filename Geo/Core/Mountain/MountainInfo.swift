@@ -5,7 +5,9 @@
 //  Created by Ivan Alekseev on 02/01/2025.
 //
 
-class MountainInfo: Codable {
+class MountainInfo: Codable, Identifiable {
+    
+    var id: Int { position ?? 0 }
     
     var position: Int? = nil
     var image: String? = nil

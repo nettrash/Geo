@@ -193,6 +193,9 @@
 		E5BF203F2D270F8B00E31412 /* list.json in Resources */ = {isa = PBXBuildFile; fileRef = E5BF1F9E2D270F8B00E31412 /* list.json */; };
 		E5BF204E2D271C1000E31412 /* HighestMountainInformationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5BF204D2D271C1000E31412 /* HighestMountainInformationView.swift */; };
 		E5C78A132C22E0BC006453C7 /* MapKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5C78A122C22E0BC006453C7 /* MapKit.framework */; };
+		E5D68BEF2D27F1ED00E30A18 /* GraphLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D68BEE2D27F1E900E30A18 /* GraphLine.swift */; };
+		E5D68BF12D2826B700E30A18 /* MountainDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D68BF02D2826AE00E30A18 /* MountainDetailsView.swift */; };
+		E5D68BF32D28272200E30A18 /* HistoryDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D68BF22D28271B00E30A18 /* HistoryDetailsView.swift */; };
 		E5E6CC2B2C8B2C7100779817 /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E6CC2A2C8B2C7100779817 /* History.swift */; };
 		E5ED16F72C382C0E004C2E94 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E5ED16F62C382C0E004C2E94 /* Launch Screen.storyboard */; };
 		E5ED16F92C382FC7004C2E94 /* CloudKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5ED16F82C382FC7004C2E94 /* CloudKit.framework */; };
@@ -305,6 +308,9 @@
 		E5BF1F9D2D270F8B00E31412 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "zh-Hans"; path = "zh-Hans.lproj/list.json"; sourceTree = "<group>"; };
 		E5BF204D2D271C1000E31412 /* HighestMountainInformationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighestMountainInformationView.swift; sourceTree = "<group>"; };
 		E5C78A122C22E0BC006453C7 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
+		E5D68BEE2D27F1E900E30A18 /* GraphLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphLine.swift; sourceTree = "<group>"; };
+		E5D68BF02D2826AE00E30A18 /* MountainDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MountainDetailsView.swift; sourceTree = "<group>"; };
+		E5D68BF22D28271B00E30A18 /* HistoryDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryDetailsView.swift; sourceTree = "<group>"; };
 		E5E6CC2A2C8B2C7100779817 /* History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = History.swift; sourceTree = "<group>"; };
 		E5ED16F62C382C0E004C2E94 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
 		E5ED16F82C382FC7004C2E94 /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
@@ -350,6 +356,9 @@
 		E57221FE2C21DBB1008D466B /* Information */ = {
 			isa = PBXGroup;
 			children = (
+				E5D68BF22D28271B00E30A18 /* HistoryDetailsView.swift */,
+				E5D68BF02D2826AE00E30A18 /* MountainDetailsView.swift */,
+				E5D68BEE2D27F1E900E30A18 /* GraphLine.swift */,
 				E5BC6D622D1EB6EB006992D8 /* BorderText.swift */,
 				E590928E2CD5396700499EFF /* DataSetShape.swift */,
 				E5EE4DD42CA5B7D5006EC1DE /* AxisShape.swift */,
@@ -825,11 +834,14 @@
 				E5E6CC2B2C8B2C7100779817 /* History.swift in Sources */,
 				E57221FB2C21C7E9008D466B /* GeoMapView.swift in Sources */,
 				E59092912CD53A0500499EFF /* DataItem.swift in Sources */,
+				E5D68BEF2D27F1ED00E30A18 /* GraphLine.swift in Sources */,
 				E57221FD2C21C82C008D466B /* GeoNatureView.swift in Sources */,
 				E5EE4DD32CA5B315006EC1DE /* GraphView.swift in Sources */,
 				E5AAD28F2AAB5D950052522B /* MainView.swift in Sources */,
 				E590928F2CD5398C00499EFF /* DataSetShape.swift in Sources */,
+				E5D68BF32D28272200E30A18 /* HistoryDetailsView.swift in Sources */,
 				E5BF204E2D271C1000E31412 /* HighestMountainInformationView.swift in Sources */,
+				E5D68BF12D2826B700E30A18 /* MountainDetailsView.swift in Sources */,
 				E57221F72C21C77E008D466B /* GeoInfoView.swift in Sources */,
 				E58E03B52C232E30002909A4 /* Location.swift in Sources */,
 				E5EE4DD52CA5B7D9006EC1DE /* AxisShape.swift in Sources */,

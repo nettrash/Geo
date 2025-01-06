@@ -9,18 +9,7 @@ import SwiftUI
 
 struct GeoStatView: View {
     @State @ObservedObject var history: History
-    var pressureDataSet: [DataItem] = []
-    var altitudeBarometerDataSet: [DataItem] = []
-    var altitudeGPSDataSet: [DataItem] = []
-    var decimal: Decimal = 0.0
-    
-    private let dateFormatter: DateFormatter = {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
-            return formatter
-        }()
-    
+        
     var body: some View {
         ZStack(content: {
             Image("GeoBig")
@@ -28,11 +17,11 @@ struct GeoStatView: View {
                 .aspectRatio(contentMode: .fit)
                 .opacity(0.02)
             ScrollView {
-                GraphView(Caption: "PRESSURE", Data: pressureDataSet,
-                          min: 150.0, max: 850.0, measurement: "mm Hg", useGreenBorder: true, useYellowBorder: false, useRedBorder: false, greenValue: 762, greenText: "normal")
-                GraphView(Caption: "ALTITUDE BAROMETER", Data: altitudeBarometerDataSet,
-                          min: 0.0, max: 10000.0, measurement: "m", useGreenBorder: false, useYellowBorder: true, useRedBorder: true, yellowValue: 4500, redValue: 7980, yellowText: "thin air", redText: "death zone")
-                GraphView(Caption: "ALTITUDE GPS", Data: altitudeGPSDataSet, min: 0.0, max: 10000.0, measurement: "m", useGreenBorder: false, useYellowBorder: true, useRedBorder: true, yellowValue: 4500, redValue: 7980, yellowText: "thin air", redText: "death zone")
+                GraphView(Caption: "PRESSURE", Data: history.pressureDataSet, Lines: [GraphLine(value: 760, text: "normal", color: Color.green)],
+                          min: history.pressureDataSetMin, max: history.pressureDataSetMax, measurement: "mm Hg")
+                GraphView(Caption: "ALTITUDE BAROMETER", Data: history.altitudeBarometerDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)],
+                          min: history.altitudeBarometerDataSetMin, max: history.altitudeBarometerDataSetMax, measurement: "m")
+                GraphView(Caption: "ALTITUDE GPS", Data: history.altitudeGPSDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)], min: history.altitudeGPSDataSetMin, max: history.altitudeGPSDataSetMax, measurement: "m")
             }
         })
     }
@@ -44,33 +33,6 @@ struct GeoStatView: View {
     
     mutating func RefreshHistory() {
         self.history.Refresh()
-        pressureDataSetRefresh()
-        barometerDataSetRefresh()
-        gpsDataSetRefresh()
-    }
-    
-    mutating func pressureDataSetRefresh() {
-        pressureDataSet.removeAll()
-        
-        for historyItem in history.historyItems.suffix(15) {
-            pressureDataSet.append(DataItem(Value: historyItem.barometerPressure * 7.50062, Legend: dateFormatter.string(from: historyItem.recordDate ?? Date())))
-        }
-    }
-    
-    mutating func barometerDataSetRefresh() {
-        altitudeBarometerDataSet.removeAll()
-        
-        for historyItem in history.historyItems.suffix(15) {
-            altitudeBarometerDataSet.append(DataItem(Value: historyItem.barometerAltitude, Legend: dateFormatter.string(from: historyItem.recordDate ?? Date())))
-        }
-    }
-    
-    mutating func gpsDataSetRefresh() {
-        altitudeGPSDataSet.removeAll()
-        
-        for historyItem in history.historyItems.suffix(15) {
-            altitudeGPSDataSet.append(DataItem(Value: historyItem.gpsAltitude, Legend: dateFormatter.string(from: historyItem.recordDate ?? Date())))
-        }
     }
 }
 

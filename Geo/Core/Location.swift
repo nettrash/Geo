@@ -11,6 +11,7 @@ import CoreLocation
 @Observable
 class Location: NSObject, CLLocationManagerDelegate {
     
+    var app: GeoAppDelegate? = nil
     var barometer: Barometer? = nil
     var locationManager: CLLocationManager? = nil
     var location: CLLocation? = nil
@@ -52,7 +53,7 @@ class Location: NSObject, CLLocationManagerDelegate {
     }
     
     //CLLocationManagerDelegate
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    @MainActor func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         if locations.count > 0 {
             self.location = locations[locations.count - 1]
             refreshCloserMountain()
@@ -68,7 +69,7 @@ class Location: NSObject, CLLocationManagerDelegate {
         }
     }
     
-    func refreshData() {
+    @MainActor func refreshData() {
         if (self.stepLocation != nil && self.barometer!.pressure > 0) {
             let controller = PersistenceController.shared
             let historyItem = HistoryItem(context: controller.container.viewContext)
@@ -88,6 +89,7 @@ class Location: NSObject, CLLocationManagerDelegate {
                 let nsError = error as NSError
                 fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
             }
+            app?.history.Refresh()
         } else {
             self.stepLocation = nil
         }

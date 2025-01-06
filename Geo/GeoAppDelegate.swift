@@ -20,6 +20,9 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     // Instance of location manager
     var location: Location?
     
+    // History
+    var history: History = History()
+    
     // Initializing main stuctures for the app.
     func initialize() {
         loadMountains()
@@ -28,6 +31,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         self.barometer?.Start()
         
         self.location = Location()
+        self.location?.app = self
         self.location?.barometer = self.barometer
         self.location?.mountainsData = self.mountainsData
     }

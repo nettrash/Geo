@@ -68,8 +68,8 @@ struct ClosestMountainInformationView: View {
                         OpenMapForClosestMountain()
                     }) {
                         Text("Directions")
-                            .font(.subheadline)
-                            .padding(10)
+                            .font(.system(size: 12))
+                            .padding(6)
                             .foregroundColor(.white)
                             .background(.gray)
                             .cornerRadius(8)

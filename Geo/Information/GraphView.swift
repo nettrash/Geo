@@ -11,18 +11,10 @@ struct GraphView: View {
     
     @State var Caption: String
     @State var Data: [DataItem]
+    @State var Lines: [GraphLine] = []
     var min: CGFloat = 0
     var max: CGFloat = 10000
     var measurement: String = "km"
-    var useGreenBorder: Bool = true
-    var useYellowBorder: Bool = true
-    var useRedBorder: Bool = true
-    var greenValue: CGFloat = 2000
-    var yellowValue: CGFloat = 2500
-    var redValue: CGFloat = 7980
-    var greenText: String = "green"
-    var yellowText: String = "yellow"
-    var redText: String = "red"
 
     var body: some View {
         ZStack {
@@ -171,34 +163,18 @@ struct GraphView: View {
                     .strokeBorder(.white, lineWidth: 0.25, antialiased: true)
             }
             
-            if useGreenBorder {
-                Group {
-                    BorderShape(height: 230, shift: 30, min: min, max: max, position: greenValue)
-                        .strokeBorder(.green, lineWidth: 1, antialiased: true)
-                    
-                    BorderText(message: greenText, shift: greenShift(), color: .green)
+            ForEach(Lines) { line in
+                if (line.value > min && line.value < max) {
+                    Group {
+                        BorderShape(height: 230, shift: 30, min: min, max: max, position: line.value)
+                            .strokeBorder(line.color, lineWidth: 1, antialiased: true)
+                        
+                        BorderText(message: line.text, shift: lineShift(line: line), color: line.color)
+                    }
                 }
             }
 
-            if useYellowBorder {
-                Group {
-                    BorderShape(height: 230, shift: 30, min: min, max: max, position: yellowValue)
-                        .strokeBorder(.yellow, lineWidth: 1, antialiased: true)
-                    
-                    BorderText(message: yellowText, shift: yellowShift(), color: .yellow)
-                }
-            }
-
-            if useRedBorder {
-                Group {
-                    BorderShape(height: 230, shift: 30, min: min, max: max, position: redValue)
-                        .strokeBorder(.red, lineWidth: 1, antialiased: true)
-                    
-                    BorderText(message: redText, shift: redShift(), color: .red)
-                }
-            }
-
-            DataSetShape(height: 230, shiftX: 30, shiftY: 30, data: Data, min: min, max: max, markVertexes: true, vertexRadius: 3.0)
+            DataSetShape(height: 230, shiftX: 30, shiftY: 30, data: Data, min: min, max: max, markVertexes: true, vertexRadius: 1.5)
                 .strokeBorder(.white, lineWidth: 1, antialiased: true)
         }
     }
@@ -223,17 +199,8 @@ struct GraphView: View {
         return "\(Int(max)) \(measurement)"
     }
 
-
-    func yellowShift() -> CGFloat {
-        return (-8 + (230 / 2) - (230 / (max - min)) * (yellowValue - min))
-    }
-    
-    func redShift() -> CGFloat {
-        return (-8 + (230 / 2) - (230 / (max - min)) * (redValue - min))
-    }
-    
-    func greenShift() -> CGFloat {
-        return (-8 + (230 / 2) - (230 / (max - min)) * (greenValue - min))
+    func lineShift(line: GraphLine) -> CGFloat {
+        return (-8 + (230 / 2) - (230 / (max - min)) * (line.value - min))
     }
     
     func ordinateLabelS() -> String {
@@ -252,5 +219,5 @@ struct GraphView: View {
 }
 
 #Preview {
-    GraphView(Caption: "TEST PREVIEW", Data: [], min: 0, max: 1000, measurement: "kPa", useGreenBorder: true, useYellowBorder: true, useRedBorder: true, greenValue: 762, yellowValue: 100, redValue: 400)
+    GraphView(Caption: "TEST PREVIEW", Data: [], Lines: [GraphLine(value: 762, text: "normal", color: Color.green), GraphLine(value: 100, text: "yellow", color: Color.yellow), GraphLine(value: 400, text: "red", color: Color.red)], min: 0, max: 1000, measurement: "kPa")
 }
