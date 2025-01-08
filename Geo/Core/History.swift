@@ -38,7 +38,7 @@ class History: NSObject, ObservableObject {
             return formatter
         }()
 
-    @MainActor func Refresh() {
+    func Refresh() {
         do {
             let controller = PersistenceController.shared
             let fetchRequest: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
@@ -62,7 +62,7 @@ class History: NSObject, ObservableObject {
         self.gpsDataSetRefresh()
     }
     
-    @MainActor func pressureDataSetRefresh() {
+    func pressureDataSetRefresh() {
         pressureDataSet.removeAll()
         
         for historyItem in self.historyItems.suffix(amountOfValuesToShow) {
@@ -84,7 +84,7 @@ class History: NSObject, ObservableObject {
         }
     }
     
-    @MainActor func barometerDataSetRefresh() {
+    func barometerDataSetRefresh() {
         altitudeBarometerDataSet.removeAll()
         
         for historyItem in self.historyItems.suffix(amountOfValuesToShow) {
@@ -106,7 +106,7 @@ class History: NSObject, ObservableObject {
         }
     }
     
-    @MainActor func gpsDataSetRefresh() {
+    func gpsDataSetRefresh() {
         altitudeGPSDataSet.removeAll()
         
         for historyItem in self.historyItems.suffix(amountOfValuesToShow) {

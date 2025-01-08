@@ -6,7 +6,6 @@
 //
 import Foundation
 
-@MainActor
 final class DataItem: NSObject {
     
     let Value: CGFloat
