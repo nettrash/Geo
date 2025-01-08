@@ -14,6 +14,11 @@ struct GeoMapView: View {
     
     @State var app: GeoAppDelegate?
     
+    @State private var isShowDetails: Bool = false
+    @State private var isHistorySelected: Bool = false
+    @State private var historySelected: HistoryItem? = nil
+    @State private var mountainSelected: MountainInfo? = nil
+    
     private let dateFormatter: DateFormatter = {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
@@ -32,7 +37,11 @@ struct GeoMapView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(height: 40, alignment: .center)
-                            .shadow(radius: 5)
+                            .onTapGesture {
+                                mountainSelected = mountain
+                                isHistorySelected = false
+                                isShowDetails = true
+                            }
                     }
 
                 }
@@ -48,7 +57,11 @@ struct GeoMapView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(height: 40, alignment: .center)
-                            .shadow(radius: 5)
+                            .onTapGesture {
+                                mountainSelected = mountain
+                                isHistorySelected = false
+                                isShowDetails = true
+                            }
                     }
 
                 }
@@ -66,7 +79,11 @@ struct GeoMapView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(height: 40, alignment: .center)
-                            .shadow(radius: 5)
+                            .onTapGesture {
+                                mountainSelected = mountain
+                                isHistorySelected = false
+                                isShowDetails = true
+                            }
                     }
 
                 }
@@ -79,7 +96,11 @@ struct GeoMapView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(height: 40, alignment: .center)
-                            .shadow(radius: 5)
+                            .onTapGesture {
+                                historySelected = historyItem
+                                isHistorySelected = true
+                                isShowDetails = true
+                            }
                     }
                 }
             }
@@ -94,6 +115,21 @@ struct GeoMapView: View {
         }
         .onAppear {
             self.app?.history.Refresh()
+        }
+        .sheet(isPresented: $isShowDetails) {
+            if isHistorySelected {
+                if historySelected != nil {
+                    HistoryDetailsView(item: historySelected)
+                } else {
+                    Text("Loading...")
+                }
+            } else {
+                if mountainSelected != nil {
+                    MountainDetailsView(mountain: mountainSelected)
+                } else {
+                    Text("Loading...")
+                }
+            }
         }
     }
 }
