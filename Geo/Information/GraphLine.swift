@@ -5,7 +5,7 @@
 //  Created by Ivan Alekseev on 03/01/2025.
 //
 
-import SwiftUICore
+import SwiftUI
 
 struct GraphLine: Identifiable {
     var id: Double { value }
