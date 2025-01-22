@@ -106,8 +106,6 @@
 		E5BC6D622D1EB6EB006992D8 /* BorderText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorderText.swift; sourceTree = "<group>"; };
 		E5BF1F652D270AC000E31412 /* ClosestMountainInformationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosestMountainInformationView.swift; sourceTree = "<group>"; };
 		E5BF1F9B2D270F8B00E31412 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = en; path = en.lproj/list.json; sourceTree = "<group>"; };
-		E5BF1F9C2D270F8B00E31412 /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = ru; path = ru.lproj/list.json; sourceTree = "<group>"; };
-		E5BF1F9D2D270F8B00E31412 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "zh-Hans"; path = "zh-Hans.lproj/list.json"; sourceTree = "<group>"; };
 		E5BF204D2D271C1000E31412 /* HighestMountainInformationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighestMountainInformationView.swift; sourceTree = "<group>"; };
 		E5C78A122C22E0BC006453C7 /* MapKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MapKit.framework; path = System/Library/Frameworks/MapKit.framework; sourceTree = SDKROOT; };
 		E5D68BEE2D27F1E900E30A18 /* GraphLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphLine.swift; sourceTree = "<group>"; };
@@ -497,8 +495,6 @@
 			isa = PBXVariantGroup;
 			children = (
 				E5BF1F9B2D270F8B00E31412 /* en */,
-				E5BF1F9C2D270F8B00E31412 /* ru */,
-				E5BF1F9D2D270F8B00E31412 /* zh-Hans */,
 			);
 			name = list.json;
 			sourceTree = "<group>";

@@ -16,22 +16,6 @@
         ],
         "mountains": [
             {
-                "position": 1,
-                "image": "1.jpg",
-                "name":"Mount Everest/Sagarmatha/Chomolungma",
-                "height": 8848,
-                "location": "Mahalangur Himalaya",
-                "coordinates": {
-                    "latitude": 27.98806,
-                    "longitude": 86.92528
-                },
-                "relativeHeight": 8848,
-                "parent":"",
-                "firstAscent":"1953",
-                "ascents":145,
-                "attemptsToAscend":121
-            },
-            {
                 "position": 2,
                 "image": "2.jpg",
                 "name":"K2",
@@ -1925,33 +1909,33 @@
         "mountains": [
             {
                 "position": 1,
-                "image": "",
+                "image": "everest.jpg",
                 "partOfTheWorld": "Asia",
                 "name":"Jomolungma (Everest)",
                 "height": 8848,
                 "location": "Himalayas",
                 "county": "Nepal/China",
                 "coordinates": {
-                    "latitude": 27.98806,
-                    "longitude": 86.92528
+                    "latitude": 27.9881,
+                    "longitude": 86.9250
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"1953",
                 "ascents":0,
                 "attemptsToAscend":0
             },
             {
                 "position": 2,
-                "image": "",
+                "image": "aconcagua.jpg",
                 "partOfTheWorld": "South America",
-                "name":"Аконкагуа",
+                "name":"Aconcagua",
                 "height": 6962,
                 "location": "Andes",
                 "county": "Argentina",
                 "coordinates": {
-                    "latitude": -32.65383,
-                    "longitude": -70.01141
+                    "latitude": -32.6532,
+                    "longitude": -70.0109
                 },
                 "relativeHeight": 0,
                 "parent":"",
@@ -1961,15 +1945,15 @@
             },
             {
                 "position": 3,
-                "image": "",
+                "image": "denali.jpg",
                 "partOfTheWorld": "North America",
                 "name":"Denali (McKinley)",
                 "height": 6190,
                 "location": "Alaska range",
                 "county": "USA",
                 "coordinates": {
-                    "latitude": 63.0695,
-                    "longitude": -151.0074
+                    "latitude": 63.0692,
+                    "longitude": -151.0070
                 },
                 "relativeHeight": 0,
                 "parent":"",
@@ -1979,15 +1963,15 @@
             },
             {
                 "position": 4,
-                "image": "",
+                "image": "kilimanjaro.jpg",
                 "partOfTheWorld": "Africa",
                 "name":"Kilimanjaro",
                 "height": 5895,
                 "location": "Kilimanjaro",
                 "county": "Tanzania",
                 "coordinates": {
-                    "latitude": 3.0644209,
-                    "longitude": 37.3582268
+                    "latitude": -3.0758,
+                    "longitude": 37.3533
                 },
                 "relativeHeight": 0,
                 "parent":"",
@@ -1997,15 +1981,15 @@
             },
             {
                 "position": 5,
-                "image": "",
+                "image": "elbrus.jpg",
                 "partOfTheWorld": "Europe",
                 "name":"Elbrus",
                 "height": 5642,
                 "location": "greater Caucasus",
                 "county": "Russia",
                 "coordinates": {
-                    "latitude": 43.355,
-                    "longitude": 42.43917
+                    "latitude": 43.3499,
+                    "longitude": 42.4453
                 },
                 "relativeHeight": 0,
                 "parent":"",
@@ -2015,15 +1999,15 @@
             },
             {
                 "position": 6,
-                "image": "",
+                "image": "montblanc.jpg",
                 "partOfTheWorld": "Europe",
                 "name":"Mont Blanc",
                 "height": 4810,
                 "location": "Western Alps",
                 "county": "France/Italy",
                 "coordinates": {
-                    "latitude": 45.832778,
-                    "longitude": 6.864722
+                    "latitude": 45.8326,
+                    "longitude": 6.8652
                 },
                 "relativeHeight": 0,
                 "parent":"",
@@ -2033,15 +2017,15 @@
             },
             {
                 "position": 7,
-                "image": "",
-                "partOfTheWorld": "Antarctica",
+                "image": "vinson.jpg",
+                "partOfTheWorld": "Antarctida",
                 "name":"Vinson",
                 "height": 4892,
                 "location": "Ellsworth",
                 "county": "",
                 "coordinates": {
-                    "latitude": -78.58333,
-                    "longitude": -85.41667
+                    "latitude": -78.6341,
+                    "longitude": -85.2135
                 },
                 "relativeHeight": 0,
                 "parent":"",
@@ -2051,15 +2035,15 @@
             },
             {
                 "position": 8,
-                "image": "",
+                "image": "jaya.jpg",
                 "partOfTheWorld": "Australia and Oceania",
-                "name":"Jaya",
+                "name":"Puncak Jaya",
                 "height": 4884,
                 "location": "Maoke",
                 "county": "Indonesia",
                 "coordinates": {
-                    "latitude": -4.08333,
-                    "longitude": 137.183333
+                    "latitude": -4.0846,
+                    "longitude": 137.1866
                 },
                 "relativeHeight": 0,
                 "parent":"",
@@ -2069,15 +2053,15 @@
             },
             {
                 "position": 9,
-                "image": "",
+                "image": "kosciuszko.jpg",
                 "partOfTheWorld": "Australia",
-                "name":"mount Kosciusko",
+                "name":"Kosciuszko",
                 "height": 2228,
                 "location": "Australian Alps",
                 "county": "Australia",
                 "coordinates": {
-                    "latitude": -36.45,
-                    "longitude": 148.267
+                    "latitude": -36.4559,
+                    "longitude": 148.2636
                 },
                 "relativeHeight": 0,
                 "parent":"",
@@ -2104,23 +2088,6 @@
 			"Climbing attempts"
         ],
         "mountains": [
-            {
-                "position": 1,
-                "image": "",
-				"partOfTheWorld": "",
-                "name":"Elbrus",
-                "height": 5642,
-                "location": "Caucasus, the highest mountain peak in Russia and Europe",
-                "coordinates": {
-                    "latitude": 43.355,
-                    "longitude": 42.43917
-                },
-                "relativeHeight": 0,
-                "parent":"",
-                "firstAscent":"",
-                "ascents":0,
-                "attemptsToAscend":0
-            },
             {
                 "position": 2,
                 "image": "",
