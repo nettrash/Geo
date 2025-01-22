@@ -1939,7 +1939,7 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"14 January 1897",
                 "ascents":0,
                 "attemptsToAscend":0
             },
@@ -1957,7 +1957,7 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"7 June 1913",
                 "ascents":0,
                 "attemptsToAscend":0
             },
@@ -1975,7 +1975,7 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"6 October 1889",
                 "ascents":0,
                 "attemptsToAscend":0
             },
@@ -1985,7 +1985,7 @@
                 "partOfTheWorld": "Europe",
                 "name":"Elbrus",
                 "height": 5642,
-                "location": "greater Caucasus",
+                "location": "Greater Caucasus",
                 "county": "Russia",
                 "coordinates": {
                     "latitude": 43.3499,
@@ -1993,7 +1993,7 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"10 July 1829",
                 "ascents":0,
                 "attemptsToAscend":0
             },
@@ -2011,7 +2011,7 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"8 August 1786",
                 "ascents":0,
                 "attemptsToAscend":0
             },
@@ -2019,7 +2019,7 @@
                 "position": 7,
                 "image": "vinson.jpg",
                 "partOfTheWorld": "Antarctida",
-                "name":"Vinson",
+                "name":"Vinson Massif",
                 "height": 4892,
                 "location": "Ellsworth",
                 "county": "",
@@ -2029,7 +2029,7 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"18 December 1966",
                 "ascents":0,
                 "attemptsToAscend":0
             },
@@ -2047,7 +2047,7 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"13 February 1962",
                 "ascents":0,
                 "attemptsToAscend":0
             },
@@ -2065,7 +2065,7 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"2 March 1840",
                 "ascents":0,
                 "attemptsToAscend":0
             }
@@ -2090,9 +2090,9 @@
         "mountains": [
             {
                 "position": 2,
-                "image": "",
-				"partOfTheWorld": "",
-                "name":"Dykhtau",
+                "image": "dykh-tau.jpg",
+				"partOfTheWorld": "Europe",
+                "name":"Dykh Tau",
                 "height": 5204,
                 "location": "Side ridge of the Greater Caucasus",
                 "coordinates": {
@@ -2101,48 +2101,48 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"24 July 1888",
                 "ascents":0,
                 "attemptsToAscend":0
             },
             {
                 "position": 3,
-                "image": "",
-				"partOfTheWorld": "",
+                "image": "shkhara.jpg",
+				"partOfTheWorld": "Europe",
                 "name":"Shkhara",
                 "height": 5193,
-                "location": "main Caucasian range",
+                "location": "The Main Caucasian range",
                 "coordinates": {
                     "latitude": 42.99944,
                     "longitude": 43.11167
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"1888",
                 "ascents":0,
                 "attemptsToAscend":0
             },
             {
                 "position": 4,
-                "image": "",
-				"partOfTheWorld": "",
-                "name":"Koshtantau",
+                "image": "koshtan-tau.jpg",
+				"partOfTheWorld": "Europe",
+                "name":"Koshtan-Tau",
                 "height": 5151,
-                "location": "central Caucasus",
+                "location": "Central Caucasus",
                 "coordinates": {
                     "latitude": 43.05009,
                     "longitude": 43.21426
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"1889",
                 "ascents":0,
                 "attemptsToAscend":0
             },
             {
                 "position": 5,
-                "image": "",
-				"partOfTheWorld": "",
+                "image": "mizhirgi.jpg",
+				"partOfTheWorld": "Europe",
                 "name":"Mizhirgi",
                 "height": 5025,
                 "location": "The main Caucasus range, the Bezengi wall",
@@ -2152,14 +2152,14 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"August 1952",
                 "ascents":0,
                 "attemptsToAscend":0
             },
             {
                 "position": 6,
-                "image": "",
-				"partOfTheWorld": "",
+                "image": "pushkin.jpg",
+				"partOfTheWorld": "Europe",
                 "name":"Pushkin's Peak",
                 "height": 5100,
                 "location": "Side of the Caucasus range",
@@ -2169,15 +2169,15 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"1937",
                 "ascents":0,
                 "attemptsToAscend":0
             },
             {
                 "position": 7,
-                "image": "",
-				"partOfTheWorld": "",
-                "name":"Dzhangitau",
+                "image": "dzhangi-tau.jpg",
+				"partOfTheWorld": "Europe",
+                "name":"Dzhangi-Tau",
                 "height": 5085,
                 "location": "The main Caucasus range, the Bezengi wall",
                 "coordinates": {
@@ -2186,14 +2186,14 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"1965",
                 "ascents":0,
                 "attemptsToAscend":0
             },
             {
                 "position": 8,
-                "image": "",
-				"partOfTheWorld": "",
+                "image": "kazbek.jpg",
+				"partOfTheWorld": "Europe",
                 "name":"Kazbek",
                 "height": 5034,
                 "location": "The Caucasus, an extinct stratovolcano, the easternmost five-thousandth of the Caucasus",
@@ -2203,14 +2203,14 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"1868",
                 "ascents":0,
                 "attemptsToAscend":0
             },
             {
                 "position": 9,
-                "image": "",
-				"partOfTheWorld": "",
+                "image": "klyuchevskaya.jpg",
+				"partOfTheWorld": "Asia",
                 "name":"Klyuchevskaya Sopka",
                 "height": 4688,
                 "location": "Kamchatka, the highest volcano in Eurasia, is active",
@@ -2220,14 +2220,14 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"1788",
                 "ascents":0,
                 "attemptsToAscend":0
             },
             {
                 "position": 10,
-                "image": "",
-				"partOfTheWorld": "",
+                "image": "belukha.jpg",
+				"partOfTheWorld": "Asia",
                 "name":"Belukha",
                 "height": 4506,
                 "location": "Katunsky range, the highest point of Altai and Siberia",
@@ -2237,7 +2237,7 @@
                 },
                 "relativeHeight": 0,
                 "parent":"",
-                "firstAscent":"",
+                "firstAscent":"1914",
                 "ascents":0,
                 "attemptsToAscend":0
             }
