@@ -8,77 +8,75 @@
 import SwiftUI
 
 struct MountainDetailsView: View {
-    @State var mountain: MountainInfo? = nil
+    @State var mountain: MountainInfo
     
     var body: some View {
         
-        if mountain != nil {
+        VStack {
+            
             VStack {
+                Text(mountain.name ?? "")
+                    .font(.headline)
                 
+                Text("\(mountain.height ?? 0) m")
+                    .font(.system(size: 10))
+            }
+            .padding()
+            
+            if mountain.image != nil && mountain.image != "" {
+                Image(mountain.image ?? "")
+                    .resizable(resizingMode: .stretch)
+                    .frame(height: 200)
+                    .padding()
+            }
+            
+            HStack(alignment: .top) {
+                Text("Geography")
+                    .font(.subheadline)
+                    .padding()
+                Spacer()
                 VStack {
-                    Text(mountain!.name!)
-                        .font(.headline)
-                    
-                    Text("\(mountain!.height!) m")
+                    Text(mountain.partOfTheWorld ?? "")
                         .font(.system(size: 10))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Text(mountain.country ?? "")
+                        .font(.system(size: 10))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Text(mountain.location ?? "")
+                        .font(.system(size: 10))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .padding()
-                
-                if mountain!.image != nil && mountain!.image != "" {
-                    Image(mountain!.image!)
-                        .resizable(resizingMode: .stretch)
-                        .frame(height: 200)
-                        .padding()
-                }
+            }
+            
+            if (mountain.firstAscent ?? "") != "" {
                 
                 HStack(alignment: .top) {
-                    Text("Geography")
+                    Text("Mountain")
                         .font(.subheadline)
-                        .padding()
                     Spacer()
-                    VStack {
-                        Text(mountain!.partOfTheWorld ?? "")
-                            .font(.system(size: 10))
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text(mountain!.country ?? "")
-                            .font(.system(size: 10))
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text(mountain!.location ?? "")
-                            .font(.system(size: 10))
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    VStack(alignment: .trailing) {
+                        if (mountain.firstAscent ?? "") == "" {
+                            Text("first ascent is unknown")
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .font(.system(size: 10))
+                        } else {
+                            Text("first ascent was in \(mountain.firstAscent ?? "")")
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .font(.system(size: 10))
+                        }
                     }
                     .padding()
                 }
                 
-                if (mountain!.firstAscent ?? "") != "" {
-                    
-                    HStack(alignment: .top) {
-                        Text("Mountain")
-                            .font(.subheadline)
-                            .padding()
-                        Spacer()
-                        VStack {
-                            if (mountain!.firstAscent ?? "") == "" {
-                                Text("first ascent is unknown")
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                                    .font(.system(size: 10))
-                            } else {
-                                Text("first ascent was in \(mountain!.firstAscent ?? "")")
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                                    .font(.system(size: 10))
-                            }
-                        }
-                        .padding()
-                    }
-                    
-                }
-
             }
-            Spacer()
+
         }
+        Spacer()
+        
     }
 }
 
 #Preview {
-    MountainDetailsView(mountain: nil)
+    MountainDetailsView(mountain: emptyMountainInfo)
 }

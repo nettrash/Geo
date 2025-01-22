@@ -5,9 +5,11 @@
 //  Created by Ivan Alekseev on 02/01/2025.
 //
 
+import Foundation
+
 class MountainInfo: Codable, Identifiable {
     
-    var id: Int { position ?? 0 }
+    var id: String { "\(name ?? "")-\(position ?? 0)" }
     
     var position: Int? = nil
     var image: String? = nil

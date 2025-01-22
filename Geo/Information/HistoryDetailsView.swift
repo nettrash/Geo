@@ -104,6 +104,8 @@ struct HistoryDetailsView: View {
                 
             }
             Spacer()
+        } else {
+            Text("Loading...")
         }
     }
 }

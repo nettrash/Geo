@@ -8,16 +8,19 @@
 import SwiftUI
 import MapKit
 
+let emptyHistoryItem: HistoryItem = HistoryItem()
+let emptyMountainInfo: MountainInfo = MountainInfo()
+
+class selectedData: ObservableObject {
+    @Published var selectedHistoryItem: HistoryItem = emptyHistoryItem
+    @Published var selectedMountainInfo: MountainInfo = emptyMountainInfo
+}
+
 struct GeoMapView: View {
     
-    @State var cameraPosition = MapCameraPosition.userLocation(followsHeading: false, fallback: MapCameraPosition.automatic)
-    
-    @State var app: GeoAppDelegate?
-    
-    @State private var isShowDetails: Bool = false
-    @State private var isHistorySelected: Bool = false
-    @State private var historySelected: HistoryItem? = nil
-    @State private var mountainSelected: MountainInfo? = nil
+    @State private var isShowHistoryDetails: Bool = false
+    @State private var isShowMountainDetails: Bool = false
+    @State private var selected: selectedData = selectedData()
     
     private let dateFormatter: DateFormatter = {
             let formatter = DateFormatter()
@@ -25,6 +28,9 @@ struct GeoMapView: View {
             formatter.timeStyle = .short
             return formatter
         }()
+
+    @State var cameraPosition = MapCameraPosition.userLocation(followsHeading: false, fallback: MapCameraPosition.automatic)
+    @State var app: GeoAppDelegate?
 
     var body: some View {
         Map(position: $cameraPosition, interactionModes: .all)
@@ -38,9 +44,8 @@ struct GeoMapView: View {
                             .scaledToFit()
                             .frame(height: 40, alignment: .center)
                             .onTapGesture {
-                                mountainSelected = mountain
-                                isHistorySelected = false
-                                isShowDetails = true
+                                selected.selectedMountainInfo = mountain
+                                isShowMountainDetails = true
                             }
                     }
 
@@ -58,9 +63,8 @@ struct GeoMapView: View {
                             .scaledToFit()
                             .frame(height: 40, alignment: .center)
                             .onTapGesture {
-                                mountainSelected = mountain
-                                isHistorySelected = false
-                                isShowDetails = true
+                                selected.selectedMountainInfo = mountain
+                                isShowMountainDetails = true
                             }
                     }
 
@@ -80,9 +84,8 @@ struct GeoMapView: View {
                             .scaledToFit()
                             .frame(height: 40, alignment: .center)
                             .onTapGesture {
-                                mountainSelected = mountain
-                                isHistorySelected = false
-                                isShowDetails = true
+                                selected.selectedMountainInfo = mountain
+                                isShowMountainDetails = true
                             }
                     }
 
@@ -97,9 +100,8 @@ struct GeoMapView: View {
                             .scaledToFit()
                             .frame(height: 40, alignment: .center)
                             .onTapGesture {
-                                historySelected = historyItem
-                                isHistorySelected = true
-                                isShowDetails = true
+                                selected.selectedHistoryItem = historyItem
+                                isShowHistoryDetails = true
                             }
                     }
                 }
@@ -116,19 +118,18 @@ struct GeoMapView: View {
         .onAppear {
             self.app?.history.Refresh()
         }
-        .sheet(isPresented: $isShowDetails) {
-            if isHistorySelected {
-                if historySelected != nil {
-                    HistoryDetailsView(item: historySelected)
-                } else {
-                    Text("Loading...")
-                }
+        .sheet(isPresented: $isShowHistoryDetails) {
+            if (selected.selectedHistoryItem == emptyHistoryItem) {
+                Text("Loading...")
             } else {
-                if mountainSelected != nil {
-                    MountainDetailsView(mountain: mountainSelected)
-                } else {
-                    Text("Loading...")
-                }
+                HistoryDetailsView(item: selected.selectedHistoryItem)
+            }
+        }
+        .sheet(isPresented: $isShowMountainDetails) {
+            if (selected.selectedMountainInfo.id == emptyMountainInfo.id) {
+                Text("Loading...")
+            } else {
+                MountainDetailsView(mountain: selected.selectedMountainInfo)
             }
         }
     }
