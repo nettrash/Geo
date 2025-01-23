@@ -23,7 +23,9 @@ struct GeoStatView: View {
                           min: history.altitudeBarometerDataSetMin, max: history.altitudeBarometerDataSetMax, measurement: "m")
                 GraphView(Caption: "ALTITUDE GPS", Data: history.altitudeGPSDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)], min: history.altitudeGPSDataSetMin, max: history.altitudeGPSDataSetMax, measurement: "m")
             }
-        })
+        }).onAppear {
+            RefreshHistory()
+        }
     }
     
     init(history: History) {
@@ -31,9 +33,10 @@ struct GeoStatView: View {
         RefreshHistory()
     }
     
-    mutating func RefreshHistory() {
+    func RefreshHistory() {
         self.history.Refresh()
     }
+
 }
 
 #Preview {

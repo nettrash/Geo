@@ -8,8 +8,8 @@
 import SwiftUI
 import MapKit
 
-let emptyHistoryItem: HistoryItem = HistoryItem()
-let emptyMountainInfo: MountainInfo = MountainInfo()
+nonisolated(unsafe) let emptyHistoryItem: HistoryItem = HistoryItem()
+nonisolated(unsafe) let emptyMountainInfo: MountainInfo = MountainInfo()
 
 class selectedData: ObservableObject {
     @Published var selectedHistoryItem: HistoryItem = emptyHistoryItem

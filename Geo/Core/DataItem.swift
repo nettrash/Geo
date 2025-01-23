@@ -6,7 +6,7 @@
 //
 import Foundation
 
-final class DataItem: NSObject {
+final class DataItem: Sendable {
     
     let Value: CGFloat
     let Legend: String

@@ -9,7 +9,7 @@ import Foundation
 import CoreLocation
 
 @Observable
-class Location: NSObject, CLLocationManagerDelegate {
+class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     
     var app: GeoAppDelegate? = nil
     var barometer: Barometer? = nil
@@ -36,8 +36,8 @@ class Location: NSObject, CLLocationManagerDelegate {
                 self.locationManager!.requestAlwaysAuthorization()
             }
         }
-        if (self.mountainsData?.highest?.mountains?.count ?? 0) > 0 {
-            self.highestMountain = self.mountainsData?.highest?.mountains?[0]
+        if (self.mountainsData?.sevenPeaks?.mountains?.count ?? 0) > 0 {
+            self.highestMountain = self.mountainsData?.sevenPeaks?.mountains?[0]
         } else {
             self.highestMountain = nil
         }
@@ -58,11 +58,11 @@ class Location: NSObject, CLLocationManagerDelegate {
             self.location = locations[locations.count - 1]
             refreshCloserMountain()
             if self.stepLocation == nil {
-                self.stepLocation = self.location!.copy() as! CLLocation
+                self.stepLocation = self.location?.copy() as? CLLocation
                 refreshData()
             } else if self.stepLocation!.distance(from: self.location!) > 100.0 || // > 100 m
                         abs(self.stepLocation!.altitude - self.location!.altitude) > 10.0 { // > 10 m
-                self.stepLocation = self.location!.copy() as! CLLocation
+                self.stepLocation = self.location?.copy() as? CLLocation
                 refreshData()
             }
             //refreshView()
