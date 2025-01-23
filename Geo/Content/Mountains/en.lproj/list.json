@@ -1886,6 +1886,24 @@
                 "firstAscent":"1979",
                 "ascents":1,
                 "attemptsToAscend":0
+            },
+            {
+                "position": 1000,
+                "image": "ojos.jpg",
+                "partOfTheWorld": "South America",
+                "name":"Ojos del Salado",
+                "height": 6893,
+                "location": "Atacama",
+                "country": "Chilie",
+                "coordinates": {
+                    "latitude": -27.109,
+                    "longitude": -68.5387
+                },
+                "relativeHeight": 0,
+                "parent":"",
+                "firstAscent":"1937",
+                "ascents":0,
+                "attemptsToAscend":0
             }
         ]
     },
@@ -1914,7 +1932,7 @@
                 "name":"Jomolungma (Everest)",
                 "height": 8848,
                 "location": "Himalayas",
-                "county": "Nepal/China",
+                "country": "Nepal/China",
                 "coordinates": {
                     "latitude": 27.9881,
                     "longitude": 86.9250
@@ -1932,7 +1950,7 @@
                 "name":"Aconcagua",
                 "height": 6962,
                 "location": "Andes",
-                "county": "Argentina",
+                "country": "Argentina",
                 "coordinates": {
                     "latitude": -32.6532,
                     "longitude": -70.0109
@@ -1950,7 +1968,7 @@
                 "name":"Denali (McKinley)",
                 "height": 6190,
                 "location": "Alaska range",
-                "county": "USA",
+                "country": "USA",
                 "coordinates": {
                     "latitude": 63.0692,
                     "longitude": -151.0070
@@ -1968,7 +1986,7 @@
                 "name":"Kilimanjaro",
                 "height": 5895,
                 "location": "Kilimanjaro",
-                "county": "Tanzania",
+                "country": "Tanzania",
                 "coordinates": {
                     "latitude": -3.0758,
                     "longitude": 37.3533
@@ -1986,7 +2004,7 @@
                 "name":"Elbrus",
                 "height": 5642,
                 "location": "Greater Caucasus",
-                "county": "Russia",
+                "country": "Russia",
                 "coordinates": {
                     "latitude": 43.3499,
                     "longitude": 42.4453
@@ -2004,7 +2022,7 @@
                 "name":"Mont Blanc",
                 "height": 4810,
                 "location": "Western Alps",
-                "county": "France/Italy",
+                "country": "France/Italy",
                 "coordinates": {
                     "latitude": 45.8326,
                     "longitude": 6.8652
@@ -2022,7 +2040,7 @@
                 "name":"Vinson Massif",
                 "height": 4892,
                 "location": "Ellsworth",
-                "county": "",
+                "country": "",
                 "coordinates": {
                     "latitude": -78.6341,
                     "longitude": -85.2135
@@ -2040,7 +2058,7 @@
                 "name":"Puncak Jaya",
                 "height": 4884,
                 "location": "Maoke",
-                "county": "Indonesia",
+                "country": "Indonesia",
                 "coordinates": {
                     "latitude": -4.0846,
                     "longitude": 137.1866
@@ -2058,7 +2076,7 @@
                 "name":"Kosciuszko",
                 "height": 2228,
                 "location": "Australian Alps",
-                "county": "Australia",
+                "country": "Australia",
                 "coordinates": {
                     "latitude": -36.4559,
                     "longitude": 148.2636
@@ -2095,6 +2113,7 @@
                 "name":"Dykh Tau",
                 "height": 5204,
                 "location": "Side ridge of the Greater Caucasus",
+                "country": "Russia",
                 "coordinates": {
                     "latitude": 43.05444,
                     "longitude": 43.13028
@@ -2112,6 +2131,7 @@
                 "name":"Shkhara",
                 "height": 5193,
                 "location": "The Main Caucasian range",
+                "country": "Russia",
                 "coordinates": {
                     "latitude": 42.99944,
                     "longitude": 43.11167
@@ -2129,6 +2149,7 @@
                 "name":"Koshtan-Tau",
                 "height": 5151,
                 "location": "Central Caucasus",
+                "country": "Russia",
                 "coordinates": {
                     "latitude": 43.05009,
                     "longitude": 43.21426
@@ -2146,6 +2167,7 @@
                 "name":"Mizhirgi",
                 "height": 5025,
                 "location": "The main Caucasus range, the Bezengi wall",
+                "country": "Russia",
                 "coordinates": {
                     "latitude": 43.043889,
                     "longitude": 43.149167
@@ -2163,6 +2185,7 @@
                 "name":"Pushkin's Peak",
                 "height": 5100,
                 "location": "Side of the Caucasus range",
+                "country": "Russia",
                 "coordinates": {
                     "latitude": 43.049167,
                     "longitude": 43.1375
@@ -2180,6 +2203,7 @@
                 "name":"Dzhangi-Tau",
                 "height": 5085,
                 "location": "The main Caucasus range, the Bezengi wall",
+                "country": "Russia",
                 "coordinates": {
                     "latitude": 43.017778,
                     "longitude": 43.0575
@@ -2197,6 +2221,7 @@
                 "name":"Kazbek",
                 "height": 5034,
                 "location": "The Caucasus, an extinct stratovolcano, the easternmost five-thousandth of the Caucasus",
+                "country": "Georgia",
                 "coordinates": {
                     "latitude": 42.69708,
                     "longitude": 44.51792
@@ -2214,6 +2239,7 @@
                 "name":"Klyuchevskaya Sopka",
                 "height": 4688,
                 "location": "Kamchatka, the highest volcano in Eurasia, is active",
+                "country": "Russia",
                 "coordinates": {
                     "latitude": 56.067,
                     "longitude": 160.633
@@ -2231,6 +2257,7 @@
                 "name":"Belukha",
                 "height": 4506,
                 "location": "Katunsky range, the highest point of Altai and Siberia",
+                "country": "Russia",
                 "coordinates": {
                     "latitude": 49.80667,
                     "longitude": 86.59083

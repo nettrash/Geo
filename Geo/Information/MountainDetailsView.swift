@@ -35,7 +35,7 @@ struct MountainDetailsView: View {
                     .font(.subheadline)
                     .padding()
                 Spacer()
-                VStack {
+                VStack(alignment: .trailing) {
                     Text(mountain.partOfTheWorld ?? "")
                         .font(.system(size: 10))
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -54,6 +54,7 @@ struct MountainDetailsView: View {
                 HStack(alignment: .top) {
                     Text("Mountain")
                         .font(.subheadline)
+                        .padding()
                     Spacer()
                     VStack(alignment: .trailing) {
                         if (mountain.firstAscent ?? "") == "" {
