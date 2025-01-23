@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct MountainDetailsView: View {
     @State var mountain: MountainInfo
@@ -45,10 +46,30 @@ struct MountainDetailsView: View {
                     Text(mountain.location ?? "")
                         .font(.system(size: 10))
                         .frame(maxWidth: .infinity, alignment: .trailing)
+                    Spacer()
+                        .frame(height: 10)
+                    Text("latitude: \(mountain.coordinates?.latitude ?? 0)")
+                        .font(.system(size: 10))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Text("longitude: \(mountain.coordinates?.longitude ?? 0)")
+                        .font(.system(size: 10))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Spacer()
+                        .frame(height: 10)
+                    Button(action: {
+                        OpenMapForMountain()
+                    }) {
+                        Text("Show Map")
+                            .font(.system(size: 12))
+                            .padding(6)
+                            .foregroundColor(.white)
+                            .background(.gray)
+                            .cornerRadius(8)
+                    }
                 }
                 .padding()
             }
-            
+
             if (mountain.firstAscent ?? "") != "" {
                 
                 HStack(alignment: .top) {
@@ -75,6 +96,16 @@ struct MountainDetailsView: View {
         }
         Spacer()
         
+    }
+    
+    func OpenMapForMountain() {
+        let destination = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: mountain.coordinates?.latitude ?? 0, longitude: mountain.coordinates?.longitude ?? 0)))
+        destination.name = mountain.name ?? "Destination"
+                
+        MKMapItem.openMaps(
+          with: [destination],
+          launchOptions: [:]
+        )
     }
 }
 
