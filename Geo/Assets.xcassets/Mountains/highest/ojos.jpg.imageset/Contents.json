@@ -1,6 +1,7 @@
 {
   "images" : [
     {
+      "filename" : "Ojos_del_Salado_looming_big_on_the_horizon.jpg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -9,7 +10,6 @@
       "scale" : "2x"
     },
     {
-      "filename" : "Ojos_del_Salado_looming_big_on_the_horizon.jpg",
       "idiom" : "universal",
       "scale" : "3x"
     }

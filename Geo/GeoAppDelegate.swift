@@ -8,8 +8,9 @@
 import Foundation
 import UIKit
 import CoreLocation
+import WatchConnectivity
 
-class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
+class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @preconcurrency WCSessionDelegate {
 
     //Mountains data
     var mountainsData: MountainData? = nil
@@ -22,6 +23,9 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     
     // History
     var history: History = History()
+    
+    // WCSession
+    var wcsession: WCSession? = nil
     
     // Initializing main stuctures for the app.
     func initialize() {
@@ -37,8 +41,15 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     }
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        initialize();
         
+        initialize()
+        
+        
+        /*if WCSession.isSupported() {
+            WCSession.default.delegate = self
+            WCSession.default.activate()
+        }*/
+
         return true;
     }
     
@@ -58,5 +69,38 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             self.mountainsData = nil
         }
     }
+    
+    //WCSessionDelegate
+    
+    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: (any Error)?) {
+        print("WCSession activationDidCompleteWith activationState: \(activationState)")
+    }
 
+    func sessionDidBecomeInactive(_ session: WCSession) {
+        
+    }
+
+    func sessionDidDeactivate(_ session: WCSession) {
+        
+    }
+    
+    func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
+        if self.mountainsData == nil {
+            loadMountains()
+        }
+        
+        if self.barometer == nil {
+            self.barometer = Barometer()
+            self.barometer?.Start()
+        }
+        
+        if self.location == nil {
+            self.location = Location()
+            self.location?.app = self
+            self.location?.barometer = self.barometer
+            self.location?.mountainsData = self.mountainsData
+        }
+        
+        self.location?.locationManager?.startMonitoringVisits()
+    }
 }

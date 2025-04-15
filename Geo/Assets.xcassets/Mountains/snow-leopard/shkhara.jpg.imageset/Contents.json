@@ -1,6 +1,7 @@
 {
   "images" : [
     {
+      "filename" : "Mt_Shkhara_as_seen_from_Khalde_(Photo_A._Muhranoff,_2011).jpg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -9,7 +10,6 @@
       "scale" : "2x"
     },
     {
-      "filename" : "Mt_Shkhara_as_seen_from_Khalde_(Photo_A._Muhranoff,_2011).jpg",
       "idiom" : "universal",
       "scale" : "3x"
     }

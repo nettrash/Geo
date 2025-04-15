@@ -1,6 +1,7 @@
 {
   "images" : [
     {
+      "filename" : "2880px-Monte_bianco.jpg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -9,7 +10,6 @@
       "scale" : "2x"
     },
     {
-      "filename" : "2880px-Monte_bianco.jpg",
       "idiom" : "universal",
       "scale" : "3x"
     }

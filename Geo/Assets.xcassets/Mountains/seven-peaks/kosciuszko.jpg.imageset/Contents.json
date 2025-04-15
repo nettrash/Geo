@@ -1,6 +1,7 @@
 {
   "images" : [
     {
+      "filename" : "Mount_Kosciuszko01Oct06.jpg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -9,7 +10,6 @@
       "scale" : "2x"
     },
     {
-      "filename" : "Mount_Kosciuszko01Oct06.jpg",
       "idiom" : "universal",
       "scale" : "3x"
     }

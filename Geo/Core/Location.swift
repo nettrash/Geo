@@ -20,8 +20,11 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     var closestMountainDistance: Double? = nil
     var highestMountain: MountainInfo? = nil
     var highestMountainDistance: Double? = nil
+    var lastVisit: CLVisit? = nil
 
     private var stepLocation: CLLocation? = nil
+    private let horizontalStep: CGFloat = 1000 //1000m
+    private let verticalStep: CGFloat = 50 //50m
     
     func initialize() {
         if (self.locationManager == nil) {
@@ -60,24 +63,28 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             if self.stepLocation == nil {
                 self.stepLocation = self.location?.copy() as? CLLocation
                 refreshData()
-            } else if self.stepLocation!.distance(from: self.location!) > 100.0 || // > 100 m
-                        abs(self.stepLocation!.altitude - self.location!.altitude) > 10.0 { // > 10 m
+            } else if self.stepLocation!.distance(from: self.location!) > self.horizontalStep ||
+                        abs(self.stepLocation!.altitude - self.location!.altitude) > self.verticalStep {
                 self.stepLocation = self.location?.copy() as? CLLocation
                 refreshData()
             }
-            //refreshView()
+            
+            if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") {
+                let info = InformationToken(recordDate: Date(), gpsAltitude: self.location!.altitude, gpsSpeed: self.location!.speed, barPreassure: self.barometer!.pressure, barAltitude: self.barometer!.height)
+                if let encoded = try? JSONEncoder().encode(info) {
+                    userDefaults.set(encoded, forKey: "ActualInformation")
+                }
+            }
         }
     }
     
     @MainActor func refreshData() {
-        if (self.stepLocation != nil && self.barometer!.pressure > 0) {
+        if (self.stepLocation != nil && (self.barometer?.pressure ?? 0) > 0) {
             let controller = PersistenceController.shared
             let historyItem = HistoryItem(context: controller.container.viewContext)
             historyItem.recordDate = Date()
-            if (self.barometer != nil) {
-                historyItem.barometerAltitude = self.barometer!.height
-                historyItem.barometerPressure = self.barometer!.pressure
-            }
+            historyItem.barometerAltitude = self.barometer!.height
+            historyItem.barometerPressure = self.barometer!.pressure
             historyItem.gpsLatitude = self.stepLocation!.coordinate.latitude
             historyItem.gpsLongitude = self.stepLocation!.coordinate.longitude
             historyItem.gpsAltitude = self.stepLocation!.altitude
@@ -125,12 +132,11 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         } else {
             if status == .denied {
                 stopLocationMonitor()
-                //let alert = UIAlertController(title: NSLocalizedString("Location", comment: ""), message: NSLocalizedString("The lack of access to the location makes some of the functions of the application unusable", comment: ""), preferredStyle: UIAlertController.Style.actionSheet)
-                //alert.addAction(UIAlertAction(title: NSLocalizedString("Continue", comment: ""), style: UIAlertAction.Style.cancel, handler: { (_ action: UIAlertAction) in
-                //alert.dismiss(animated: true, completion: nil)
-                //}))
-                //self.show(alert, sender: nil)
             }
         }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
+        lastVisit = visit;
     }
 }

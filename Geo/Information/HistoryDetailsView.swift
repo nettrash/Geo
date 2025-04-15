@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct HistoryDetailsView: View {
     @State var item: HistoryItem? = nil
@@ -20,90 +21,97 @@ struct HistoryDetailsView: View {
     var body: some View {
         
         if item != nil {
-            VStack {
+            ZStack {
+                Map(initialPosition: MapCameraPosition.region(MKCoordinateRegion.init(center: CLLocationCoordinate2D(latitude: item?.gpsLatitude ?? 0, longitude: item?.gpsLongitude ?? 0), latitudinalMeters: 500, longitudinalMeters: 500)))
+                    .mapStyle(.imagery)
+                    .opacity(0.2)
+                    .disabled(true)
+                
                 VStack {
-                    Text("History point details")
-                        .font(.headline)
+                    VStack {
+                        Text("History point details")
+                            .font(.headline)
+                        
+                        Text(dateFormatter.string(from: item?.recordDate ?? Date()))
+                            .font(.system(size: 10))
+                    }
+                    .padding()
                     
-                    Text(dateFormatter.string(from: item?.recordDate ?? Date()))
-                        .font(.system(size: 10))
-                }
-                .padding()
-                
-                Text("Barometer information")
-                    .underline()
-                    .padding()
-                
-                HStack(alignment: .top) {
-                    Text("Pressure")
+                    Text("Barometer information")
+                        .underline()
                         .padding()
-                    Spacer()
-                    VStack {
-                        Text("\(String(format: "%.4f", item?.barometerPressure ?? 0)) kPa")
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("\(String(format: "%.4f", (item?.barometerPressure ?? 0) * 7.50062)) mm Hg")
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("\(String(format: "%.4f", (item?.barometerPressure ?? 0) / 101.325)) atm")
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                    .padding()
-                }
-                HStack(alignment: .top) {
-                    Text("Altitude")
+                    
+                    HStack(alignment: .top) {
+                        Text("Pressure")
+                            .padding()
+                        Spacer()
+                        VStack {
+                            Text("\(String(format: "%.4f", item?.barometerPressure ?? 0)) kPa")
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            Text("\(String(format: "%.4f", (item?.barometerPressure ?? 0) * 7.50062)) mm Hg")
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            Text("\(String(format: "%.4f", (item?.barometerPressure ?? 0) / 101.325)) atm")
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
                         .padding()
-                    Spacer()
-                    VStack {
-                        Text("\(String(format: "%.0f", item?.barometerAltitude ?? 0)) m")
                     }
-                    .padding()
-                }
-                
-                Text("Satellite information")
-                    .underline()
-                    .padding()
-                
-                HStack(alignment: .top) {
-                    Text("Coordinates")
-                        .font(.subheadline)
+                    HStack(alignment: .top) {
+                        Text("Altitude")
+                            .padding()
+                        Spacer()
+                        VStack {
+                            Text("\(String(format: "%.0f", item?.barometerAltitude ?? 0)) m")
+                        }
                         .padding()
-                    Spacer()
-                    VStack {
-                        Text("\(String(format: "%.6f", item?.gpsLatitude ?? 0)) lt")
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("\(String(format: "%.6f", item?.gpsLongitude ?? 0)) lg")
-                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    .padding()
-                }
-                
-                HStack(alignment: .top) {
-                    Text("Altitude")
-                        .font(.subheadline)
+                    
+                    Text("Satellite information")
+                        .underline()
                         .padding()
-                    Spacer()
-                    VStack {
-                        Text("\(String(format: "%.0f", item?.gpsAltitude ?? 0)) m")
-                    }
-                    .padding()
-                }
-                
-                HStack(alignment: .top) {
-                    Text("Velocity")
-                        .font(.subheadline)
+                    
+                    HStack(alignment: .top) {
+                        Text("Coordinates")
+                            .font(.subheadline)
+                            .padding()
+                        Spacer()
+                        VStack {
+                            Text("\(String(format: "%.6f", item?.gpsLatitude ?? 0)) lt")
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            Text("\(String(format: "%.6f", item?.gpsLongitude ?? 0)) lg")
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
                         .padding()
-                    Spacer()
-                    VStack {
-                        Text("\(String(format: "%.1f", item?.gpsVelocity ?? 0)) m/s")
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("\(String(format: "%.1f", (item?.gpsVelocity ?? 0) * 3600.0 / 1000.0)) km/h")
-                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    .padding()
+                    
+                    HStack(alignment: .top) {
+                        Text("Altitude")
+                            .font(.subheadline)
+                            .padding()
+                        Spacer()
+                        VStack {
+                            Text("\(String(format: "%.0f", item?.gpsAltitude ?? 0)) m")
+                        }
+                        .padding()
+                    }
+                    
+                    HStack(alignment: .top) {
+                        Text("Velocity")
+                            .font(.subheadline)
+                            .padding()
+                        Spacer()
+                        VStack {
+                            Text("\(String(format: "%.1f", item?.gpsVelocity ?? 0)) m/s")
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            Text("\(String(format: "%.1f", (item?.gpsVelocity ?? 0) * 3600.0 / 1000.0)) km/h")
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                        .padding()
+                    }
+                    
+                    Spacer()
+
                 }
-                
-                
             }
-            Spacer()
         } else {
             Text("Loading...")
         }

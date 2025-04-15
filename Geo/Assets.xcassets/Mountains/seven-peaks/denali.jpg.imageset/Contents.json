@@ -1,6 +1,7 @@
 {
   "images" : [
     {
+      "filename" : "Wonder_Lake_and_Denali.jpg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -9,7 +10,6 @@
       "scale" : "2x"
     },
     {
-      "filename" : "Wonder_Lake_and_Denali.jpg",
       "idiom" : "universal",
       "scale" : "3x"
     }

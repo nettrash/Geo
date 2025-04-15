@@ -1,6 +1,7 @@
 {
   "images" : [
     {
+      "filename" : "Icon1024pt.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -9,7 +10,6 @@
       "scale" : "2x"
     },
     {
-      "filename" : "pin_top_seven.png",
       "idiom" : "universal",
       "scale" : "3x"
     }

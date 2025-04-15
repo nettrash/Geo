@@ -1,6 +1,7 @@
 {
   "images" : [
     {
+      "filename" : "2006-07_altaj_belucha.jpg",
       "idiom" : "universal",
       "scale" : "1x"
     },
@@ -9,7 +10,6 @@
       "scale" : "2x"
     },
     {
-      "filename" : "2006-07_altaj_belucha.jpg",
       "idiom" : "universal",
       "scale" : "3x"
     }

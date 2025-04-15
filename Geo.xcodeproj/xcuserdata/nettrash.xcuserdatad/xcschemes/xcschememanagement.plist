@@ -4,10 +4,58 @@
 <dict>
 	<key>SchemeUserState</key>
 	<dict>
+		<key>Geo Watch App.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>2</integer>
+		</dict>
 		<key>Geo.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
 			<integer>0</integer>
+		</dict>
+		<key>WidgetExtension.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>1</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>E56AC78B2D43E0BE00300854</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>E56AC79A2D43E0BF00300854</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>E56AC7A42D43E0BF00300854</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>E592D5582D428DF80038B14D</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>E5AAD2882AAB5D950052522B</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>E5AAD29E2AAB5D980052522B</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>E5AAD2A82AAB5D980052522B</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

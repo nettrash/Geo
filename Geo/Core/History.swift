@@ -45,7 +45,7 @@ class History: NSObject, ObservableObject {
             let controller = PersistenceController.shared
             let fetchRequest: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
             fetchRequest.predicate = NSPredicate(
-                format: "recordDate >= %@", Calendar.current.date(byAdding: .day, value: -self.numberOfDays, to: Date())! as CVarArg
+                format: "recordDate >= %@ and barometerPressure > 0", Calendar.current.date(byAdding: .day, value: -self.numberOfDays, to: Date())! as CVarArg
             )
 
             fetchRequest.sortDescriptors = [
