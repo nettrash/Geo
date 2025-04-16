@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct GeoStatView: View {
-    @State @ObservedObject var history: History
+    @State var app: GeoAppDelegate
         
     var body: some View {
         ZStack(content: {
@@ -17,28 +17,23 @@ struct GeoStatView: View {
                 .aspectRatio(contentMode: .fit)
                 .opacity(0.02)
             ScrollView {
-                GraphView(Caption: "PRESSURE", Data: history.pressureDataSet, Lines: [GraphLine(value: 760, text: "normal", color: Color.green)],
-                          min: history.pressureDataSetMin, max: history.pressureDataSetMax, measurement: "mm Hg")
-                GraphView(Caption: "ALTITUDE BAROMETER", Data: history.altitudeBarometerDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)],
-                          min: history.altitudeBarometerDataSetMin, max: history.altitudeBarometerDataSetMax, measurement: "m")
-                GraphView(Caption: "ALTITUDE GPS", Data: history.altitudeGPSDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)], min: history.altitudeGPSDataSetMin, max: history.altitudeGPSDataSetMax, measurement: "m")
+                GraphView(Caption: "PRESSURE", Data: self.app.history.pressureDataSet, Lines: [GraphLine(value: 760, text: "normal", color: Color.green)],
+                          min: self.app.history.pressureDataSetMin, max: self.app.history.pressureDataSetMax, measurement: "mm Hg")
+                GraphView(Caption: "ALTITUDE BAROMETER", Data: self.app.history.altitudeBarometerDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)],
+                          min: self.app.history.altitudeBarometerDataSetMin, max: self.app.history.altitudeBarometerDataSetMax, measurement: "m")
+                GraphView(Caption: "ALTITUDE GPS", Data: self.app.history.altitudeGPSDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)], min: self.app.history.altitudeGPSDataSetMin, max: self.app.history.altitudeGPSDataSetMax, measurement: "m")
             }
-        }).onAppear {
-            RefreshHistory()
-        }
+        })
     }
     
-    init(history: History) {
-        self.history = history
-        RefreshHistory()
-    }
-    
-    func RefreshHistory() {
-        self.history.Refresh()
+    init(app: GeoAppDelegate?) {
+        app?.history.Refresh()
+        
+        self.app = app ?? GeoAppDelegate()
     }
 
 }
 
 #Preview {
-    GeoStatView(history: History())
+    GeoStatView(app: GeoAppDelegate())
 }

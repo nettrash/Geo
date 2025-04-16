@@ -21,7 +21,7 @@ struct MainView: View {
                         Image(systemName: "ruler")
                         Text("Info")
                     }
-                GeoStatView(history: app!.history)
+                GeoStatView(app: app)
                     .tabItem {
                         Image(systemName: "chart.xyaxis.line")
                         Text("Stat")

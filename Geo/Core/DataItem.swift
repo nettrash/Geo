@@ -6,7 +6,8 @@
 //
 import Foundation
 
-final class DataItem: Sendable {
+@Observable
+final class DataItem: Sendable, ObservableObject {
     
     let Value: CGFloat
     let Legend: String
