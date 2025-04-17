@@ -14,22 +14,22 @@ class History: NSObject, ObservableObject {
     var historyItems: [HistoryItem] = []
     
     var pressureDataSet: [DataItem] = []
-    var pressureDataSetMin: Double = 0
-    var pressureDataSetMax: Double = 0
+    var pressureDataSetMin: CGFloat = 0
+    var pressureDataSetMax: CGFloat = 0
 
     var altitudeBarometerDataSet: [DataItem] = []
-    var altitudeBarometerDataSetMin: Double = 0
-    var altitudeBarometerDataSetMax: Double = 0
+    var altitudeBarometerDataSetMin: CGFloat = 0
+    var altitudeBarometerDataSetMax: CGFloat = 0
 
     var altitudeGPSDataSet: [DataItem] = []
-    var altitudeGPSDataSetMin: Double = 0
-    var altitudeGPSDataSetMax: Double = 0
+    var altitudeGPSDataSetMin: CGFloat = 0
+    var altitudeGPSDataSetMax: CGFloat = 0
     
     private let amountOfValuesToShow: Int = 30
-    let pressureDataSetMinDefault: Double = 0
-    let pressureDataSetMaxDefault: Double = 1000
-    let altitudeMinDefault: Double = 0
-    let altitudeMaxDefault: Double = 10000
+    let pressureDataSetMinDefault: CGFloat = 0
+    let pressureDataSetMaxDefault: CGFloat = 1000
+    let altitudeMinDefault: CGFloat = 0
+    let altitudeMaxDefault: CGFloat = 10000
     
     private let numberOfDays: Int = 30
 

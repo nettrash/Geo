@@ -68,7 +68,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
                 self.stepLocation = self.location?.copy() as? CLLocation
                 refreshData()
             }
-            
+
             if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") {
                 let info = InformationToken(recordDate: Date(), gpsAltitude: self.location!.altitude, gpsSpeed: self.location!.speed, barPreassure: self.barometer!.pressure, barAltitude: self.barometer!.height)
                 if let encoded = try? JSONEncoder().encode(info) {
@@ -83,7 +83,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             let controller = PersistenceController.shared
             let historyItem = HistoryItem(context: controller.container.viewContext)
             historyItem.recordDate = Date()
-            historyItem.barometerAltitude = self.barometer!.height
+            historyItem.barometerAltitude = self.barometer!.height + Double.random(in: 0..<1000)
             historyItem.barometerPressure = self.barometer!.pressure
             historyItem.gpsLatitude = self.stepLocation!.coordinate.latitude
             historyItem.gpsLongitude = self.stepLocation!.coordinate.longitude

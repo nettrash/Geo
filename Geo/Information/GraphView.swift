@@ -10,10 +10,10 @@ import SwiftUI
 struct GraphView: View {
     
     @State var Caption: String
-    @State var Data: [DataItem]
+    @Binding var Data: [DataItem]
     @State var Lines: [GraphLine] = []
-    var min: CGFloat = 0
-    var max: CGFloat = 10000
+    @Binding var min: CGFloat
+    @Binding var max: CGFloat
     var measurement: String = "km"
 
     var body: some View {
@@ -219,5 +219,5 @@ struct GraphView: View {
 }
 
 #Preview {
-    GraphView(Caption: "TEST PREVIEW", Data: [], Lines: [GraphLine(value: 762, text: "normal", color: Color.green), GraphLine(value: 100, text: "yellow", color: Color.yellow), GraphLine(value: 400, text: "red", color: Color.red)], min: 0, max: 1000, measurement: "kPa")
+    GraphView(Caption: "TEST PREVIEW", Data: .constant([]), Lines: [GraphLine(value: 762, text: "normal", color: Color.green), GraphLine(value: 100, text: "yellow", color: Color.yellow), GraphLine(value: 400, text: "red", color: Color.red)], min: .constant(CGFloat.zero), max: .constant(CGFloat(1000.0)), measurement: "kPa")
 }
