@@ -54,7 +54,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     private func stopLocationMonitor() {
         self.locationManager?.stopUpdatingLocation()
     }
-    
+        
     //CLLocationManagerDelegate
     @MainActor func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         if locations.count > 0 {
@@ -83,7 +83,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             let controller = PersistenceController.shared
             let historyItem = HistoryItem(context: controller.container.viewContext)
             historyItem.recordDate = Date()
-            historyItem.barometerAltitude = self.barometer!.height + Double.random(in: 0..<1000)
+            historyItem.barometerAltitude = self.barometer!.height
             historyItem.barometerPressure = self.barometer!.pressure
             historyItem.gpsLatitude = self.stepLocation!.coordinate.latitude
             historyItem.gpsLongitude = self.stepLocation!.coordinate.longitude

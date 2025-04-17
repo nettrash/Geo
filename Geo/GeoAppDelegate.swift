@@ -44,7 +44,6 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
         
         initialize()
         
-        
         /*if WCSession.isSupported() {
             WCSession.default.delegate = self
             WCSession.default.activate()
