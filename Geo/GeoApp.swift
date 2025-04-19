@@ -11,12 +11,20 @@ import SwiftUI
 struct GeoApp: App {
     @UIApplicationDelegateAdaptor private var appDelegate: GeoAppDelegate
     let persistenceController = PersistenceController.shared
+    @Environment(\.scenePhase) private var phase
     
     var body: some Scene {
         WindowGroup {
             MainView(app: appDelegate)
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .preferredColorScheme(.dark)
+                .onChange(of: phase) {
+                    switch phase {
+                        case .background:
+                            self.appDelegate.applicationWillResignActive(UIApplication.shared)
+                        default: break
+                    }
+                }
         }
     }
 }

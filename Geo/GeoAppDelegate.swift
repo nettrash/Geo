@@ -8,6 +8,7 @@
 import Foundation
 import UIKit
 import CoreLocation
+@preconcurrency import BackgroundTasks
 import WatchConnectivity
 
 class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @preconcurrency WCSessionDelegate {
@@ -23,6 +24,8 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
     
     // History
     var history: History = History()
+
+    private let backgroundTaskIndentifier_Refresh = "me.nettrash.Geo.background.refresh"
     
     // WCSession
     var wcsession: WCSession? = nil
@@ -44,6 +47,8 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
         
         initialize()
         
+        registerBackgroundTasks()
+        
         /*if WCSession.isSupported() {
             WCSession.default.delegate = self
             WCSession.default.activate()
@@ -51,7 +56,11 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
 
         return true;
     }
-    
+        
+    func applicationWillResignActive(_ application: UIApplication) {
+        self.scheduleBackgroundProcessing()
+    }
+
     private func loadMountains() {
         do {
             guard let listPath = Bundle.main.path(forResource: "list", ofType: "json") else {
@@ -66,6 +75,70 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
         }
         catch {
             self.mountainsData = nil
+        }
+    }
+    
+    func registerBackgroundTasks() {
+        if #available(iOS 13.0, *) {
+            BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIndentifier_Refresh, using: nil) { task in
+                self.handleBackgroundProcessing(task: task as! BGProcessingTask)
+            }
+        }
+    }
+    
+    func scheduleBackgroundProcessing() {
+        let request = BGProcessingTaskRequest(identifier: backgroundTaskIndentifier_Refresh)
+        request.requiresNetworkConnectivity = false
+        request.requiresExternalPower = false
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 10 * 60) //seconds
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            print("Could not schedule app refresh: \(error)")
+        }
+    }
+    
+    func handleBackgroundProcessing(task: BGProcessingTask) {
+        scheduleBackgroundProcessing()
+
+        let operation = BackgroundRefreshOperation()
+
+        task.expirationHandler = {
+            operation.cancel()
+        }
+
+        operation.completionBlock = {
+            task.setTaskCompleted(success: !operation.isCancelled)
+        }
+
+        OperationQueue.main.addOperation(operation)
+    }
+    
+    func BackgroundRefreshOperation() -> Operation {
+        return BlockOperation { [weak self] in
+            guard let self else { return }
+            
+            print(">>> BackgroundRefreshOperation")
+            
+            let barometer = Barometer()
+            barometer.Start()
+            
+            let location = Location()
+            location.app = self
+            location.barometer = barometer
+            location.mountainsData = MountainData()
+            
+            sleep(15)
+            
+            if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") {
+                let info = InformationToken(recordDate: Date(), gpsAltitude: location.location!.altitude, gpsSpeed: location.location!.speed, barPreassure: barometer.pressure, barAltitude: barometer.height)
+                if let encoded = try? JSONEncoder().encode(info) {
+                    userDefaults.set(encoded, forKey: "ActualInformation")
+                }
+            }
+
+            print("<<< BackgroundRefreshOperation")
         }
     }
     
