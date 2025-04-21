@@ -125,6 +125,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
             barometer.Start()
             
             let location = Location()
+            location.allowTracking = false
             location.app = self
             location.barometer = barometer
             location.mountainsData = MountainData()

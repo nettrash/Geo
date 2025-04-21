@@ -21,10 +21,14 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     var highestMountain: MountainInfo? = nil
     var highestMountainDistance: Double? = nil
     var lastVisit: CLVisit? = nil
+    var allowTracking: Bool = true
 
     private var stepLocation: CLLocation? = nil
+    private var trackingStepLocation: CLLocation? = nil
     private let horizontalStep: CGFloat = 1000 //1000m
     private let verticalStep: CGFloat = 50 //50m
+    private var lastInfoDate: Date = Date()
+    private let trackingStep: TimeInterval = 60 // 1 minute
     
     func initialize() {
         if (self.locationManager == nil) {
@@ -60,13 +64,27 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         if locations.count > 0 {
             self.location = locations[locations.count - 1]
             refreshCloserMountain()
+            let lastInfoComponents = Calendar.current.dateComponents([.day], from: self.lastInfoDate)
+            let infoComponent = Calendar.current.dateComponents([.day], from: Date())
+            
             if self.stepLocation == nil {
                 self.stepLocation = self.location?.copy() as? CLLocation
                 refreshData()
             } else if self.stepLocation!.distance(from: self.location!) > self.horizontalStep ||
-                        abs(self.stepLocation!.altitude - self.location!.altitude) > self.verticalStep {
+                        abs(self.stepLocation!.altitude - self.location!.altitude) > self.verticalStep ||
+                        lastInfoComponents.day != infoComponent.day {
                 self.stepLocation = self.location?.copy() as? CLLocation
                 refreshData()
+            }
+            
+            if self.allowTracking {
+                if self.trackingStepLocation == nil {
+                    self.trackingStepLocation = self.location?.copy() as? CLLocation
+                    self.trackingRefresh()
+                } else if self.lastInfoDate.addingTimeInterval(self.trackingStep) <= Date() {
+                    self.trackingStepLocation = self.location?.copy() as? CLLocation
+                    self.trackingRefresh()
+                }
             }
 
             if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") {
@@ -97,8 +115,20 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
                 fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
             }
             app?.history.Refresh()
+            self.lastInfoDate = Date()
         } else {
             self.stepLocation = nil
+        }
+    }
+    
+    @MainActor func trackingRefresh() {
+        if (self.allowTracking && self.trackingStepLocation != nil && (self.barometer?.pressure ?? 0) > 0) {
+            
+            app?.history.addTrackingInformation(self.trackingStepLocation!, self.barometer!)
+            self.lastInfoDate = Date()
+
+        } else {
+            self.trackingStepLocation = nil
         }
     }
     

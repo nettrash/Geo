@@ -62,6 +62,9 @@
 		E5ED16FB2C382FD3004C2E94 /* CoreData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5ED16FA2C382FD3004C2E94 /* CoreData.framework */; };
 		E5EE4DD32CA5B315006EC1DE /* GraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EE4DD22CA5B30B006EC1DE /* GraphView.swift */; };
 		E5EE4DD52CA5B7D9006EC1DE /* AxisShape.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EE4DD42CA5B7D5006EC1DE /* AxisShape.swift */; };
+		E5EF82C52DB672D800CC5843 /* PairDataItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EF82C42DB672C400CC5843 /* PairDataItem.swift */; };
+		E5EF82C72DB673F900CC5843 /* PairGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EF82C62DB673F400CC5843 /* PairGraphView.swift */; };
+		E5EF82C92DB678EF00CC5843 /* LegendView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EF82C82DB678EA00CC5843 /* LegendView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -194,6 +197,9 @@
 		E5ED16FA2C382FD3004C2E94 /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = System/Library/Frameworks/CoreData.framework; sourceTree = SDKROOT; };
 		E5EE4DD22CA5B30B006EC1DE /* GraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphView.swift; sourceTree = "<group>"; };
 		E5EE4DD42CA5B7D5006EC1DE /* AxisShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxisShape.swift; sourceTree = "<group>"; };
+		E5EF82C42DB672C400CC5843 /* PairDataItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairDataItem.swift; sourceTree = "<group>"; };
+		E5EF82C62DB673F400CC5843 /* PairGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairGraphView.swift; sourceTree = "<group>"; };
+		E5EF82C82DB678EA00CC5843 /* LegendView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -277,6 +283,7 @@
 		E57221FE2C21DBB1008D466B /* Information */ = {
 			isa = PBXGroup;
 			children = (
+				E5EF82C82DB678EA00CC5843 /* LegendView.swift */,
 				E5D68BF22D28271B00E30A18 /* HistoryDetailsView.swift */,
 				E5D68BF02D2826AE00E30A18 /* MountainDetailsView.swift */,
 				E5D68BEE2D27F1E900E30A18 /* GraphLine.swift */,
@@ -285,6 +292,7 @@
 				E5EE4DD42CA5B7D5006EC1DE /* AxisShape.swift */,
 				E54BF87C2D1DA246001AB8AB /* BorderShape.swift */,
 				E5EE4DD22CA5B30B006EC1DE /* GraphView.swift */,
+				E5EF82C62DB673F400CC5843 /* PairGraphView.swift */,
 				E57221FF2C21DBCB008D466B /* BarometerInformationView.swift */,
 				E57222012C21F20F008D466B /* SatelliteInformationView.swift */,
 				E5BF1F652D270AC000E31412 /* ClosestMountainInformationView.swift */,
@@ -299,6 +307,7 @@
 				E54F5FD02D2EC3D700564A30 /* Mountain */,
 				E584D8E72B3EEFB10004973A /* Barometer.swift */,
 				E59092902CD53A0100499EFF /* DataItem.swift */,
+				E5EF82C42DB672C400CC5843 /* PairDataItem.swift */,
 				E5E6CC2A2C8B2C7100779817 /* History.swift */,
 				E592D5842D4299550038B14D /* InformationToken.swift */,
 				E58E03B42C232E30002909A4 /* Location.swift */,
@@ -737,9 +746,11 @@
 				E54F5FD12D2EC3D700564A30 /* MountainCoordinates.swift in Sources */,
 				E54F5FD22D2EC3D700564A30 /* MountainData.swift in Sources */,
 				E54F5FD32D2EC3D700564A30 /* MountainInfo.swift in Sources */,
+				E5EF82C52DB672D800CC5843 /* PairDataItem.swift in Sources */,
 				E54F5FD42D2EC3D700564A30 /* MountainList.swift in Sources */,
 				E5AAD2962AAB5D980052522B /* Persistence.swift in Sources */,
 				E584D8E82B3EEFB10004973A /* Barometer.swift in Sources */,
+				E5EF82C72DB673F900CC5843 /* PairGraphView.swift in Sources */,
 				E5BC6D632D1EB6F0006992D8 /* BorderText.swift in Sources */,
 				E5E6CC2B2C8B2C7100779817 /* History.swift in Sources */,
 				E57221FB2C21C7E9008D466B /* GeoMapView.swift in Sources */,
@@ -748,6 +759,7 @@
 				E57221FD2C21C82C008D466B /* GeoNatureView.swift in Sources */,
 				E592D5852D42995F0038B14D /* InformationToken.swift in Sources */,
 				E5EE4DD32CA5B315006EC1DE /* GraphView.swift in Sources */,
+				E5EF82C92DB678EF00CC5843 /* LegendView.swift in Sources */,
 				E5AAD28F2AAB5D950052522B /* MainView.swift in Sources */,
 				E590928F2CD5398C00499EFF /* DataSetShape.swift in Sources */,
 				E5D68BF32D28272200E30A18 /* HistoryDetailsView.swift in Sources */,

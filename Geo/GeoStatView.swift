@@ -17,6 +17,15 @@ struct GeoStatView: View {
                 .aspectRatio(contentMode: .fit)
                 .opacity(0.02)
             ScrollView {
+                Text("TRACKING")
+                    .font(.title)
+                    .padding()
+                PairGraphView(Caption: "TRACKING ALTITUDE", Data: $history.trackingAltitudeDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)],
+                              min: $history.trackingAltitudeDataSetMin, max: $history.trackingAltitudeDataSetMax, Colors: [.white, .orange], Legend: ["barometer", "gps"], measurement: "m"
+                )
+                Text("STATISTICS")
+                    .font(.title)
+                    .padding()
                 GraphView(Caption: "PRESSURE", Data: $history.pressureDataSet, Lines: [GraphLine(value: 760, text: "normal", color: Color.green)],
                           min: $history.pressureDataSetMin, max: $history.pressureDataSetMax, measurement: "mm Hg")
                 GraphView(Caption: "ALTITUDE BAROMETER", Data: $history.altitudeBarometerDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)],
