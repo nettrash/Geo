@@ -26,7 +26,7 @@ class History: NSObject, ObservableObject {
     var altitudeGPSDataSetMin: CGFloat = 0
     var altitudeGPSDataSetMax: CGFloat = 0
 
-    var trackingAltitudeDataSet: [PairDataItem] = []
+    var trackingAltitudeDataSet: [DataPoint] = []
     var trackingAltitudeDataSetMin: CGFloat = 0
     var trackingAltitudeDataSetMax: CGFloat = 0
 
@@ -188,7 +188,13 @@ class History: NSObject, ObservableObject {
     
     func addTrackingInformation(_ location: CLLocation, _ barometer: Barometer) {
         
-        let dataItem = PairDataItem(Value0: barometer.height, Value1: location.altitude, Legend: trackingDateFormatter.string(from:Date()))
+        if self.trackingAltitudeDataSet.count == 0 {
+            while self.trackingAltitudeDataSet.count < amountOfValuesToShow {
+                self.trackingAltitudeDataSet.append(DataPoint(Value: [0, 0], Legend: trackingDateFormatter.string(from:Date())))
+            }
+        }
+        
+        let dataItem = DataPoint(Value: [barometer.height, location.altitude], Legend: trackingDateFormatter.string(from:Date()))
         self.trackingAltitudeDataSet.append(dataItem)
         
         while self.trackingAltitudeDataSet.count > amountOfValuesToShow {
@@ -198,15 +204,15 @@ class History: NSObject, ObservableObject {
         self.trackingAltitudeDataSetMin = altitudeMinDefault
         self.trackingAltitudeDataSetMax = altitudeMaxDefault
         
-        let minDataItem = trackingAltitudeDataSet.min(by: { $0.Value0 < $1.Value0 })
-        let maxDataItem = trackingAltitudeDataSet.max(by: { $0.Value0 < $1.Value0 })
+        let minDataItem = trackingAltitudeDataSet.min(by: { $0.Value[0] < $1.Value[0] })
+        let maxDataItem = trackingAltitudeDataSet.max(by: { $0.Value[0] < $1.Value[0] })
         
-        if (minDataItem!.Value0 - 250 > altitudeMinDefault) {
-            self.trackingAltitudeDataSetMin = minDataItem!.Value0 - 50
+        if (minDataItem!.Value[0] - 250 > altitudeMinDefault) {
+            self.trackingAltitudeDataSetMin = minDataItem!.Value[0] - 50
         }
 
-        if (maxDataItem!.Value0 + 250 < altitudeMaxDefault) {
-            self.trackingAltitudeDataSetMax = maxDataItem!.Value0 + 50
+        if (maxDataItem!.Value[0] + 250 < altitudeMaxDefault) {
+            self.trackingAltitudeDataSetMax = maxDataItem!.Value[0] + 50
         }
     }
     

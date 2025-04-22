@@ -20,7 +20,7 @@ struct GeoStatView: View {
                 Text("TRACKING")
                     .font(.title)
                     .padding()
-                PairGraphView(Caption: "TRACKING ALTITUDE", Data: $history.trackingAltitudeDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)],
+                GraphPointsView(Caption: "TRACKING ALTITUDE", Data: $history.trackingAltitudeDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)],
                               min: $history.trackingAltitudeDataSetMin, max: $history.trackingAltitudeDataSetMax, Colors: [.white, .orange], Legend: ["barometer", "gps"], measurement: "m"
                 )
                 Text("STATISTICS")
