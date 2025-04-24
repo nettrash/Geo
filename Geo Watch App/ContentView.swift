@@ -10,11 +10,24 @@ import Foundation
 import CoreMotion
 
 struct ContentView: View {
-    let barometer = CMAltimeter()
     @State var barometerInformationPressure: Double = 0
     @State var barometerInformationDelta: Double = 0
     @State var barometerInformationHeight: Double = 0
     @State var barometerInformationEverest: Double = 0
+    @State var historyData: [DataItem] = []
+    @State var historyDataMin: Double = 0
+    @State var historyDataMax: Double = 10000
+
+    private let barometer = CMAltimeter()
+    @State private var lastInfoUpdateDate: Date = Date()
+    private let historyCount: Int = 20
+
+    private let trackingDateFormatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .none
+            formatter.timeStyle = .short
+            return formatter
+        }()
 
     var body: some View {
         
@@ -25,6 +38,9 @@ struct ContentView: View {
                     .aspectRatio(contentMode: .fit)
                     .opacity(0.3)
                 
+                GraphView(Data: $historyData, min: $historyDataMin, max: $historyDataMax, measurement: "m")
+                    .opacity(0.5)
+
                 VStack {
                     HStack {
                         Text("Barometer")
@@ -84,6 +100,34 @@ struct ContentView: View {
                     
                     self.barometerInformationHeight = h
                     self.barometerInformationEverest = h / 8848
+
+                    var firstAdd: Bool = false
+                    while self.historyData.count < self.historyCount {
+                        firstAdd = true;
+                        self.historyData.append(DataItem(Value: 0, Legend: trackingDateFormatter.string(from:Date())))
+                    }
+
+                    if firstAdd || self.lastInfoUpdateDate.addingTimeInterval(30) < Date() {
+                        self.historyData.append(DataItem(Value: self.barometerInformationHeight, Legend: trackingDateFormatter.string(from:Date())))
+                        self.historyData.removeFirst()
+                        
+                        let minDataItem = self.historyData.min(by: { $0.Value < $1.Value })
+                        let maxDataItem = self.historyData.max(by: { $0.Value < $1.Value })
+
+                        self.historyDataMin =
+                            if (minDataItem?.Value ?? 0) - 250 > 0 {
+                                (minDataItem?.Value ?? 0) - 50
+                            } else {
+                                0
+                            }
+                        self.historyDataMax =
+                            if (maxDataItem?.Value ?? 0) + 250 < 9000 {
+                                (maxDataItem?.Value ?? 0) + 50
+                            } else {
+                                9000
+                            }
+                        self.lastInfoUpdateDate = Date();
+                    }
                 }
             }
         }

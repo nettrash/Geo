@@ -1,0 +1,16 @@
+//
+//  GraphLine.swift
+//  Geo
+//
+//  Created by Ivan Alekseev on 24/04/2025.
+//
+
+import SwiftUI
+
+struct GraphLine: Identifiable {
+    var id: Double { value }
+    
+    var value: Double
+    var text: String
+    var color: Color
+}
