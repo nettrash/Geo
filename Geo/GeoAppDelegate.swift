@@ -9,10 +9,9 @@ import Foundation
 import UIKit
 import CoreLocation
 @preconcurrency import BackgroundTasks
-import WatchConnectivity
 
-class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @preconcurrency WCSessionDelegate {
-
+class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
+    
     //Mountains data
     var mountainsData: MountainData? = nil
     
@@ -24,11 +23,8 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
     
     // History
     var history: History = History()
-
-    private let backgroundTaskIndentifier_Refresh = "me.nettrash.Geo.background.refresh"
     
-    // WCSession
-    var wcsession: WCSession? = nil
+    private let backgroundTaskIndentifier_Refresh = "me.nettrash.Geo.background.refresh"
     
     // Initializing main stuctures for the app.
     func initialize() {
@@ -49,18 +45,13 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
         
         registerBackgroundTasks()
         
-        /*if WCSession.isSupported() {
-            WCSession.default.delegate = self
-            WCSession.default.activate()
-        }*/
-
         return true;
     }
-        
+    
     func applicationWillResignActive(_ application: UIApplication) {
         self.scheduleBackgroundProcessing()
     }
-
+    
     private func loadMountains() {
         do {
             guard let listPath = Bundle.main.path(forResource: "list", ofType: "json") else {
@@ -91,7 +82,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
         request.requiresNetworkConnectivity = false
         request.requiresExternalPower = false
         request.earliestBeginDate = Date(timeIntervalSinceNow: 10 * 60) //seconds
-
+        
         do {
             try BGTaskScheduler.shared.submit(request)
         } catch {
@@ -101,17 +92,17 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
     
     func handleBackgroundProcessing(task: BGProcessingTask) {
         scheduleBackgroundProcessing()
-
+        
         let operation = BackgroundRefreshOperation()
-
+        
         task.expirationHandler = {
             operation.cancel()
         }
-
+        
         operation.completionBlock = {
             task.setTaskCompleted(success: !operation.isCancelled)
         }
-
+        
         OperationQueue.main.addOperation(operation)
     }
     
@@ -138,42 +129,8 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject, @precon
                     userDefaults.set(encoded, forKey: "ActualInformation")
                 }
             }
-
+            
             print("<<< BackgroundRefreshOperation")
         }
-    }
-    
-    //WCSessionDelegate
-    
-    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: (any Error)?) {
-        print("WCSession activationDidCompleteWith activationState: \(activationState)")
-    }
-
-    func sessionDidBecomeInactive(_ session: WCSession) {
-        
-    }
-
-    func sessionDidDeactivate(_ session: WCSession) {
-        
-    }
-    
-    func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
-        if self.mountainsData == nil {
-            loadMountains()
-        }
-        
-        if self.barometer == nil {
-            self.barometer = Barometer()
-            self.barometer?.Start()
-        }
-        
-        if self.location == nil {
-            self.location = Location()
-            self.location?.app = self
-            self.location?.barometer = self.barometer
-            self.location?.mountainsData = self.mountainsData
-        }
-        
-        self.location?.locationManager?.startMonitoringVisits()
     }
 }
