@@ -88,7 +88,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             }
 
             if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") {
-                let info = InformationToken(recordDate: Date(), gpsAltitude: self.location!.altitude, gpsSpeed: self.location!.speed, barPreassure: self.barometer!.pressure, barAltitude: self.barometer!.height)
+                let info = InformationToken(recordDate: Date(), gpsAltitude: self.location!.altitude, gpsSpeed: (self.location!.speed < 0 ? 0 : self.location!.speed), barPreassure: self.barometer!.pressure, barAltitude: self.barometer!.height)
                 if let encoded = try? JSONEncoder().encode(info) {
                     userDefaults.set(encoded, forKey: "ActualInformation")
                 }
@@ -106,7 +106,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             historyItem.gpsLatitude = self.stepLocation!.coordinate.latitude
             historyItem.gpsLongitude = self.stepLocation!.coordinate.longitude
             historyItem.gpsAltitude = self.stepLocation!.altitude
-            historyItem.gpsVelocity = self.stepLocation!.speed
+            historyItem.gpsVelocity = (self.stepLocation!.speed < 0 ? 0 : self.stepLocation!.speed)
             
             do {
                 try controller.container.viewContext.save()

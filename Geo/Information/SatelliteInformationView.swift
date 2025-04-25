@@ -52,9 +52,9 @@ struct SatelliteInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text("\(String(format: "%.1f", location?.location?.speed ?? 0)) m/s")
+                        Text("\(String(format: "%.1f", ((location?.location?.speed ?? 0)) < 0 ? 0 : (location?.location?.speed ?? 0))) m/s")
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("\(String(format: "%.1f", (location?.location?.speed ?? 0) * 3600.0 / 1000.0)) km/h")
+                        Text("\(String(format: "%.1f", ((location?.location?.speed ?? 0)) < 0 ? 0 : (location?.location?.speed ?? 0))) km/h")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
