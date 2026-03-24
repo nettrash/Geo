@@ -7,6 +7,7 @@
 
 import WatchKit
 import CoreMotion
+import WidgetKit
 
 @MainActor
 class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
@@ -25,12 +26,19 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
     var barometerInformationEverest: Double = 0
     private var delegates: [(_ vPressure: Double, _ vDelta: Double, _ vHeight: Double, _ vEverest: Double) -> Void] = []
     var isUpdating: Bool = false
+    private var lastWidgetReloadDate: Date = .distantPast
+
+    func applicationDidFinishLaunching() {
+        // Start barometer immediately on app launch — don't wait for ContentView
+        startUpdating()
+    }
 
     func registerCallback(_ delegate: @escaping (_ vPressure: Double, _ vDelta: Double, _ vHeight: Double, _ vEverest: Double) -> Void) {
         self.delegates.append(delegate)
     }
     
     func startUpdating() {
+        guard !isUpdating else { return }
         barometer.startRelativeAltitudeUpdates(to: .main) { [weak self] data, error in
             guard let data = data else { return }
             
@@ -74,6 +82,13 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
             userDefaults.set(self.barometerInformationDelta, forKey: GeoWatchAppDelegate.deltaKey)
             userDefaults.set(self.barometerInformationEverest, forKey: GeoWatchAppDelegate.everestKey)
             userDefaults.set(Date().timeIntervalSince1970, forKey: GeoWatchAppDelegate.timestampKey)
+            userDefaults.synchronize()
+        }
+        
+        // Throttle widget reloads to every 30 seconds — barometer fires ~1Hz
+        if lastWidgetReloadDate.addingTimeInterval(30) < Date() {
+            lastWidgetReloadDate = Date()
+            WidgetCenter.shared.reloadAllTimelines()
         }
     }
 }

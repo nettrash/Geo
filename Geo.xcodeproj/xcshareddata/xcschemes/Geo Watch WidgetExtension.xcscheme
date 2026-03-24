@@ -92,12 +92,21 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
+            BlueprintIdentifier = "E5A22D642DBFEA39008DB127"
+            BuildableName = "Geo Watch WidgetExtension.appex"
+            BlueprintName = "Geo Watch WidgetExtension"
+            ReferencedContainer = "container:Geo.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
             BlueprintIdentifier = "E5AAD2882AAB5D950052522B"
             BuildableName = "Geo.app"
             BlueprintName = "Geo"
             ReferencedContainer = "container:Geo.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
       <EnvironmentVariables>
          <EnvironmentVariable
             key = "_XCWidgetKind"
