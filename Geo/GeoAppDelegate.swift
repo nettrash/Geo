@@ -26,6 +26,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     var history: History = History()
     
     private let backgroundTaskIndentifier_Refresh = "me.nettrash.Geo.background.refresh"
+    private let backgroundTaskIdentifier_AppRefresh = "me.nettrash.Geo.background.apprefresh"
     private var lastWidgetReloadDate: Date = .distantPast
     
     // Initializing main stuctures for the app.
@@ -80,6 +81,14 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     }
     
     func applicationWillResignActive(_ application: UIApplication) {
+        // Push latest data to widget immediately before going to background
+        pushDataToWidget()
+        
+        // Force an immediate widget reload (bypass throttle)
+        lastWidgetReloadDate = .distantPast
+        reloadWidgetIfNeeded()
+        
+        // Schedule background tasks for periodic refresh
         self.scheduleBackgroundProcessing()
     }
     
@@ -105,23 +114,54 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIndentifier_Refresh, using: nil) { task in
                 self.handleBackgroundProcessing(task: task as! BGProcessingTask)
             }
+            BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIdentifier_AppRefresh, using: nil) { task in
+                self.handleAppRefresh(task: task as! BGAppRefreshTask)
+            }
         }
     }
     
     func scheduleBackgroundProcessing() {
-        let request = BGProcessingTaskRequest(identifier: backgroundTaskIndentifier_Refresh)
-        request.requiresNetworkConnectivity = false
-        request.requiresExternalPower = false
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 60)
+        // Schedule the heavy processing task
+        let processingRequest = BGProcessingTaskRequest(identifier: backgroundTaskIndentifier_Refresh)
+        processingRequest.requiresNetworkConnectivity = false
+        processingRequest.requiresExternalPower = false
+        processingRequest.earliestBeginDate = Date(timeIntervalSinceNow: 60)
         
         do {
-            try BGTaskScheduler.shared.submit(request)
+            try BGTaskScheduler.shared.submit(processingRequest)
+        } catch {
+            print("Could not schedule background processing: \(error)")
+        }
+        
+        // Schedule the lightweight app refresh task (~every 15 min)
+        let refreshRequest = BGAppRefreshTaskRequest(identifier: backgroundTaskIdentifier_AppRefresh)
+        refreshRequest.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        
+        do {
+            try BGTaskScheduler.shared.submit(refreshRequest)
         } catch {
             print("Could not schedule app refresh: \(error)")
         }
     }
     
     func handleBackgroundProcessing(task: BGProcessingTask) {
+        scheduleBackgroundProcessing()
+        
+        let operation = BackgroundRefreshOperation()
+        
+        task.expirationHandler = {
+            operation.cancel()
+        }
+        
+        operation.completionBlock = {
+            task.setTaskCompleted(success: !operation.isCancelled)
+        }
+        
+        OperationQueue.main.addOperation(operation)
+    }
+    
+    func handleAppRefresh(task: BGAppRefreshTask) {
+        // Reschedule immediately so the next one is queued
         scheduleBackgroundProcessing()
         
         let operation = BackgroundRefreshOperation()

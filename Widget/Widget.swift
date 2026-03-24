@@ -7,6 +7,7 @@
 
 import WidgetKit
 import SwiftUI
+import CoreMotion
 
 struct Provider: AppIntentTimelineProvider {
     
@@ -20,6 +21,48 @@ struct Provider: AppIntentTimelineProvider {
         return info
     }
     
+    /// Reads a fresh barometer sample, merges with last known GPS from UserDefaults,
+    /// and saves the combined result back to UserDefaults.
+    private func readFreshBarometer() async -> InformationToken? {
+        guard CMAltimeter.isRelativeAltitudeAvailable() else { return nil }
+        
+        return await withCheckedContinuation { continuation in
+            let altimeter = CMAltimeter()
+            altimeter.startRelativeAltitudeUpdates(to: .main) { data, error in
+                altimeter.stopRelativeAltitudeUpdates()
+                
+                guard let data = data else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                
+                let pressure = data.pressure.doubleValue  // kPa
+                let P0: Double = 101.325
+                let h: Double = log(P0 / pressure) / 0.00012
+                
+                // Preserve last known GPS data
+                let previous = self.readLatestInformation()
+                
+                let info = InformationToken(
+                    recordDate: Date(),
+                    gpsAltitude: previous?.gpsAltitude ?? 0.0,
+                    gpsSpeed: previous?.gpsSpeed ?? 0.0,
+                    barPreassure: pressure,
+                    barAltitude: h
+                )
+                
+                // Save back to UserDefaults so the data stays fresh
+                if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo"),
+                   let encoded = try? JSONEncoder().encode(info) {
+                    userDefaults.set(encoded, forKey: "ActualInformation")
+                    userDefaults.synchronize()
+                }
+                
+                continuation.resume(returning: info)
+            }
+        }
+    }
+    
     func placeholder(in context: Context) -> InformationEntry {
         InformationEntry(date: Date(), configuration: nil, information: readLatestInformation())
     }
@@ -28,16 +71,20 @@ struct Provider: AppIntentTimelineProvider {
         if context.isPreview {
             return InformationEntry(date: Date(), configuration: configuration, information: InformationToken(recordDate: Date(), gpsAltitude: 2450.0, gpsSpeed: 2.0, barPreassure: 563.0, barAltitude: 2650.0))
         }
-        return InformationEntry(date: Date(), configuration: configuration, information: readLatestInformation())
+        // Try fresh barometer, fall back to UserDefaults
+        let info = await readFreshBarometer() ?? readLatestInformation()
+        return InformationEntry(date: Date(), configuration: configuration, information: info)
     }
     
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<InformationEntry> {
-        let entry = InformationEntry(date: Date(), configuration: configuration, information: readLatestInformation())
+        // Try reading a fresh barometer sample directly
+        let info = await readFreshBarometer() ?? readLatestInformation()
+        let entry = InformationEntry(date: Date(), configuration: configuration, information: info)
         
-        // Self-refresh every 5 minutes as a fallback.
+        // Self-refresh every 2 minutes as a fallback.
         // The main app also triggers immediate reloads via WidgetCenter
         // whenever barometer or GPS data changes.
-        let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
+        let refreshDate = Date().addingTimeInterval(120)
         return Timeline(entries: [entry], policy: .after(refreshDate))
     }
 }
