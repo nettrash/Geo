@@ -31,7 +31,7 @@ struct MainView: View {
                         Image(systemName: "map")
                         Text("Map")
                     }
-                GeoNatureView()
+                GeoNatureView(app: app)
                     .tabItem {
                         Image(systemName: "mountain.2")
                         Text("Nature")

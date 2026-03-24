@@ -7,6 +7,12 @@
 		<string>me.nettrash.Geo.background.refresh</string>
 		<string>me.nettrash.Geo.background.apprefresh</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera is used for augmented reality to show nearby mountain peaks around you.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location is used to find nearby mountain peaks and show your position on the map.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Motion data is used for barometer altitude readings and AR peak positioning.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>

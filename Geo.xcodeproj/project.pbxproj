@@ -44,6 +44,30 @@
 		E5A22D662DBFEA39008DB127 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E592D55A2D428DF80038B14D /* WidgetKit.framework */; };
 		E5A22D672DBFEA39008DB127 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5708AD42DBB9D2900CB66BB /* SwiftUI.framework */; };
 		E5A22D722DBFEA39008DB127 /* Geo Watch WidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E5A22D652DBFEA39008DB127 /* Geo Watch WidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E5A8C4AD2F7345E100D77979 /* PeakMarkerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4AA2F7345E100D77979 /* PeakMarkerView.swift */; };
+		E5A8C4AE2F7345E100D77979 /* ARCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A62F7345E100D77979 /* ARCameraView.swift */; };
+		E5A8C4AF2F7345E100D77979 /* NearbyPeak.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A82F7345E100D77979 /* NearbyPeak.swift */; };
+		E5A8C4B02F7345E100D77979 /* PeakFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A92F7345E100D77979 /* PeakFinder.swift */; };
+		E5A8C4B12F7345E100D77979 /* PeakOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4AB2F7345E100D77979 /* PeakOverlayView.swift */; };
+		E5A8C4B22F7345E100D77979 /* DeviceMotionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A72F7345E100D77979 /* DeviceMotionManager.swift */; };
+		E5A8C4B32F7345E100D77979 /* PeakMarkerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4AA2F7345E100D77979 /* PeakMarkerView.swift */; };
+		E5A8C4B42F7345E100D77979 /* ARCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A62F7345E100D77979 /* ARCameraView.swift */; };
+		E5A8C4B52F7345E100D77979 /* NearbyPeak.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A82F7345E100D77979 /* NearbyPeak.swift */; };
+		E5A8C4B62F7345E100D77979 /* PeakFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A92F7345E100D77979 /* PeakFinder.swift */; };
+		E5A8C4B72F7345E100D77979 /* PeakOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4AB2F7345E100D77979 /* PeakOverlayView.swift */; };
+		E5A8C4B82F7345E100D77979 /* DeviceMotionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A72F7345E100D77979 /* DeviceMotionManager.swift */; };
+		E5A8C4B92F7345E100D77979 /* PeakMarkerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4AA2F7345E100D77979 /* PeakMarkerView.swift */; };
+		E5A8C4BA2F7345E100D77979 /* ARCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A62F7345E100D77979 /* ARCameraView.swift */; };
+		E5A8C4BB2F7345E100D77979 /* NearbyPeak.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A82F7345E100D77979 /* NearbyPeak.swift */; };
+		E5A8C4BC2F7345E100D77979 /* PeakFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A92F7345E100D77979 /* PeakFinder.swift */; };
+		E5A8C4BD2F7345E100D77979 /* PeakOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4AB2F7345E100D77979 /* PeakOverlayView.swift */; };
+		E5A8C4BE2F7345E100D77979 /* DeviceMotionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C4A72F7345E100D77979 /* DeviceMotionManager.swift */; };
+		E5A8C9492F734D0000D77979 /* ARHistoryPoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C9472F734D0000D77979 /* ARHistoryPoint.swift */; };
+		E5A8C94A2F734D0000D77979 /* HistoryPointMarkerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C9482F734D0000D77979 /* HistoryPointMarkerView.swift */; };
+		E5A8C94B2F734D0000D77979 /* ARHistoryPoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C9472F734D0000D77979 /* ARHistoryPoint.swift */; };
+		E5A8C94C2F734D0000D77979 /* HistoryPointMarkerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C9482F734D0000D77979 /* HistoryPointMarkerView.swift */; };
+		E5A8C94D2F734D0000D77979 /* ARHistoryPoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C9472F734D0000D77979 /* ARHistoryPoint.swift */; };
+		E5A8C94E2F734D0000D77979 /* HistoryPointMarkerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A8C9482F734D0000D77979 /* HistoryPointMarkerView.swift */; };
 		E5AAD28D2AAB5D950052522B /* GeoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD28C2AAB5D950052522B /* GeoApp.swift */; };
 		E5AAD28F2AAB5D950052522B /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AAD28E2AAB5D950052522B /* MainView.swift */; };
 		E5AAD2912AAB5D980052522B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E5AAD2902AAB5D980052522B /* Assets.xcassets */; };
@@ -204,6 +228,14 @@
 		E592D5842D4299550038B14D /* InformationToken.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InformationToken.swift; sourceTree = "<group>"; };
 		E59C45272D2EC546007790E8 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		E5A22D652DBFEA39008DB127 /* Geo Watch WidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Geo Watch WidgetExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5A8C4A62F7345E100D77979 /* ARCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARCameraView.swift; sourceTree = "<group>"; };
+		E5A8C4A72F7345E100D77979 /* DeviceMotionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMotionManager.swift; sourceTree = "<group>"; };
+		E5A8C4A82F7345E100D77979 /* NearbyPeak.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyPeak.swift; sourceTree = "<group>"; };
+		E5A8C4A92F7345E100D77979 /* PeakFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeakFinder.swift; sourceTree = "<group>"; };
+		E5A8C4AA2F7345E100D77979 /* PeakMarkerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeakMarkerView.swift; sourceTree = "<group>"; };
+		E5A8C4AB2F7345E100D77979 /* PeakOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeakOverlayView.swift; sourceTree = "<group>"; };
+		E5A8C9472F734D0000D77979 /* ARHistoryPoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARHistoryPoint.swift; sourceTree = "<group>"; };
+		E5A8C9482F734D0000D77979 /* HistoryPointMarkerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPointMarkerView.swift; sourceTree = "<group>"; };
 		E5AAD2892AAB5D950052522B /* Geo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Geo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5AAD28C2AAB5D950052522B /* GeoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeoApp.swift; sourceTree = "<group>"; };
 		E5AAD28E2AAB5D950052522B /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
@@ -409,6 +441,21 @@
 			path = Widget;
 			sourceTree = "<group>";
 		};
+		E5A8C4AC2F7345E100D77979 /* Nature */ = {
+			isa = PBXGroup;
+			children = (
+				E5A8C9472F734D0000D77979 /* ARHistoryPoint.swift */,
+				E5A8C9482F734D0000D77979 /* HistoryPointMarkerView.swift */,
+				E5A8C4A62F7345E100D77979 /* ARCameraView.swift */,
+				E5A8C4A72F7345E100D77979 /* DeviceMotionManager.swift */,
+				E5A8C4A82F7345E100D77979 /* NearbyPeak.swift */,
+				E5A8C4A92F7345E100D77979 /* PeakFinder.swift */,
+				E5A8C4AA2F7345E100D77979 /* PeakMarkerView.swift */,
+				E5A8C4AB2F7345E100D77979 /* PeakOverlayView.swift */,
+			);
+			path = Nature;
+			sourceTree = "<group>";
+		};
 		E5AAD2802AAB5D950052522B = {
 			isa = PBXGroup;
 			children = (
@@ -446,6 +493,7 @@
 				E592D5822D4298380038B14D /* Geo.entitlements */,
 				E5BF1FA02D270F8B00E31412 /* Content */,
 				E57221FE2C21DBB1008D466B /* Information */,
+				E5A8C4AC2F7345E100D77979 /* Nature */,
 				E584D8E62B3EEF970004973A /* Core */,
 				E5AAD28C2AAB5D950052522B /* GeoApp.swift */,
 				E5AAD28E2AAB5D950052522B /* MainView.swift */,
@@ -860,7 +908,15 @@
 				E5AAD2962AAB5D980052522B /* Persistence.swift in Sources */,
 				E584D8E82B3EEFB10004973A /* Barometer.swift in Sources */,
 				E5EF82C72DB673F900CC5843 /* PairGraphView.swift in Sources */,
+				E5A8C9492F734D0000D77979 /* ARHistoryPoint.swift in Sources */,
+				E5A8C94A2F734D0000D77979 /* HistoryPointMarkerView.swift in Sources */,
 				E5BC6D632D1EB6F0006992D8 /* BorderText.swift in Sources */,
+				E5A8C4AD2F7345E100D77979 /* PeakMarkerView.swift in Sources */,
+				E5A8C4AE2F7345E100D77979 /* ARCameraView.swift in Sources */,
+				E5A8C4AF2F7345E100D77979 /* NearbyPeak.swift in Sources */,
+				E5A8C4B02F7345E100D77979 /* PeakFinder.swift in Sources */,
+				E5A8C4B12F7345E100D77979 /* PeakOverlayView.swift in Sources */,
+				E5A8C4B22F7345E100D77979 /* DeviceMotionManager.swift in Sources */,
 				E5E6CC2B2C8B2C7100779817 /* History.swift in Sources */,
 				E57221FB2C21C7E9008D466B /* GeoMapView.swift in Sources */,
 				E59092912CD53A0500499EFF /* DataItem.swift in Sources */,
@@ -896,6 +952,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				E5AAD2A42AAB5D980052522B /* GeoTests.swift in Sources */,
+				E5A8C4B92F7345E100D77979 /* PeakMarkerView.swift in Sources */,
+				E5A8C4BA2F7345E100D77979 /* ARCameraView.swift in Sources */,
+				E5A8C4BB2F7345E100D77979 /* NearbyPeak.swift in Sources */,
+				E5A8C4BC2F7345E100D77979 /* PeakFinder.swift in Sources */,
+				E5A8C4BD2F7345E100D77979 /* PeakOverlayView.swift in Sources */,
+				E5A8C94D2F734D0000D77979 /* ARHistoryPoint.swift in Sources */,
+				E5A8C94E2F734D0000D77979 /* HistoryPointMarkerView.swift in Sources */,
+				E5A8C4BE2F7345E100D77979 /* DeviceMotionManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -905,6 +969,14 @@
 			files = (
 				E5AAD2B02AAB5D980052522B /* GeoUITestsLaunchTests.swift in Sources */,
 				E5AAD2AE2AAB5D980052522B /* GeoUITests.swift in Sources */,
+				E5A8C4B32F7345E100D77979 /* PeakMarkerView.swift in Sources */,
+				E5A8C94B2F734D0000D77979 /* ARHistoryPoint.swift in Sources */,
+				E5A8C94C2F734D0000D77979 /* HistoryPointMarkerView.swift in Sources */,
+				E5A8C4B42F7345E100D77979 /* ARCameraView.swift in Sources */,
+				E5A8C4B52F7345E100D77979 /* NearbyPeak.swift in Sources */,
+				E5A8C4B62F7345E100D77979 /* PeakFinder.swift in Sources */,
+				E5A8C4B72F7345E100D77979 /* PeakOverlayView.swift in Sources */,
+				E5A8C4B82F7345E100D77979 /* DeviceMotionManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -968,7 +1040,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch App/Geo Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo Watch App/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1004,7 +1076,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch App/Geo Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo Watch App/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1036,7 +1108,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1058,7 +1130,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1078,7 +1150,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1099,7 +1171,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1122,7 +1194,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = Widget/WidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
@@ -1153,7 +1225,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = Widget/WidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
@@ -1182,7 +1254,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Geo Watch Widget/Info.plist";
@@ -1215,7 +1287,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch Widget/Geo Watch WidgetExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Geo Watch Widget/Info.plist";
@@ -1374,7 +1446,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Geo/Geo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
@@ -1420,7 +1492,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Geo/Geo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
@@ -1463,7 +1535,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
@@ -1481,7 +1553,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
@@ -1498,7 +1570,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
@@ -1515,7 +1587,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3577;
+				CURRENT_PROJECT_VERSION = 3608;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
