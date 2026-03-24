@@ -7,7 +7,7 @@
 
 import Foundation
 
-class MountainInfo: Codable, Identifiable {
+class MountainInfo: Codable, Identifiable, @unchecked Sendable {
     
     var id: String { "\(name ?? "")-\(position ?? 0)" }
     

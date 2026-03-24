@@ -6,12 +6,15 @@
 //
 
 import SwiftUI
+import CoreMotion
 
 @main
 struct Geo_Watch_AppApp: App {
+    @WKApplicationDelegateAdaptor var appDelegate: GeoWatchAppDelegate
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(appDelegate: appDelegate)
         }
     }
 }

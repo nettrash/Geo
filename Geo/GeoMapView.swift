@@ -8,11 +8,10 @@
 import SwiftUI
 import MapKit
 
-nonisolated(unsafe) let emptyHistoryItem: HistoryItem = HistoryItem()
-nonisolated(unsafe) let emptyMountainInfo: MountainInfo = MountainInfo()
+let emptyMountainInfo: MountainInfo = MountainInfo()
 
 class selectedData: ObservableObject {
-    @Published var selectedHistoryItem: HistoryItem = emptyHistoryItem
+    @Published var selectedHistoryItem: HistoryItem? = nil
     @Published var selectedMountainInfo: MountainInfo = emptyMountainInfo
 }
 
@@ -35,8 +34,8 @@ struct GeoMapView: View {
     var body: some View {
         Map(position: $cameraPosition, interactionModes: .all)
         {
-            if app?.mountainsData?.sevenPeaks?.mountains != nil {
-                ForEach(app!.mountainsData!.sevenPeaks!.mountains!) { mountain in
+            if let sevenPeaks = app?.mountainsData?.sevenPeaks?.mountains {
+                ForEach(sevenPeaks) { mountain in
 
                     Annotation(mountain.name ?? "", coordinate: CLLocationCoordinate2DMake(mountain.coordinates?.latitude ?? 0, mountain.coordinates?.longitude ?? 0)) {
                         Image("7MountainPoint")
@@ -52,10 +51,9 @@ struct GeoMapView: View {
                 }
             }
             
-            if app?.mountainsData?.highest?.mountains != nil {
-                ForEach(app!.mountainsData!.highest!.mountains!.filter({h in !app!.mountainsData!.sevenPeaks!.mountains!.contains(where: { m in
-                    m.name == h.name
-                })})) { mountain in
+            if let highest = app?.mountainsData?.highest?.mountains {
+                let sevenPeakNames = Set(app?.mountainsData?.sevenPeaks?.mountains?.compactMap({ $0.name }) ?? [])
+                ForEach(highest.filter({ h in !sevenPeakNames.contains(h.name ?? "") })) { mountain in
 
                     Annotation(mountain.name ?? "", coordinate: CLLocationCoordinate2DMake(mountain.coordinates?.latitude ?? 0, mountain.coordinates?.longitude ?? 0)) {
                         Image("MountainPoint")
@@ -71,12 +69,13 @@ struct GeoMapView: View {
                 }
             }
                         
-            if app?.mountainsData?.snowLeopardOfRussia?.mountains != nil {
-                ForEach(app!.mountainsData!.snowLeopardOfRussia!.mountains!.filter({h in !app!.mountainsData!.sevenPeaks!.mountains!.contains(where: { m in
-                    m.name == h.name
-                }) && !app!.mountainsData!.highest!.mountains!.contains(where: { m in
-                    m.name == h.name
-                })})) { mountain in
+            if let snowLeopard = app?.mountainsData?.snowLeopardOfRussia?.mountains {
+                let sevenPeakNames = Set(app?.mountainsData?.sevenPeaks?.mountains?.compactMap({ $0.name }) ?? [])
+                let highestNames = Set(app?.mountainsData?.highest?.mountains?.compactMap({ $0.name }) ?? [])
+                ForEach(snowLeopard.filter({ h in
+                    let name = h.name ?? ""
+                    return !sevenPeakNames.contains(name) && !highestNames.contains(name)
+                })) { mountain in
 
                     Annotation(mountain.name ?? "", coordinate: CLLocationCoordinate2DMake(mountain.coordinates?.latitude ?? 0, mountain.coordinates?.longitude ?? 0)) {
                         Image("SnowLeopardPoint")
@@ -92,8 +91,8 @@ struct GeoMapView: View {
                 }
             }
             
-            if app?.history.historyItems != nil {
-                ForEach(app!.history.historyItems.suffix(25)) { historyItem in
+            if let historyItems = app?.history.historyItems {
+                ForEach(historyItems.suffix(25)) { historyItem in
                     Annotation(dateFormatter.string(from: historyItem.recordDate ?? Date()), coordinate: CLLocationCoordinate2DMake(historyItem.gpsLatitude, historyItem.gpsLongitude)) {
                         Image("HistoryPoint")
                             .resizable()
@@ -119,10 +118,10 @@ struct GeoMapView: View {
             self.app?.history.Refresh()
         }
         .sheet(isPresented: $isShowHistoryDetails) {
-            if (selected.selectedHistoryItem == emptyHistoryItem) {
-                Text("Loading...")
+            if let historyItem = selected.selectedHistoryItem {
+                HistoryDetailsView(item: historyItem)
             } else {
-                HistoryDetailsView(item: selected.selectedHistoryItem)
+                Text("Loading...")
             }
         }
         .sheet(isPresented: $isShowMountainDetails) {

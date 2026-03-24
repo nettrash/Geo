@@ -5,7 +5,7 @@
 //  Created by Ivan Alekseev on 02/01/2025.
 //
 
-class MountainList: Codable {
+class MountainList: Codable, @unchecked Sendable {
     
     var source: String? = nil
     var columns: [String]? = nil

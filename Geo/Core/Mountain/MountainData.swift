@@ -5,7 +5,7 @@
 //  Created by Ivan Alekseev on 02/01/2025.
 //
 
-class MountainData: Codable {
+class MountainData: Codable, @unchecked Sendable {
     
     var highest: MountainList? = nil
     var sevenPeaks: MountainList? = nil

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "2600"
-   version = "1.7">
+   version = "2.0">
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
@@ -15,9 +15,9 @@
                <EnvironmentBuildable>
                   <BuildableReference
                      BuildableIdentifier = "primary"
-                     BlueprintIdentifier = "E56AC78B2D43E0BE00300854"
-                     BuildableName = "Geo Watch App.app"
-                     BlueprintName = "Geo Watch App"
+                     BlueprintIdentifier = "E5A22D642DBFEA39008DB127"
+                     BuildableName = "Geo Watch WidgetExtension.appex"
+                     BlueprintName = "Geo Watch WidgetExtension"
                      ReferencedContainer = "container:Geo.xcodeproj">
                   </BuildableReference>
                </EnvironmentBuildable>
@@ -25,6 +25,20 @@
          </ExecutionAction>
       </PostActions>
       <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "E5A22D642DBFEA39008DB127"
+               BuildableName = "Geo Watch WidgetExtension.appex"
+               BlueprintName = "Geo Watch WidgetExtension"
+               ReferencedContainer = "container:Geo.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
          <BuildActionEntry
             buildForTesting = "YES"
             buildForRunning = "YES"
@@ -61,51 +75,46 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAutocreateTestPlan = "YES">
-      <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E56AC7A42D43E0BF00300854"
-               BuildableName = "Geo Watch AppUITests.xctest"
-               BlueprintName = "Geo Watch AppUITests"
-               ReferencedContainer = "container:Geo.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E56AC79A2D43E0BF00300854"
-               BuildableName = "Geo Watch AppTests.xctest"
-               BlueprintName = "Geo Watch AppTests"
-               ReferencedContainer = "container:Geo.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
-      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
-      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      selectedDebuggerIdentifier = ""
+      selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
       launchStyle = "0"
+      askForAppToLaunch = "Yes"
       useCustomWorkingDirectory = "NO"
       ignoresPersistentStateOnLaunch = "NO"
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
-      allowLocationSimulation = "YES">
+      allowLocationSimulation = "YES"
+      launchAutomaticallySubstyle = "2">
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "E56AC78B2D43E0BE00300854"
-            BuildableName = "Geo Watch App.app"
-            BlueprintName = "Geo Watch App"
+            BlueprintIdentifier = "E5AAD2882AAB5D950052522B"
+            BuildableName = "Geo.app"
+            BlueprintName = "Geo"
             ReferencedContainer = "container:Geo.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "_XCWidgetKind"
+            value = ""
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "_XCWidgetDefaultView"
+            value = "timeline"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "_XCWidgetFamily"
+            value = "systemMedium"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -117,9 +126,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "E56AC78B2D43E0BE00300854"
-            BuildableName = "Geo Watch App.app"
-            BlueprintName = "Geo Watch App"
+            BlueprintIdentifier = "E5A22D642DBFEA39008DB127"
+            BuildableName = "Geo Watch WidgetExtension.appex"
+            BlueprintName = "Geo Watch WidgetExtension"
             ReferencedContainer = "container:Geo.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

@@ -28,9 +28,9 @@ struct HighestMountainInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text(HighestMountainName())
+                        Text(verbatim: HighestMountainName())
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text(HighestMountainAltitude())
+                        Text(verbatim: HighestMountainAltitude())
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
@@ -42,7 +42,7 @@ struct HighestMountainInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text(HighestMountainDistance())
+                        Text(verbatim: HighestMountainDistance())
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
@@ -54,9 +54,9 @@ struct HighestMountainInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text(HighestMountainLocationLatitude())
+                        Text(verbatim: HighestMountainLocationLatitude())
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text(HighestMountainLocationLongitude())
+                        Text(verbatim: HighestMountainLocationLongitude())
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
@@ -102,31 +102,47 @@ struct HighestMountainInformationView: View {
     
     func HighestMountainDistance() -> String {
         guard location?.highestMountain != nil else { return "? m" }
-        return "\(String(format: "%.2f", (location?.highestMountainDistance ?? 0) / 1000)) km"
+        return "\(String(format: "%.2f", (location?.highestMountainDistance ?? 0.0) / 1000.0)) km"
     }
     
     func HighestMountainLocationLatitude() -> String {
         guard location?.highestMountain != nil else { return "? lt" }
-        return "\(String(format: "%.6f", location?.highestMountain?.coordinates?.latitude ?? 0)) lt"
+        return "\(String(format: "%.6f", location?.highestMountain?.coordinates?.latitude ?? 0.0)) lt"
     }
     
     func HighestMountainLocationLongitude() -> String {
         guard location?.highestMountain != nil else { return "? lg" }
-        return "\(String(format: "%.6f", location?.highestMountain?.coordinates?.longitude ?? 0)) lg"
+        return "\(String(format: "%.6f", location?.highestMountain?.coordinates?.longitude ?? 0.0)) lg"
     }
     
     func OpenMapForHighestMountain() {
         guard location != nil else { return }
         
-        let source = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: location?.location?.coordinate.latitude ?? 0, longitude: location?.location?.coordinate.longitude ?? 0)))
+        let sourceCoordinate = CLLocationCoordinate2D(
+            latitude: location?.location?.coordinate.latitude ?? 0,
+            longitude: location?.location?.coordinate.longitude ?? 0
+        )
+        let sourceLocation = CLLocation(
+            latitude: sourceCoordinate.latitude,
+            longitude: sourceCoordinate.longitude
+        )
+        let source = MKMapItem(location: sourceLocation, address: nil)
         source.name = "Current location"
-                
-        let destination = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: location?.highestMountain?.coordinates?.latitude ?? 0, longitude: location?.highestMountain?.coordinates?.longitude ?? 0)))
+        
+        let destinationCoordinate = CLLocationCoordinate2D(
+            latitude: location?.highestMountain?.coordinates?.latitude ?? 0,
+            longitude: location?.highestMountain?.coordinates?.longitude ?? 0
+        )
+        let destinationLocation = CLLocation(
+            latitude: destinationCoordinate.latitude,
+            longitude: destinationCoordinate.longitude
+        )
+        let destination = MKMapItem(location: destinationLocation, address: nil)
         destination.name = location?.highestMountain?.name ?? "Destination"
-                
+        
         MKMapItem.openMaps(
-          with: [source, destination],
-          launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving]
+            with: [source, destination],
+            launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving]
         )
     }
 }

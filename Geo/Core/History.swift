@@ -8,6 +8,7 @@
 import Foundation
 import CoreData
 import CoreLocation
+import WidgetKit
 
 @Observable
 class History: NSObject, ObservableObject {
@@ -56,8 +57,9 @@ class History: NSObject, ObservableObject {
         do {
             let controller = PersistenceController.shared
             let fetchRequest: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
+            guard let cutoffDate = Calendar.current.date(byAdding: .day, value: -self.numberOfDays, to: Date()) else { return }
             fetchRequest.predicate = NSPredicate(
-                format: "recordDate >= %@ and barometerPressure > 0", Calendar.current.date(byAdding: .day, value: -self.numberOfDays, to: Date())! as CVarArg
+                format: "recordDate >= %@ and barometerPressure > 0", cutoffDate as CVarArg
             )
 
             fetchRequest.sortDescriptors = [
@@ -76,6 +78,8 @@ class History: NSObject, ObservableObject {
         self.pressureDataSetRefresh()
         self.barometerDataSetRefresh()
         self.gpsDataSetRefresh()
+        
+        WidgetCenter.shared.reloadAllTimelines()
     }
     
     func pressureDataSetRefresh() {
@@ -85,12 +89,14 @@ class History: NSObject, ObservableObject {
             return
         }
         
-        let minDate: Date = Calendar.current.startOfDay(for: self.historyItems.min(by: { $0.recordDate! < $1.recordDate! })!.recordDate!)
+        guard let earliestItem = self.historyItems.min(by: { ($0.recordDate ?? .distantPast) < ($1.recordDate ?? .distantPast) }),
+              let earliestDate = earliestItem.recordDate else { return }
+        let minDate: Date = Calendar.current.startOfDay(for: earliestDate)
         
         for idx in 0..<amountOfValuesToShow {
             let currentDate: Date = Calendar.current.date(byAdding: Calendar.Component.day, value: idx, to: minDate)!
             let minPreassure: CGFloat = self.historyItems
-                .filter { Calendar.current.startOfDay(for: $0.recordDate!) == currentDate }
+                .filter { guard let rd = $0.recordDate else { return false }; return Calendar.current.startOfDay(for: rd) == currentDate }
                 .min(by: { $0.barometerPressure < $1.barometerPressure })?.barometerPressure ?? 0
             self.pressureDataSet.append(DataItem(Value: minPreassure * 7.50062, Legend: dateFormatter.string(from:currentDate)))
         }
@@ -102,15 +108,15 @@ class History: NSObject, ObservableObject {
         self.pressureDataSetMin = pressureDataSetMinDefault
         self.pressureDataSetMax = pressureDataSetMaxDefault
         
-        let minDataItem = self.pressureDataSet.min(by: { $0.Value < $1.Value })
-        let maxDataItem = self.pressureDataSet.max(by: { $0.Value < $1.Value })
+        guard let minDataItem = self.pressureDataSet.min(by: { $0.Value < $1.Value }),
+              let maxDataItem = self.pressureDataSet.max(by: { $0.Value < $1.Value }) else { return }
         
-        if (minDataItem!.Value - 50 > pressureDataSetMinDefault) {
-            self.pressureDataSetMin = minDataItem!.Value - 50
+        if (minDataItem.Value - 50 > pressureDataSetMinDefault) {
+            self.pressureDataSetMin = minDataItem.Value - 50
         }
 
-        if (maxDataItem!.Value + 50 < pressureDataSetMaxDefault) {
-            self.pressureDataSetMax = maxDataItem!.Value + 50
+        if (maxDataItem.Value + 50 < pressureDataSetMaxDefault) {
+            self.pressureDataSetMax = maxDataItem.Value + 50
         }
     }
     
@@ -121,12 +127,14 @@ class History: NSObject, ObservableObject {
             return
         }
         
-        let minDate: Date = Calendar.current.startOfDay(for: self.historyItems.min(by: { $0.recordDate! < $1.recordDate! })!.recordDate!)
+        guard let earliestItem = self.historyItems.min(by: { ($0.recordDate ?? .distantPast) < ($1.recordDate ?? .distantPast) }),
+              let earliestDate = earliestItem.recordDate else { return }
+        let minDate: Date = Calendar.current.startOfDay(for: earliestDate)
         
         for idx in 0..<amountOfValuesToShow {
             let currentDate: Date = Calendar.current.date(byAdding: Calendar.Component.day, value: idx, to: minDate)!
             let maxBarometerAltitude: CGFloat = self.historyItems
-                .filter { Calendar.current.startOfDay(for: $0.recordDate!) == currentDate }
+                .filter { guard let rd = $0.recordDate else { return false }; return Calendar.current.startOfDay(for: rd) == currentDate }
                 .max(by: { $0.barometerAltitude < $1.barometerAltitude })?.barometerAltitude ?? 0
             self.altitudeBarometerDataSet.append(DataItem(Value: maxBarometerAltitude, Legend: dateFormatter.string(from:currentDate)))
         }
@@ -138,15 +146,23 @@ class History: NSObject, ObservableObject {
         self.altitudeBarometerDataSetMin = altitudeMinDefault
         self.altitudeBarometerDataSetMax = altitudeMaxDefault
         
-        let minDataItem = self.altitudeBarometerDataSet.min(by: { $0.Value < $1.Value })
-        let maxDataItem = self.altitudeBarometerDataSet.max(by: { $0.Value < $1.Value })
+        guard let minDataItem = self.altitudeBarometerDataSet.min(by: { $0.Value < $1.Value }),
+              let maxDataItem = self.altitudeBarometerDataSet.max(by: { $0.Value < $1.Value }) else { return }
         
-        if (minDataItem!.Value - 250 > altitudeMinDefault) {
-            self.altitudeBarometerDataSetMin = minDataItem!.Value - 50
+        if (minDataItem.Value - 250 > altitudeMinDefault) {
+            self.altitudeBarometerDataSetMin = minDataItem.Value - 50
+        } else {
+            if (minDataItem.Value < altitudeMinDefault) {
+                self.altitudeBarometerDataSetMin = minDataItem.Value
+            }
         }
 
-        if (maxDataItem!.Value + 250 < altitudeMaxDefault) {
-            self.altitudeBarometerDataSetMax = maxDataItem!.Value + 50
+        if (maxDataItem.Value + 250 < altitudeMaxDefault) {
+            self.altitudeBarometerDataSetMax = maxDataItem.Value + 50
+        } else {
+            if (maxDataItem.Value > altitudeMaxDefault) {
+                self.altitudeBarometerDataSetMax = maxDataItem.Value
+            }
         }
     }
     
@@ -157,12 +173,14 @@ class History: NSObject, ObservableObject {
             return
         }
         
-        let minDate: Date = Calendar.current.startOfDay(for: self.historyItems.min(by: { $0.recordDate! < $1.recordDate! })!.recordDate!)
+        guard let earliestItem = self.historyItems.min(by: { ($0.recordDate ?? .distantPast) < ($1.recordDate ?? .distantPast) }),
+              let earliestDate = earliestItem.recordDate else { return }
+        let minDate: Date = Calendar.current.startOfDay(for: earliestDate)
         
         for idx in 0..<amountOfValuesToShow {
             let currentDate: Date = Calendar.current.date(byAdding: Calendar.Component.day, value: idx, to: minDate)!
             let maxGPSAltitude: CGFloat = self.historyItems
-                .filter { Calendar.current.startOfDay(for: $0.recordDate!) == currentDate }
+                .filter { guard let rd = $0.recordDate else { return false }; return Calendar.current.startOfDay(for: rd) == currentDate }
                 .max(by: { $0.gpsAltitude < $1.gpsAltitude })?.gpsAltitude ?? 0
             self.altitudeGPSDataSet.append(DataItem(Value: maxGPSAltitude, Legend: dateFormatter.string(from:currentDate)))
         }
@@ -174,19 +192,27 @@ class History: NSObject, ObservableObject {
         self.altitudeGPSDataSetMin = altitudeMinDefault
         self.altitudeGPSDataSetMax = altitudeMaxDefault
         
-        let minDataItem = self.altitudeGPSDataSet.min(by: { $0.Value < $1.Value })
-        let maxDataItem = self.altitudeGPSDataSet.max(by: { $0.Value < $1.Value })
+        guard let minDataItem = self.altitudeGPSDataSet.min(by: { $0.Value < $1.Value }),
+              let maxDataItem = self.altitudeGPSDataSet.max(by: { $0.Value < $1.Value }) else { return }
         
-        if (minDataItem!.Value - 250 > altitudeMinDefault) {
-            self.altitudeGPSDataSetMin = minDataItem!.Value - 50
+        if (minDataItem.Value - 250 > altitudeMinDefault) {
+            self.altitudeGPSDataSetMin = minDataItem.Value - 50
+        } else {
+            if (minDataItem.Value < altitudeMinDefault) {
+                self.altitudeGPSDataSetMin = minDataItem.Value
+            }
         }
 
-        if (maxDataItem!.Value + 250 < altitudeMaxDefault) {
-            self.altitudeGPSDataSetMax = maxDataItem!.Value + 50
+        if (maxDataItem.Value + 250 < altitudeMaxDefault) {
+            self.altitudeGPSDataSetMax = maxDataItem.Value + 50
+        } else {
+            if maxDataItem.Value > altitudeMaxDefault {
+                self.altitudeGPSDataSetMax = maxDataItem.Value
+            }
         }
     }
     
-    func addTrackingInformation(_ location: CLLocation, _ barometer: Barometer) {
+    func addTrackingInformation(_ location: CLLocation, _ barometer: Barometer?) {
         
         if self.trackingAltitudeDataSet.count == 0 {
             while self.trackingAltitudeDataSet.count < amountOfValuesToShow {
@@ -194,7 +220,8 @@ class History: NSObject, ObservableObject {
             }
         }
         
-        let dataItem = DataPoint(Value: [barometer.height, location.altitude], Legend: trackingDateFormatter.string(from:Date()))
+        let barometerHeight = barometer?.height ?? 0
+        let dataItem = DataPoint(Value: [barometerHeight, location.altitude], Legend: trackingDateFormatter.string(from:Date()))
         self.trackingAltitudeDataSet.append(dataItem)
         
         while self.trackingAltitudeDataSet.count > amountOfValuesToShow {
@@ -204,15 +231,28 @@ class History: NSObject, ObservableObject {
         self.trackingAltitudeDataSetMin = altitudeMinDefault
         self.trackingAltitudeDataSetMax = altitudeMaxDefault
         
-        let minDataItem = trackingAltitudeDataSet.min(by: { $0.Value[0] < $1.Value[0] })
-        let maxDataItem = trackingAltitudeDataSet.max(by: { $0.Value[0] < $1.Value[0] })
+        guard let minDataItem = trackingAltitudeDataSet.min(by: { $0.Value[0] < $1.Value[0] }),
+              let maxDataItem = trackingAltitudeDataSet.max(by: { $0.Value[0] < $1.Value[0] }),
+              minDataItem.Value.count >= 2,
+              maxDataItem.Value.count >= 2 else { return }
         
-        if (minDataItem!.Value[0] - 250 > altitudeMinDefault) {
-            self.trackingAltitudeDataSetMin = minDataItem!.Value[0] - 50
+        let minValue = min(minDataItem.Value[0], minDataItem.Value[1])
+        let maxValue = max(maxDataItem.Value[0], maxDataItem.Value[1])
+
+        if (minValue - 250 > altitudeMinDefault) {
+            self.trackingAltitudeDataSetMin = minValue - 50
+        } else {
+            if minValue < altitudeMinDefault {
+                self.trackingAltitudeDataSetMin = minValue
+            }
         }
 
-        if (maxDataItem!.Value[0] + 250 < altitudeMaxDefault) {
-            self.trackingAltitudeDataSetMax = maxDataItem!.Value[0] + 50
+        if (maxValue + 250 < altitudeMaxDefault) {
+            self.trackingAltitudeDataSetMax = maxValue + 50
+        } else {
+            if maxValue > altitudeMaxDefault {
+                self.trackingAltitudeDataSetMax = maxValue
+            }
         }
     }
     

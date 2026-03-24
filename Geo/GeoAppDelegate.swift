@@ -8,6 +8,7 @@
 import Foundation
 import UIKit
 import CoreLocation
+import WidgetKit
 @preconcurrency import BackgroundTasks
 
 class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
@@ -25,18 +26,48 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     var history: History = History()
     
     private let backgroundTaskIndentifier_Refresh = "me.nettrash.Geo.background.refresh"
+    private var lastWidgetReloadDate: Date = .distantPast
     
     // Initializing main stuctures for the app.
     func initialize() {
         loadMountains()
         
         self.barometer = Barometer()
+        self.barometer?.dataUpdated = { [weak self] in
+            self?.location?.onBarometerUpdated()
+        }
         self.barometer?.Start()
         
         self.location = Location()
         self.location?.app = self
         self.location?.barometer = self.barometer
         self.location?.mountainsData = self.mountainsData
+    }
+    
+    /// Pushes the latest combined data to the widget.
+    /// Delegates to Location which owns the unified data write path.
+    func pushDataToWidget() {
+        guard let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") else { return }
+        
+        let info = InformationToken(
+            recordDate: Date(),
+            gpsAltitude: self.location?.location?.altitude ?? 0.0,
+            gpsSpeed: max(self.location?.location?.speed ?? 0.0, 0.0),
+            barPreassure: self.barometer?.pressure ?? 0.0,
+            barAltitude: self.barometer?.height ?? 0.0
+        )
+        if let encoded = try? JSONEncoder().encode(info) {
+            userDefaults.set(encoded, forKey: "ActualInformation")
+        }
+        
+        reloadWidgetIfNeeded()
+    }
+    
+    /// Reload widget timelines at most every 30 seconds to avoid exceeding the system budget.
+    func reloadWidgetIfNeeded() {
+        guard lastWidgetReloadDate.addingTimeInterval(30) < Date() else { return }
+        lastWidgetReloadDate = Date()
+        WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
     }
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
@@ -81,7 +112,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         let request = BGProcessingTaskRequest(identifier: backgroundTaskIndentifier_Refresh)
         request.requiresNetworkConnectivity = false
         request.requiresExternalPower = false
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 10 * 60) //seconds
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 60)
         
         do {
             try BGTaskScheduler.shared.submit(request)
@@ -106,29 +137,44 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         OperationQueue.main.addOperation(operation)
     }
     
+    /// Background operation that starts a fresh barometer, waits for a reading,
+    /// and pushes updated pressure/altitude data to the widget.
+    /// GPS data is preserved from the last known value.
     func BackgroundRefreshOperation() -> Operation {
-        return BlockOperation { [weak self] in
-            guard let self else { return }
-            
+        return BlockOperation {
             print(">>> BackgroundRefreshOperation")
             
             let barometer = Barometer()
             barometer.Start()
             
-            let location = Location()
-            location.allowTracking = false
-            location.app = self
-            location.barometer = barometer
-            location.mountainsData = MountainData()
+            // Give barometer a moment to produce a reading
+            Thread.sleep(forTimeInterval: 3)
             
-            sleep(15)
+            guard let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") else { return }
             
-            if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") {
-                let info = InformationToken(recordDate: Date(), gpsAltitude: location.location!.altitude, gpsSpeed: location.location!.speed, barPreassure: barometer.pressure, barAltitude: barometer.height)
-                if let encoded = try? JSONEncoder().encode(info) {
-                    userDefaults.set(encoded, forKey: "ActualInformation")
-                }
+            // Read the last known GPS data and preserve it; only update barometer fields
+            var lastGPSAltitude: Double = 0
+            var lastGPSSpeed: Double = 0
+            if let data = userDefaults.object(forKey: "ActualInformation") as? Data,
+               let previous = try? JSONDecoder().decode(InformationToken.self, from: data) {
+                lastGPSAltitude = previous.gpsAltitude
+                lastGPSSpeed = previous.gpsSpeed
             }
+            
+            let info = InformationToken(
+                recordDate: Date(),
+                gpsAltitude: lastGPSAltitude,
+                gpsSpeed: lastGPSSpeed,
+                barPreassure: barometer.pressure,
+                barAltitude: barometer.height
+            )
+            if let encoded = try? JSONEncoder().encode(info) {
+                userDefaults.set(encoded, forKey: "ActualInformation")
+            }
+            
+            barometer.Stop()
+            
+            WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
             
             print("<<< BackgroundRefreshOperation")
         }

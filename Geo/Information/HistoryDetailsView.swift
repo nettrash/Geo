@@ -46,11 +46,11 @@ struct HistoryDetailsView: View {
                             .padding()
                         Spacer()
                         VStack {
-                            Text("\(String(format: "%.4f", item?.barometerPressure ?? 0)) kPa")
+                            Text(verbatim: "\(String(format: "%.4f", item?.barometerPressure ?? 0.0)) kPa")
                                 .frame(maxWidth: .infinity, alignment: .trailing)
-                            Text("\(String(format: "%.4f", (item?.barometerPressure ?? 0) * 7.50062)) mm Hg")
+                            Text(verbatim: "\(String(format: "%.4f", (item?.barometerPressure ?? 0.0) * 7.50062)) mm Hg")
                                 .frame(maxWidth: .infinity, alignment: .trailing)
-                            Text("\(String(format: "%.4f", (item?.barometerPressure ?? 0) / 101.325)) atm")
+                            Text(verbatim: "\(String(format: "%.4f", (item?.barometerPressure ?? 0.0) / 101.325)) atm")
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                         .padding()
@@ -60,7 +60,7 @@ struct HistoryDetailsView: View {
                             .padding()
                         Spacer()
                         VStack {
-                            Text("\(String(format: "%.0f", item?.barometerAltitude ?? 0)) m")
+                            Text(verbatim: "\(String(format: "%.0f", item?.barometerAltitude ?? 0.0)) m")
                         }
                         .padding()
                     }
@@ -75,9 +75,9 @@ struct HistoryDetailsView: View {
                             .padding()
                         Spacer()
                         VStack {
-                            Text("\(String(format: "%.6f", item?.gpsLatitude ?? 0)) lt")
+                            Text(verbatim: "\(String(format: "%.6f", item?.gpsLatitude ?? 0.0)) lt")
                                 .frame(maxWidth: .infinity, alignment: .trailing)
-                            Text("\(String(format: "%.6f", item?.gpsLongitude ?? 0)) lg")
+                            Text(verbatim: "\(String(format: "%.6f", item?.gpsLongitude ?? 0.0)) lg")
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                         .padding()
@@ -89,7 +89,7 @@ struct HistoryDetailsView: View {
                             .padding()
                         Spacer()
                         VStack {
-                            Text("\(String(format: "%.0f", item?.gpsAltitude ?? 0)) m")
+                            Text(verbatim: "\(String(format: "%.0f", item?.gpsAltitude ?? 0.0)) m")
                         }
                         .padding()
                     }
@@ -100,9 +100,9 @@ struct HistoryDetailsView: View {
                             .padding()
                         Spacer()
                         VStack {
-                            Text("\(String(format: "%.1f", item?.gpsVelocity ?? 0)) m/s")
+                            Text(verbatim: "\(String(format: "%.1f", item?.gpsVelocity ?? 0.0)) m/s")
                                 .frame(maxWidth: .infinity, alignment: .trailing)
-                            Text("\(String(format: "%.1f", (item?.gpsVelocity ?? 0) * 3600.0 / 1000.0)) km/h")
+                            Text(verbatim: "\(String(format: "%.1f", (item?.gpsVelocity ?? 0.0) * 3600.0 / 1000.0)) km/h")
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                         .padding()

@@ -9,12 +9,12 @@ import SwiftUI
 import MapKit
 
 struct MountainDetailsView: View {
-    @State var mountain: MountainInfo
+    let mountain: MountainInfo
     
     var body: some View {
         ZStack {
             Map(initialPosition: MapCameraPosition.region(
-                MKCoordinateRegion.init(
+                MKCoordinateRegion(
                     center: CLLocationCoordinate2D(
                         latitude: mountain.coordinates?.latitude ?? 0,
                         longitude: mountain.coordinates?.longitude ?? 0),
@@ -32,7 +32,7 @@ struct MountainDetailsView: View {
                     Text(mountain.name ?? "")
                         .font(.headline)
                     
-                    Text("\(mountain.height ?? 0) m")
+                    Text(verbatim: "\(mountain.height ?? 0) m")
                         .font(.system(size: 10))
                 }
                 .padding()
@@ -61,16 +61,16 @@ struct MountainDetailsView: View {
                             .frame(maxWidth: .infinity, alignment: .trailing)
                         Spacer()
                             .frame(height: 10)
-                        Text("latitude: \(mountain.coordinates?.latitude ?? 0)")
+                        Text(verbatim: "latitude: \(mountain.coordinates?.latitude ?? 0)")
                             .font(.system(size: 10))
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("longitude: \(mountain.coordinates?.longitude ?? 0)")
+                        Text(verbatim: "longitude: \(mountain.coordinates?.longitude ?? 0)")
                             .font(.system(size: 10))
                             .frame(maxWidth: .infinity, alignment: .trailing)
                         Spacer()
                             .frame(height: 10)
                         Button(action: {
-                            OpenMapForMountain()
+                            openMapForMountain()
                         }) {
                             Text("Show Map")
                                 .font(.system(size: 12))
@@ -112,13 +112,19 @@ struct MountainDetailsView: View {
         }
     }
     
-    func OpenMapForMountain() {
-        let destination = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: mountain.coordinates?.latitude ?? 0, longitude: mountain.coordinates?.longitude ?? 0)))
+    func openMapForMountain() {
+        let coordinate = CLLocationCoordinate2D(
+            latitude: mountain.coordinates?.latitude ?? 0,
+            longitude: mountain.coordinates?.longitude ?? 0
+        )
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        
+        let destination = MKMapItem(location: location, address: nil)
         destination.name = mountain.name ?? "Destination"
-                
+        
         MKMapItem.openMaps(
-          with: [destination],
-          launchOptions: [:]
+            with: [destination],
+            launchOptions: [:]
         )
     }
 }

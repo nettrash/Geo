@@ -26,11 +26,11 @@ struct BarometerInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text("\(String(format: "%.4f", barometer?.pressure ?? 0)) kPa")
+                        Text(verbatim: "\(String(format: "%.4f", barometer?.pressure ?? 0.0)) kPa")
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("\(String(format: "%.4f", (barometer?.pressure ?? 0) * 7.50062)) mm Hg")
+                        Text(verbatim: "\(String(format: "%.4f", (barometer?.pressure ?? 0.0) * 7.50062)) mm Hg")
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("\(String(format: "%.4f", (barometer?.pressure ?? 0) / 101.325)) atm")
+                        Text(verbatim: "\(String(format: "%.4f", (barometer?.pressure ?? 0.0) / 101.325)) atm")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
@@ -42,7 +42,7 @@ struct BarometerInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text("\(String(format: "%.0f", barometer?.height ?? 0)) m")
+                        Text(verbatim: "\(String(format: "%.0f", barometer?.height ?? 0.0)) m")
                     }
                     .padding()
                 }
@@ -53,7 +53,7 @@ struct BarometerInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text("\(String(format: "%.4f", (barometer?.everest ?? 0) * 100.0)) %")
+                        Text(verbatim: "\(String(format: "%.4f", (barometer?.everest ?? 0.0) * 100.0)) %")
                     }
                     .padding()
                 }

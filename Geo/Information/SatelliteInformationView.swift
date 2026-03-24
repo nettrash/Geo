@@ -27,9 +27,9 @@ struct SatelliteInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text("\(String(format: "%.6f", location?.location?.coordinate.latitude ?? 0)) lt")
+                        Text(verbatim: "\(String(format: "%.6f", location?.location?.coordinate.latitude ?? 0.0)) lt")
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("\(String(format: "%.6f", location?.location?.coordinate.longitude ?? 0)) lg")
+                        Text(verbatim: "\(String(format: "%.6f", location?.location?.coordinate.longitude ?? 0.0)) lg")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
@@ -41,7 +41,7 @@ struct SatelliteInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text("\(String(format: "%.0f", location?.location?.altitude ?? 0)) m")
+                        Text(verbatim: "\(String(format: "%.0f", location?.location?.altitude ?? 0.0)) m")
                     }
                     .padding()
                 }
@@ -52,9 +52,9 @@ struct SatelliteInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text("\(String(format: "%.1f", ((location?.location?.speed ?? 0)) < 0 ? 0 : (location?.location?.speed ?? 0))) m/s")
+                        Text(verbatim: "\(String(format: "%.1f", ((location?.location?.speed ?? 0.0)) < 0 ? 0.0 : (location?.location?.speed ?? 0.0))) m/s")
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text("\(String(format: "%.1f", ((location?.location?.speed ?? 0)) < 0 ? 0 : (location?.location?.speed ?? 0))) km/h")
+                        Text(verbatim: "\(String(format: "%.1f", (((location?.location?.speed ?? 0.0)) < 0 ? 0.0 : (location?.location?.speed ?? 0.0)) * 3600.0 / 1000.0)) km/h")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()

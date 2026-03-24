@@ -5,10 +5,12 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>me.nettrash.Geo.background.refresh</string>
+		<string>me.nettrash.Geo.background.apprefresh</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>
+		<string>fetch</string>
 	</array>
 </dict>
 </plist>

@@ -22,6 +22,8 @@ struct GeoApp: App {
                     switch phase {
                         case .background:
                             self.appDelegate.applicationWillResignActive(UIApplication.shared)
+                        case .active:
+                            self.appDelegate.pushDataToWidget()
                         default: break
                     }
                 }

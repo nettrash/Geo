@@ -28,7 +28,13 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     private let horizontalStep: CGFloat = 1000 //1000m
     private let verticalStep: CGFloat = 50 //50m
     private var lastInfoDate: Date = Date()
-    private let trackingStep: TimeInterval = 60 // 1 minute
+    private let trackingStep: TimeInterval = 15 // 15 second
+    
+    /// Last barometer pressure recorded for step-based history
+    private var lastRecordedPressure: Double = 0
+    /// Minimum pressure change (kPa) to trigger a barometer-driven history record
+    /// ~0.1 kPa ≈ ~8m altitude change
+    private let pressureStep: Double = 0.1
     
     func initialize() {
         if (self.locationManager == nil) {
@@ -61,75 +67,123 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         
     //CLLocationManagerDelegate
     @MainActor func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        if locations.count > 0 {
-            self.location = locations[locations.count - 1]
-            refreshCloserMountain()
-            let lastInfoComponents = Calendar.current.dateComponents([.day], from: self.lastInfoDate)
-            let infoComponent = Calendar.current.dateComponents([.day], from: Date())
-            
-            if self.stepLocation == nil {
-                self.stepLocation = self.location?.copy() as? CLLocation
-                refreshData()
-            } else if self.stepLocation!.distance(from: self.location!) > self.horizontalStep ||
-                        abs(self.stepLocation!.altitude - self.location!.altitude) > self.verticalStep ||
-                        lastInfoComponents.day != infoComponent.day {
-                self.stepLocation = self.location?.copy() as? CLLocation
+        guard let latestLocation = locations.last else { return }
+        self.location = latestLocation
+        refreshCloserMountain()
+        let lastInfoComponents = Calendar.current.dateComponents([.day], from: self.lastInfoDate)
+        let infoComponent = Calendar.current.dateComponents([.day], from: Date())
+        
+        if let step = self.stepLocation {
+            if step.distance(from: latestLocation) > self.horizontalStep ||
+                abs(step.altitude - latestLocation.altitude) > self.verticalStep ||
+                lastInfoComponents.day != infoComponent.day {
+                self.stepLocation = latestLocation.copy() as? CLLocation
                 refreshData()
             }
-            
-            if self.allowTracking {
-                if self.trackingStepLocation == nil {
-                    self.trackingStepLocation = self.location?.copy() as? CLLocation
-                    self.trackingRefresh()
-                } else if self.lastInfoDate.addingTimeInterval(self.trackingStep) <= Date() {
-                    self.trackingStepLocation = self.location?.copy() as? CLLocation
-                    self.trackingRefresh()
-                }
-            }
-
-            if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") {
-                let info = InformationToken(recordDate: Date(), gpsAltitude: self.location!.altitude, gpsSpeed: (self.location!.speed < 0 ? 0 : self.location!.speed), barPreassure: self.barometer!.pressure, barAltitude: self.barometer!.height)
-                if let encoded = try? JSONEncoder().encode(info) {
-                    userDefaults.set(encoded, forKey: "ActualInformation")
-                }
+        } else {
+            self.stepLocation = latestLocation.copy() as? CLLocation
+            refreshData()
+        }
+        
+        if self.allowTracking {
+            if self.trackingStepLocation == nil {
+                self.trackingStepLocation = latestLocation.copy() as? CLLocation
+                self.trackingRefresh()
+            } else if self.lastInfoDate.addingTimeInterval(self.trackingStep) <= Date() {
+                self.trackingStepLocation = latestLocation.copy() as? CLLocation
+                self.trackingRefresh()
             }
         }
+
+        // Write combined barometer + GPS data to widget
+        pushCombinedDataToWidget()
+    }
+    
+    /// Called by GeoAppDelegate when the barometer produces a new reading.
+    /// Uses last known GPS location + fresh barometer data.
+    @MainActor func onBarometerUpdated() {
+        guard let barometer = self.barometer, barometer.pressure > 0 else { return }
+        
+        // Always push the latest combined data to the widget
+        pushCombinedDataToWidget()
+        
+        // Check if pressure changed enough to record a CoreData history point
+        let pressureDelta = abs(barometer.pressure - lastRecordedPressure)
+        if lastRecordedPressure == 0 || pressureDelta >= pressureStep {
+            lastRecordedPressure = barometer.pressure
+            
+            // Record to CoreData history if we have a known location
+            if self.location != nil {
+                self.stepLocation = self.location?.copy() as? CLLocation
+                refreshData()
+            }
+        }
+        
+        // Update tracking on every barometer reading (subject to time interval),
+        // regardless of pressure step — this keeps the real-time tracking graph
+        // showing both barometer and GPS data in parallel.
+        if self.allowTracking && self.location != nil {
+            self.trackingStepLocation = self.location?.copy() as? CLLocation
+            if self.lastInfoDate.addingTimeInterval(self.trackingStep) <= Date() {
+                self.trackingRefresh()
+            }
+        }
+    }
+    
+    /// Writes the latest combined barometer + GPS data to the shared App Group UserDefaults.
+    @MainActor private func pushCombinedDataToWidget() {
+        if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") {
+            let info = InformationToken(
+                recordDate: Date(),
+                gpsAltitude: self.location?.altitude ?? 0.0,
+                gpsSpeed: max(self.location?.speed ?? 0.0, 0.0),
+                barPreassure: self.barometer?.pressure ?? 0.0,
+                barAltitude: self.barometer?.height ?? 0.0
+            )
+            if let encoded = try? JSONEncoder().encode(info) {
+                userDefaults.set(encoded, forKey: "ActualInformation")
+            }
+        }
+        self.app?.reloadWidgetIfNeeded()
     }
     
     @MainActor func refreshData() {
-        if (self.stepLocation != nil && (self.barometer?.pressure ?? 0) > 0) {
-            let controller = PersistenceController.shared
-            let historyItem = HistoryItem(context: controller.container.viewContext)
-            historyItem.recordDate = Date()
-            historyItem.barometerAltitude = self.barometer!.height
-            historyItem.barometerPressure = self.barometer!.pressure
-            historyItem.gpsLatitude = self.stepLocation!.coordinate.latitude
-            historyItem.gpsLongitude = self.stepLocation!.coordinate.longitude
-            historyItem.gpsAltitude = self.stepLocation!.altitude
-            historyItem.gpsVelocity = (self.stepLocation!.speed < 0 ? 0 : self.stepLocation!.speed)
-            
-            do {
-                try controller.container.viewContext.save()
-            } catch {
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
-            app?.history.Refresh()
-            self.lastInfoDate = Date()
-        } else {
+        guard let step = self.stepLocation else {
             self.stepLocation = nil
+            return
         }
+        
+        let controller = PersistenceController.shared
+        let historyItem = HistoryItem(context: controller.container.viewContext)
+        historyItem.recordDate = Date()
+        historyItem.barometerAltitude = self.barometer?.height ?? 0
+        historyItem.barometerPressure = self.barometer?.pressure ?? 0
+        historyItem.gpsLatitude = step.coordinate.latitude
+        historyItem.gpsLongitude = step.coordinate.longitude
+        historyItem.gpsAltitude = step.altitude
+        historyItem.gpsVelocity = max(step.speed, 0)
+        
+        do {
+            try controller.container.viewContext.save()
+        } catch {
+            let nsError = error as NSError
+            print("Error saving history: \(nsError), \(nsError.userInfo)")
+            controller.container.viewContext.rollback()
+            return
+        }
+        app?.history.Refresh()
+        self.lastInfoDate = Date()
     }
     
     @MainActor func trackingRefresh() {
-        if (self.allowTracking && self.trackingStepLocation != nil && (self.barometer?.pressure ?? 0) > 0) {
-            
-            app?.history.addTrackingInformation(self.trackingStepLocation!, self.barometer!)
-            self.lastInfoDate = Date()
-
-        } else {
+        guard self.allowTracking,
+              let trackingLocation = self.trackingStepLocation else {
             self.trackingStepLocation = nil
+            return
         }
+        
+        app?.history.addTrackingInformation(trackingLocation, self.barometer)
+        self.lastInfoDate = Date()
     }
     
     func refreshCloserMountain() {
