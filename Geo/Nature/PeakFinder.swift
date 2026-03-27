@@ -105,8 +105,10 @@ class PeakFinder: ObservableObject {
                     to: coordinate
                 )
                 
-                // Apple Maps may not provide altitude for POIs, estimate from placemark
-                let altitude = peakLocation.altitude > 0 ? peakLocation.altitude : location.altitude + 100
+                // Apple Maps often doesn't provide altitude for POIs.
+                // Fall back to the user's own altitude so the marker sits at the
+                // horizon rather than at an arbitrary fixed offset.
+                let altitude = peakLocation.altitude > 10 ? peakLocation.altitude : location.altitude
                 
                 return NearbyPeak(
                     name: name,

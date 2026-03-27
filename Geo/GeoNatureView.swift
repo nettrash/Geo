@@ -7,37 +7,94 @@
 
 import SwiftUI
 import AVFoundation
+import ARKit
 import CoreLocation
-import Combine
+import simd
 
 struct GeoNatureView: View {
     var app: GeoAppDelegate?
     
     @StateObject private var peakFinder = PeakFinder()
     @StateObject private var motionManager = DeviceMotionManager()
+    @StateObject private var occlusionManager = AROcclusionManager()
+    @StateObject private var sessionManager = ARSessionManager()
     @State private var cameraPermissionGranted = false
     @State private var showPermissionAlert = false
     @State private var historyPoints: [ARHistoryPoint] = []
     
-    /// Timer that fires every 5 seconds to refresh data
+    /// Stable location snapshot passed to the overlay.
+    /// Only updated when the user moves more than 5 m, preventing GPS jitter
+    /// from causing PeakOverlayView to re-render and toggle edge-case markers.
+    @State private var overlayLocation: CLLocation?
+    
+    /// Timer that fires every 5 seconds to refresh peak/history data
     private let refreshTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    
+    /// Timer that fires every 0.5 seconds to run occlusion checks
+    private let occlusionTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+    
+    /// The best available distance (meters) to the surface the camera is pointing at.
+    /// Priority: LiDAR depth → ARKit raycast → plane intersection.
+    private var distanceToWall: Float? {
+        sessionManager.centerDepth ?? sessionManager.raycastDistance ?? occlusionManager.wallDistance
+    }
+    
+    /// Label for the active distance source (shown in the top bar for debugging)
+    private var distanceSource: String? {
+        if sessionManager.centerDepth != nil { return "LiDAR" }
+        if sessionManager.raycastDistance != nil { return "Raycast" }
+        if occlusionManager.wallDistance != nil { return "Plane" }
+        return nil
+    }
     
     var body: some View {
         ZStack {
             if cameraPermissionGranted {
                 // AR Camera background
-                ARCameraView()
+                ARCameraView(occlusionManager: occlusionManager, sessionManager: sessionManager)
                     .ignoresSafeArea()
                 
-                // Peak and history markers overlay
+                // Peak & history point markers positioned via GPS→ENU→ARKit projection
                 PeakOverlayView(
                     peaks: peakFinder.peaks,
                     historyPoints: historyPoints,
-                    userLocation: app?.location?.location,
-                    heading: motionManager.heading,
-                    pitch: motionManager.pitch
+                    userLocation: overlayLocation,
+                    sessionManager: sessionManager,
+                    occludedIDs: occlusionManager.occludedIDs
                 )
                 .ignoresSafeArea()
+                .allowsHitTesting(false)
+                
+                // Center crosshair + wall distance
+                VStack(spacing: 6) {
+                    Spacer()
+                    
+                    // Crosshair
+                    Image(systemName: "plus")
+                        .font(.system(size: 28, weight: .ultraLight))
+                        .foregroundStyle(.white.opacity(0.7))
+                    
+                    // Distance label
+                    if let dist = distanceToWall {
+                        Text(formatDistance(dist))
+                            .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.black.opacity(0.55))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else {
+                        Text("--")
+                            .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.black.opacity(0.35))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    
+                    Spacer()
+                }
                 
                 // Top info bar
                 VStack {
@@ -53,6 +110,24 @@ struct GeoNatureView: View {
                         Text(verbatim: "\(historyPoints.count)")
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.white)
+                        
+                        if occlusionManager.isSupported {
+                            Image(systemName: "cube.transparent")
+                                .foregroundStyle(.green)
+                                .font(.system(size: 12))
+                            Text(verbatim: "LiDAR")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(.green)
+                        }
+                        
+                        if let source = distanceSource {
+                            Image(systemName: "sensor.tag.radiowaves.forward")
+                                .foregroundStyle(.cyan)
+                                .font(.system(size: 12))
+                            Text(verbatim: source)
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(.cyan)
+                        }
                         
                         Spacer()
                         
@@ -116,9 +191,27 @@ struct GeoNatureView: View {
         }
         .onReceive(refreshTimer) { _ in
             if cameraPermissionGranted {
+                refreshOverlayLocationIfNeeded()
                 searchForPeaks()
                 loadHistoryPoints()
             }
+        }
+        .onReceive(occlusionTimer) { _ in
+            if cameraPermissionGranted {
+                runOcclusionCheck()
+            }
+        }
+    }
+    
+    // MARK: - Helpers
+    
+    private func formatDistance(_ meters: Float) -> String {
+        if meters < 1.0 {
+            return String(format: "%.0f cm", meters * 100)
+        } else if meters < 10.0 {
+            return String(format: "%.2f m", meters)
+        } else {
+            return String(format: "%.1f m", meters)
         }
     }
     
@@ -157,8 +250,19 @@ struct GeoNatureView: View {
     
     private func startAR() {
         motionManager.start()
+        refreshOverlayLocationIfNeeded()
         searchForPeaks()
         loadHistoryPoints()
+        occlusionManager.isSupported = ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
+    }
+    
+    /// Update the overlay location only when the user has moved more than 5 m.
+    /// This prevents GPS jitter from re-triggering PeakOverlayView renders
+    /// and causing edge-case markers to toggle visibility.
+    private func refreshOverlayLocationIfNeeded() {
+        guard let newLoc = app?.location?.location else { return }
+        if let current = overlayLocation, newLoc.distance(from: current) < 5.0 { return }
+        overlayLocation = newLoc
     }
     
     private func searchForPeaks() {
@@ -169,19 +273,14 @@ struct GeoNatureView: View {
             }
             return
         }
-        
         Task {
-            await peakFinder.searchPeaks(
-                near: location,
-                mountainsData: app?.mountainsData
-            )
+            await peakFinder.searchPeaks(near: location, mountainsData: app?.mountainsData)
         }
     }
     
     private func loadHistoryPoints() {
         guard let location = app?.location?.location,
               let history = app?.history else {
-            // Retry if data isn't ready yet
             Task {
                 try? await Task.sleep(for: .seconds(2))
                 loadHistoryPoints()
@@ -189,27 +288,21 @@ struct GeoNatureView: View {
             return
         }
         
-        // Refresh history data
         history.Refresh()
         
-        // Convert HistoryItem to ARHistoryPoint, filtering to those within 1km
         let maxDistance: CLLocationDistance = 1000
         
         historyPoints = history.historyItems
-            .suffix(50) // last 50 history items at most
+            .suffix(200)
             .compactMap { item -> ARHistoryPoint? in
                 let itemLocation = CLLocation(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
                 let distance = location.distance(from: itemLocation)
-                
-                guard distance <= maxDistance else { return nil }
-                // Skip items too close (< 1m) — they'd overlap with current position
-                guard distance > 1 else { return nil }
+                guard distance <= maxDistance, distance > 1 else { return nil }
                 
                 let itemBearing = bearing(
                     from: location.coordinate,
                     to: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
                 )
-                
                 return ARHistoryPoint(
                     date: item.recordDate ?? Date(),
                     coordinate: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude),
@@ -223,15 +316,49 @@ struct GeoNatureView: View {
             }
     }
     
-    /// Calculate bearing (in degrees) from one coordinate to another
+    private func runOcclusionCheck() {
+        guard let userLoc = app?.location?.location else { return }
+        
+        var targets: [AROcclusionManager.OcclusionTarget] = []
+        
+        // Build ENU world positions for peaks
+        for peak in peakFinder.peaks {
+            let enu = gpsToENU(from: userLoc, to: peak.coordinate, toAlt: peak.altitude)
+            targets.append(.init(id: peak.id, worldPosition: enu))
+        }
+        
+        // Build ENU world positions for history points
+        for point in historyPoints {
+            let enu = gpsToENU(from: userLoc, to: point.coordinate, toAlt: point.gpsAltitude)
+            targets.append(.init(id: point.id, worldPosition: enu))
+        }
+        
+        occlusionManager.checkOcclusion(targets: targets)
+    }
+    
+    /// Convert GPS coordinate + altitude to ARKit world space (ENU) relative to user
+    private func gpsToENU(from userLoc: CLLocation, to coord: CLLocationCoordinate2D, toAlt: Double) -> simd_float3 {
+        let latRef = userLoc.coordinate.latitude * .pi / 180
+        let metersPerDegreeLat = 111_320.0
+        let metersPerDegreeLon = 111_320.0 * cos(latRef)
+        
+        let dLat = coord.latitude - userLoc.coordinate.latitude
+        let dLon = coord.longitude - userLoc.coordinate.longitude
+        
+        let north = dLat * metersPerDegreeLat
+        let east = dLon * metersPerDegreeLon
+        let up = toAlt - userLoc.altitude
+        
+        // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North
+        return simd_float3(Float(east), Float(up), Float(-north))
+    }
+    
     private func bearing(from start: CLLocationCoordinate2D, to end: CLLocationCoordinate2D) -> Double {
         let lat1 = start.latitude * .pi / 180
         let lat2 = end.latitude * .pi / 180
         let dLon = (end.longitude - start.longitude) * .pi / 180
-        
         let y = sin(dLon) * cos(lat2)
         let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
-        
         var b = atan2(y, x) * 180 / .pi
         if b < 0 { b += 360 }
         return b
