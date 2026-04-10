@@ -28,6 +28,10 @@ class AROcclusionManager: ObservableObject {
     /// Computed from detected planes (all devices) every frame.
     @Published var wallDistance: Float?
     
+    /// Whether the AR session has collected enough scene data for reliable occlusion.
+    /// Starts false; becomes true after meshes/planes are detected.
+    @Published var isSceneReady: Bool = false
+    
     /// Collected mesh anchors from ARKit scene reconstruction
     private var meshAnchors: [ARMeshAnchor] = []
     
@@ -44,11 +48,35 @@ class AROcclusionManager: ObservableObject {
     /// Mesh geometry beyond this distance is ignored (room-scale only).
     private let maxMeshOcclusionDistance: Float = 30.0
     
+    /// Time when AR session was started (for fallback scene-ready timeout)
+    private var sessionStartTime: Date?
+    
+    // MARK: - Lifecycle
+    
+    /// Call this when the AR session starts
+    func sessionDidStart() {
+        sessionStartTime = Date()
+        isSceneReady = false
+        
+        // Fallback: mark scene as ready after 3 seconds even if no planes detected
+        // (e.g., outdoors with no nearby walls, or very sparse environments)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            if !isSceneReady {
+                isSceneReady = true
+            }
+        }
+    }
+    
     // MARK: - Mesh Updates
     
     /// Called when ARSession adds or updates mesh anchors
     func updateMeshAnchors(_ anchors: [ARMeshAnchor]) {
         meshAnchors = anchors
+        // Scene is ready once we have mesh data (LiDAR devices)
+        if !meshAnchors.isEmpty && !isSceneReady {
+            isSceneReady = true
+        }
     }
     
     /// Called when ARSession removes mesh anchors
@@ -60,6 +88,10 @@ class AROcclusionManager: ObservableObject {
     /// Called when ARSession adds or updates plane anchors
     func updatePlaneAnchors(_ anchors: [ARPlaneAnchor]) {
         planeAnchors = anchors
+        // Scene is ready once we have vertical planes (all devices)
+        if planeAnchors.contains(where: { $0.alignment == .vertical }) && !isSceneReady {
+            isSceneReady = true
+        }
     }
     
     /// Called when ARSession removes plane anchors
@@ -189,14 +221,18 @@ class AROcclusionManager: ObservableObject {
                 guard dist > 0.1 else { continue }
                 
                 // 1. Check against detected wall planes (works on ALL devices)
-                if Self.isOccludedByPlanes(
-                    cameraPos: cameraPos,
-                    targetPos: target.worldPosition,
-                    distance: dist,
-                    planes: planes
-                ) {
-                    newOccluded.insert(target.id)
-                    continue
+                // Only apply plane occlusion to nearby points (<30m) to avoid false positives
+                // with distant history points and far peaks
+                if dist < maxDist {
+                    if Self.isOccludedByPlanes(
+                        cameraPos: cameraPos,
+                        targetPos: target.worldPosition,
+                        distance: dist,
+                        planes: planes
+                    ) {
+                        newOccluded.insert(target.id)
+                        continue
+                    }
                 }
                 
                 // 2. Check against mesh geometry (LiDAR only)
@@ -277,13 +313,14 @@ class AROcclusionManager: ObservableObject {
             // Hit must be between camera and target
             guard t > 0.1 && t < distance - 0.1 else { continue }
             
-            // Check if hit falls within the plane extent (+ margin)
+            // Check if hit falls within the plane extent (+ small margin)
             let hitWorld = cameraPos + dir * t
             let invTransform = plane.transform.inverse
             let hitLocal = invTransform * simd_float4(hitWorld.x, hitWorld.y, hitWorld.z, 1.0)
             
-            let halfX = plane.width / 2 + 0.3
-            let halfZ = plane.height / 2 + 0.3
+            // Reduced margin from 0.3 to 0.1 to reduce false positives
+            let halfX = plane.width / 2 + 0.1
+            let halfZ = plane.height / 2 + 0.1
             if abs(hitLocal.x) <= halfX && abs(hitLocal.z) <= halfZ {
                 return true
             }

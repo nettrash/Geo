@@ -60,7 +60,7 @@ struct GeoNatureView: View {
                     historyPoints: historyPoints,
                     userLocation: overlayLocation,
                     sessionManager: sessionManager,
-                    occludedIDs: occlusionManager.occludedIDs
+                    occlusionManager: occlusionManager
                 )
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
@@ -127,6 +127,17 @@ struct GeoNatureView: View {
                             Text(verbatim: source)
                                 .font(.system(size: 11, weight: .medium, design: .rounded))
                                 .foregroundStyle(.cyan)
+                        }
+                        
+                        // Scene initialization indicator
+                        if !occlusionManager.isSceneReady {
+                            Image(systemName: "rays")
+                                .foregroundStyle(.yellow)
+                                .font(.system(size: 12))
+                                .symbolEffect(.pulse)
+                            Text("Scanning")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(.yellow)
                         }
                         
                         Spacer()
@@ -254,6 +265,7 @@ struct GeoNatureView: View {
         searchForPeaks()
         loadHistoryPoints()
         occlusionManager.isSupported = ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
+        occlusionManager.sessionDidStart()
     }
     
     /// Update the overlay location only when the user has moved more than 5 m.
@@ -336,7 +348,8 @@ struct GeoNatureView: View {
         occlusionManager.checkOcclusion(targets: targets)
     }
     
-    /// Convert GPS coordinate + altitude to ARKit world space (ENU) relative to user
+    /// Convert GPS coordinate + altitude to ARKit world space (ENU) relative to user.
+    /// Includes Earth curvature compensation for distant points (>5km).
     private func gpsToENU(from userLoc: CLLocation, to coord: CLLocationCoordinate2D, toAlt: Double) -> simd_float3 {
         let latRef = userLoc.coordinate.latitude * .pi / 180
         let metersPerDegreeLat = 111_320.0
@@ -347,7 +360,14 @@ struct GeoNatureView: View {
         
         let north = dLat * metersPerDegreeLat
         let east = dLon * metersPerDegreeLon
-        let up = toAlt - userLoc.altitude
+        
+        // Earth curvature correction for distant points
+        let horizontalDist = sqrt(north * north + east * east)
+        let earthRadius = 6_371_000.0 // meters
+        let curvatureDrop = (horizontalDist * horizontalDist) / (2.0 * earthRadius)
+        
+        // Apply curvature correction for points >5km away
+        let up = (toAlt - userLoc.altitude) - (horizontalDist > 5000 ? curvatureDrop : 0)
         
         // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North
         return simd_float3(Float(east), Float(up), Float(-north))

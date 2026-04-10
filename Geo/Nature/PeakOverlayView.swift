@@ -14,12 +14,22 @@ import simd
 /// with the camera feed. Points are locked to their real-world GPS positions.
 ///
 /// Points whose IDs appear in `occludedIDs` are hidden (behind real-world geometry).
+/// Nearby points (<100m) are also hidden until `isSceneReady` to prevent briefly
+/// showing points that should be occluded before ARKit has scanned the environment.
 struct PeakOverlayView: View {
     let peaks: [NearbyPeak]
     let historyPoints: [ARHistoryPoint]
     let userLocation: CLLocation?
     @ObservedObject var sessionManager: ARSessionManager
-    let occludedIDs: Set<UUID> // IDs of points occluded by room geometry
+    @ObservedObject var occlusionManager: AROcclusionManager
+    
+    /// Distance threshold (meters) below which points wait for scene reconstruction
+    private let nearbyThreshold: Double = 100.0
+    
+    /// Convenience accessor for occluded IDs
+    private var occludedIDs: Set<UUID> {
+        occlusionManager.occludedIDs
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -28,7 +38,11 @@ struct PeakOverlayView: View {
             
             // History points (rendered first, behind peaks)
             ForEach(historyPoints) { point in
-                if !occludedIDs.contains(point.id) {
+                // Only show if: not occluded AND (far away OR scene is ready)
+                let isNearby = point.distance < nearbyThreshold
+                let shouldShow = !occludedIDs.contains(point.id) && (!isNearby || occlusionManager.isSceneReady)
+                
+                if shouldShow {
                     if let screenPos = projectGPSPoint(
                         coordinate: point.coordinate,
                         altitude: point.gpsAltitude,
@@ -46,7 +60,11 @@ struct PeakOverlayView: View {
             
             // Peaks (rendered on top)
             ForEach(peaks) { peak in
-                if !occludedIDs.contains(peak.id) {
+                // Only show if: not occluded AND (far away OR scene is ready)
+                let isNearby = peak.distance < nearbyThreshold
+                let shouldShow = !occludedIDs.contains(peak.id) && (!isNearby || occlusionManager.isSceneReady)
+                
+                if shouldShow {
                     if let screenPos = projectGPSPoint(
                         coordinate: peak.coordinate,
                         altitude: peak.altitude,
@@ -111,6 +129,7 @@ struct PeakOverlayView: View {
     }
     
     /// Convert two GPS coordinates to a local East-North-Up (ENU) offset in meters.
+    /// Includes Earth curvature compensation for distant points (>5km).
     private func gpsToENU(
         from fromCoord: CLLocationCoordinate2D, fromAlt: Double,
         to toCoord: CLLocationCoordinate2D, toAlt: Double
@@ -126,7 +145,16 @@ struct PeakOverlayView: View {
         
         let north = dLat * metersPerDegreeLat
         let east = dLon * metersPerDegreeLon
-        let up = toAlt - fromAlt
+        
+        // Earth curvature correction for distant points
+        // Without this, distant peaks appear higher than they actually are
+        let horizontalDist = sqrt(north * north + east * east)
+        let earthRadius = 6_371_000.0 // meters
+        let curvatureDrop = (horizontalDist * horizontalDist) / (2.0 * earthRadius)
+        
+        // Apply curvature correction only for distant points (>5km)
+        // This makes the horizon and distant peaks more realistic
+        let up = (toAlt - fromAlt) - (horizontalDist > 5000 ? curvatureDrop : 0)
         
         return (east, north, up)
     }
