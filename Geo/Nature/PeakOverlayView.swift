@@ -38,11 +38,7 @@ struct PeakOverlayView: View {
             
             // History points (rendered first, behind peaks)
             ForEach(historyPoints) { point in
-                // Only show if: not occluded AND (far away OR scene is ready)
-                let isNearby = point.distance < nearbyThreshold
-                let shouldShow = !occludedIDs.contains(point.id) && (!isNearby || occlusionManager.isSceneReady)
-                
-                if shouldShow {
+                if true {
                     if let screenPos = projectGPSPoint(
                         coordinate: point.coordinate,
                         altitude: point.gpsAltitude,
@@ -60,11 +56,7 @@ struct PeakOverlayView: View {
             
             // Peaks (rendered on top)
             ForEach(peaks) { peak in
-                // Only show if: not occluded AND (far away OR scene is ready)
-                let isNearby = peak.distance < nearbyThreshold
-                let shouldShow = !occludedIDs.contains(peak.id) && (!isNearby || occlusionManager.isSceneReady)
-                
-                if shouldShow {
+                if true {
                     if let screenPos = projectGPSPoint(
                         coordinate: peak.coordinate,
                         altitude: peak.altitude,
