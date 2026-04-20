@@ -207,6 +207,11 @@ struct GeoNatureView: View {
                 loadHistoryPoints()
             }
         }
+        .onReceive(occlusionTimer) { _ in
+            if cameraPermissionGranted {
+                runOcclusionCheck()
+            }
+        }
     }
     
     // MARK: - Helpers

@@ -38,7 +38,7 @@ struct PeakOverlayView: View {
             
             // History points (rendered first, behind peaks)
             ForEach(historyPoints) { point in
-                if true {
+                if !occludedIDs.contains(point.id) {
                     if let screenPos = projectGPSPoint(
                         coordinate: point.coordinate,
                         altitude: point.gpsAltitude,
@@ -56,7 +56,7 @@ struct PeakOverlayView: View {
             
             // Peaks (rendered on top)
             ForEach(peaks) { peak in
-                if true {
+                if !occludedIDs.contains(peak.id) {
                     if let screenPos = projectGPSPoint(
                         coordinate: peak.coordinate,
                         altitude: peak.altitude,
@@ -97,12 +97,16 @@ struct PeakOverlayView: View {
             to: coordinate, toAlt: altitude
         )
         
-        // 2. ENU → ARKit world space
+        // 2. ENU → ARKit world space, offset by the camera's current world position.
+        // The viewMatrix transforms ARKit world-space points (origin = session start).
+        // Without the offset the direction to the peak drifts by however much
+        // the camera has moved since the session began — very visible for nearby points.
         // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North
+        let camCol = sessionManager.cameraTransform.columns.3
         let worldPoint = simd_float3(
-            Float(enu.east),
-            Float(enu.up),
-            Float(-enu.north) // North maps to −Z
+            Float(enu.east)  + camCol.x,
+            Float(enu.up)    + camCol.y,
+            Float(-enu.north) + camCol.z
         )
         
         // 3. Project to screen via AR camera matrices
