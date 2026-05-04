@@ -47,6 +47,18 @@ class AROcclusionManager: ObservableObject {
     /// Maximum distance (meters) to consider mesh hits for occlusion.
     /// Mesh geometry beyond this distance is ignored (room-scale only).
     private let maxMeshOcclusionDistance: Float = 30.0
+
+    /// Maximum target distance (meters) for which we run *any* occlusion
+    /// check. Anything further away is by definition outdoors-scale —
+    /// LiDAR meshes / detected planes can't tell us anything useful
+    /// about it and would only generate false positives.
+    private let maxOcclusionTargetDistance: Float = 200.0
+
+    /// When `true`, the user is judged to be outdoors (e.g. via large
+    /// GPS horizontal accuracy or many distant peaks) and plane-based
+    /// occlusion is skipped entirely. Mesh-based occlusion still runs
+    /// because it's much more reliable when geometry is actually close.
+    @MainActor var isOutdoor: Bool = false
     
     /// Time when AR session was started (for fallback scene-ready timeout)
     private var sessionStartTime: Date?
@@ -188,22 +200,27 @@ class AROcclusionManager: ObservableObject {
     /// Uses detected planes (ALL devices) and mesh raycasting (LiDAR only).
     func checkOcclusion(targets: [OcclusionTarget]) {
         guard !isRaycasting else { return }
-        
+
         let hasMesh = isSupported && !meshAnchors.isEmpty
-        let hasPlanes = !planeAnchors.isEmpty
-        
+        // Plane occlusion is disabled outdoors — vertical "walls" detected
+        // in open environments are usually noise.
+        let hasPlanes = !planeAnchors.isEmpty && !isOutdoor
+
         guard hasMesh || hasPlanes else {
             if !occludedIDs.isEmpty { occludedIDs = [] }
             return
         }
-        
+
         // Snapshot current state for background work
         let anchors = meshAnchors
         let camera = cameraTransform
         let maxDist = maxMeshOcclusionDistance
-        let planes: [PlaneSnapshot] = planeAnchors
-            .filter { $0.alignment == .vertical }
-            .map { PlaneSnapshot(transform: $0.transform, width: $0.planeExtent.width, height: $0.planeExtent.height) }
+        let maxTargetDist = maxOcclusionTargetDistance
+        let planes: [PlaneSnapshot] = hasPlanes
+            ? planeAnchors
+                .filter { $0.alignment == .vertical }
+                .map { PlaneSnapshot(transform: $0.transform, width: $0.planeExtent.width, height: $0.planeExtent.height) }
+            : []
         isRaycasting = true
         
         raycastQueue.async { [weak self] in
@@ -216,10 +233,14 @@ class AROcclusionManager: ObservableObject {
             for target in targets {
                 let toTarget = target.worldPosition - cameraPos
                 let dist = length(toTarget)
-                
+
                 // Skip very close points
                 guard dist > 0.1 else { continue }
-                
+                // Skip targets that are clearly out of room-scale range —
+                // mesh / plane occlusion can't say anything useful about
+                // a peak 30 km away.
+                guard dist <= maxTargetDist else { continue }
+
                 // 1. Check against detected wall planes (works on ALL devices)
                 // Only apply plane occlusion to nearby points (<30m) to avoid false positives
                 // with distant history points and far peaks

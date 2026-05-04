@@ -130,20 +130,21 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         }
     }
     
-    /// Writes the latest combined barometer + GPS data to the shared App Group UserDefaults.
+    /// Writes the latest combined barometer + GPS data to the shared App
+    /// Group store, appends it to the rolling buffer for back-fill, and
+    /// pushes the same snapshot over WatchConnectivity if a Watch is paired.
     @MainActor private func pushCombinedDataToWidget() {
-        if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") {
-            let info = InformationToken(
-                recordDate: Date(),
-                gpsAltitude: self.location?.altitude ?? 0.0,
-                gpsSpeed: max(self.location?.speed ?? 0.0, 0.0),
-                barPreassure: self.barometer?.pressure ?? 0.0,
-                barAltitude: self.barometer?.height ?? 0.0
-            )
-            if let encoded = try? JSONEncoder().encode(info) {
-                userDefaults.set(encoded, forKey: "ActualInformation")
-            }
-        }
+        let info = InformationToken(
+            recordDate: Date(),
+            gpsAltitude: self.location?.altitude ?? 0.0,
+            gpsSpeed: max(self.location?.speed ?? 0.0, 0.0),
+            barPreassure: self.barometer?.pressure ?? 0.0,
+            barAltitude: self.barometer?.height ?? 0.0,
+            gpsLatitude: self.location?.coordinate.latitude ?? 0.0,
+            gpsLongitude: self.location?.coordinate.longitude ?? 0.0
+        )
+        SharedSnapshotStore.write(info)
+        self.app?.connectivity?.sendCurrentSnapshot(info)
         self.app?.reloadWidgetIfNeeded()
     }
     
@@ -152,7 +153,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             self.stepLocation = nil
             return
         }
-        
+
         let controller = PersistenceController.shared
         let historyItem = HistoryItem(context: controller.container.viewContext)
         historyItem.recordDate = Date()
@@ -162,15 +163,18 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         historyItem.gpsLongitude = step.coordinate.longitude
         historyItem.gpsAltitude = step.altitude
         historyItem.gpsVelocity = max(step.speed, 0)
-        
+
         do {
             try controller.container.viewContext.save()
         } catch {
             let nsError = error as NSError
-            print("Error saving history: \(nsError), \(nsError.userInfo)")
+            AppLog.location.error("Error saving history: \(String(describing: nsError))")
             controller.container.viewContext.rollback()
             return
         }
+        // Mark dirty so the next read refreshes; don't trigger a fetch
+        // here — the AR view's poll loop will pick it up.
+        app?.history.markDirty()
         app?.history.Refresh()
         self.lastInfoDate = Date()
     }

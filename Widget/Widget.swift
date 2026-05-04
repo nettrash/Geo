@@ -11,53 +11,47 @@ import CoreMotion
 
 struct Provider: AppIntentTimelineProvider {
     
-    /// Reads the latest data from the shared App Group UserDefaults.
+    /// Reads the latest data from the shared App Group store.
     private func readLatestInformation() -> InformationToken? {
-        guard let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo"),
-              let data = userDefaults.object(forKey: "ActualInformation") as? Data,
-              let info = try? JSONDecoder().decode(InformationToken.self, from: data) else {
-            return nil
-        }
-        return info
+        SharedSnapshotStore.readCurrent()
     }
-    
-    /// Reads a fresh barometer sample, merges with last known GPS from UserDefaults,
-    /// and saves the combined result back to UserDefaults.
+
+    /// Reads a fresh barometer sample, merges with the last known GPS
+    /// snapshot, and persists the combined result through
+    /// `SharedSnapshotStore` (which also appends to the ring buffer that
+    /// the main app drains on launch).
     private func readFreshBarometer() async -> InformationToken? {
         guard CMAltimeter.isRelativeAltitudeAvailable() else { return nil }
-        
+
         return await withCheckedContinuation { continuation in
             let altimeter = CMAltimeter()
-            altimeter.startRelativeAltitudeUpdates(to: .main) { data, error in
+            altimeter.startRelativeAltitudeUpdates(to: .main) { data, _ in
                 altimeter.stopRelativeAltitudeUpdates()
-                
+
                 guard let data = data else {
                     continuation.resume(returning: nil)
                     return
                 }
-                
+
                 let pressure = data.pressure.doubleValue  // kPa
                 let P0: Double = 101.325
                 let h: Double = log(P0 / pressure) / 0.00012
-                
-                // Preserve last known GPS data
+
+                // Preserve last known GPS data (including coordinates so
+                // the main app can backfill complete history items).
                 let previous = self.readLatestInformation()
-                
+
                 let info = InformationToken(
                     recordDate: Date(),
                     gpsAltitude: previous?.gpsAltitude ?? 0.0,
                     gpsSpeed: previous?.gpsSpeed ?? 0.0,
                     barPreassure: pressure,
-                    barAltitude: h
+                    barAltitude: h,
+                    gpsLatitude: previous?.gpsLatitude ?? 0.0,
+                    gpsLongitude: previous?.gpsLongitude ?? 0.0
                 )
-                
-                // Save back to UserDefaults so the data stays fresh
-                if let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo"),
-                   let encoded = try? JSONEncoder().encode(info) {
-                    userDefaults.set(encoded, forKey: "ActualInformation")
-                    userDefaults.synchronize()
-                }
-                
+
+                SharedSnapshotStore.write(info)
                 continuation.resume(returning: info)
             }
         }

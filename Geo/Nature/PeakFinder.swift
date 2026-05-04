@@ -15,10 +15,19 @@ import MapKit
 class PeakFinder: ObservableObject {
     
     @Published var peaks: [NearbyPeak] = []
-    
+
     private let searchRadius: CLLocationDistance = 5000 // 5 km
     private var lastSearchLocation: CLLocation?
     private let minimumSearchDistance: CLLocationDistance = 500 // re-search after moving 500m
+
+    /// Maximum number of peaks we keep in the merged set. Older / further
+    /// entries are evicted first when this is exceeded.
+    private let maxRetainedPeaks: Int = 200
+
+    /// Time after which a peak that has not been re-confirmed by a search
+    /// gets dropped, even if the user hasn't moved. Stops stale results
+    /// from accumulating if the user sits in one place for hours.
+    private let peakTTL: TimeInterval = 60 * 60
     
     /// Search for peaks near the given location using all sources in parallel
     func searchPeaks(near location: CLLocation, mountainsData: MountainData?) async {
@@ -28,21 +37,21 @@ class PeakFinder: ObservableObject {
            !peaks.isEmpty {
             return
         }
-        
+
         lastSearchLocation = location
-        
+
         // Run Apple Maps and OpenStreetMap searches in parallel
         async let applePeaks = searchAppleMaps(near: location)
         async let osmPeaks = searchOpenStreetMap(near: location)
-        
+
         let knownPeaks = findKnownMountains(near: location, mountainsData: mountainsData)
-        
+
         var foundPeaks: [NearbyPeak] = []
-        
+
         // 1. Start with Apple Maps results
         let appleResults = await applePeaks
         foundPeaks.append(contentsOf: appleResults)
-        
+
         // 2. Merge OpenStreetMap results (de-duplicate)
         let osmResults = await osmPeaks
         for osmPeak in osmResults {
@@ -50,18 +59,50 @@ class PeakFinder: ObservableObject {
                 foundPeaks.append(osmPeak)
             }
         }
-        
+
         // 3. Merge known mountains from app data
         for knownPeak in knownPeaks {
             if !isDuplicate(knownPeak, in: foundPeaks) {
                 foundPeaks.append(knownPeak)
             }
         }
-        
-        // Sort by distance
-        foundPeaks.sort { $0.distance < $1.distance }
-        
-        peaks = foundPeaks
+
+        // Merge with the previous result set so a transient empty / partial
+        // response from MapKit or Overpass doesn't wipe peaks that are still
+        // valid.
+        var byID: [UUID: NearbyPeak] = [:]
+        for p in peaks { byID[p.id] = p }
+        for p in foundPeaks { byID[p.id] = p } // fresh data wins on duplicates
+
+        let dropRadius = searchRadius * 2 // hysteresis to avoid flicker at the edge
+        let now = Date()
+        let ttl = peakTTL
+
+        // Recompute distance/bearing for *every* surviving peak against
+        // the current user location so visual fades stay accurate.
+        var recomputed: [NearbyPeak] = []
+        recomputed.reserveCapacity(byID.count)
+        for var peak in byID.values {
+            let pl = CLLocation(latitude: peak.coordinate.latitude,
+                                longitude: peak.coordinate.longitude)
+            let d = location.distance(from: pl)
+            // Drop entries we've moved well past, or that haven't been
+            // re-confirmed by a search within the TTL window.
+            guard d <= dropRadius else { continue }
+            guard now.timeIntervalSince(peak.lastSeenAt) <= ttl else { continue }
+
+            peak.distance = d
+            peak.bearing = bearing(from: location.coordinate, to: peak.coordinate)
+            recomputed.append(peak)
+        }
+
+        // Cap the total — keep the closest ones first.
+        recomputed.sort { $0.distance < $1.distance }
+        if recomputed.count > maxRetainedPeaks {
+            recomputed = Array(recomputed.prefix(maxRetainedPeaks))
+        }
+
+        peaks = recomputed
     }
     
     /// Check if a peak is a duplicate of any existing peak (within 200m)
@@ -119,53 +160,57 @@ class PeakFinder: ObservableObject {
                 )
             }
         } catch {
-            print("Apple Maps peak search error: \(error)")
+            AppLog.ar.error("Apple Maps peak search error: \(String(describing: error))")
             return []
         }
     }
     
     /// Search OpenStreetMap via Overpass API for peaks (natural=peak)
-    /// Free, no API key required, excellent worldwide peak coverage
+    /// Free, no API key required, excellent worldwide peak coverage.
+    /// Privacy: lat/lon are rounded to ~3 decimals (~110 m at the equator)
+    /// before being sent so the precise location of the device isn't
+    /// disclosed to a third-party API; the search radius (5 km) is far
+    /// larger than that quantisation error.
     private func searchOpenStreetMap(near location: CLLocation) async -> [NearbyPeak] {
-        let lat = location.coordinate.latitude
-        let lon = location.coordinate.longitude
+        let qLat = (location.coordinate.latitude * 1000).rounded() / 1000
+        let qLon = (location.coordinate.longitude * 1000).rounded() / 1000
         let radiusMeters = Int(searchRadius)
-        
+
         // Overpass QL query: find all nodes tagged as natural=peak within radius
         let query = """
         [out:json][timeout:10];
-        node["natural"="peak"](around:\(radiusMeters),\(lat),\(lon));
+        node["natural"="peak"](around:\(radiusMeters),\(qLat),\(qLon));
         out body;
         """
-        
+
         guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "https://overpass-api.de/api/interpreter?data=\(encodedQuery)") else {
             return []
         }
-        
+
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
-            
+
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
                 return []
             }
-            
+
             let result = try JSONDecoder().decode(OverpassResponse.self, from: data)
-            
+
             return result.elements.compactMap { element -> NearbyPeak? in
                 guard let name = element.tags?.name, !name.isEmpty else { return nil }
-                
+
                 let peakLocation = CLLocation(latitude: element.lat, longitude: element.lon)
                 let distance = location.distance(from: peakLocation)
-                
+
                 guard distance <= searchRadius else { return nil }
-                
+
                 let peakBearing = bearing(
                     from: location.coordinate,
                     to: CLLocationCoordinate2D(latitude: element.lat, longitude: element.lon)
                 )
-                
+
                 // OSM peaks often have elevation in tags
                 let altitude: Double
                 if let eleString = element.tags?.ele, let ele = Double(eleString) {
@@ -173,7 +218,7 @@ class PeakFinder: ObservableObject {
                 } else {
                     altitude = location.altitude + 100
                 }
-                
+
                 return NearbyPeak(
                     name: name,
                     coordinate: CLLocationCoordinate2D(latitude: element.lat, longitude: element.lon),
@@ -183,7 +228,7 @@ class PeakFinder: ObservableObject {
                 )
             }
         } catch {
-            print("OpenStreetMap peak search error: \(error)")
+            AppLog.ar.error("OpenStreetMap peak search error: \(String(describing: error))")
             return []
         }
     }

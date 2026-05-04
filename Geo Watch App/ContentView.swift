@@ -84,6 +84,14 @@ struct ContentView: View {
         }
         .padding()
         .onAppear {
+            // Show whatever the app delegate already restored from the shared
+            // store so the UI doesn't flash zeros on launch while we wait for
+            // the first live barometer sample.
+            self.barometerInformationPressure = self.appDelegate.barometerInformationPressure
+            self.barometerInformationDelta = self.appDelegate.barometerInformationDelta
+            self.barometerInformationHeight = self.appDelegate.barometerInformationHeight
+            self.barometerInformationEverest = self.appDelegate.barometerInformationEverest
+
             self.appDelegate.registerCallback { pressure, delta, height, everest in
                 self.barometerInformationPressure = pressure
                 self.barometerInformationDelta = delta

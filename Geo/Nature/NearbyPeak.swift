@@ -14,11 +14,19 @@ struct NearbyPeak: Identifiable, Equatable {
     let name: String
     let coordinate: CLLocationCoordinate2D
     let altitude: Double // meters
-    let distance: Double // meters from user
-    let bearing: Double  // degrees from north (0-360)
-    
+    /// Distance and bearing are derived from the *current* user location.
+    /// They become `var` so the merge step in PeakFinder can refresh them
+    /// without throwing away the marker's stable identity.
+    var distance: Double // meters from user
+    var bearing: Double  // degrees from north (0-360)
+
+    /// Wall-clock time at which this peak was last seen by a search.
+    /// Used to expire entries that haven't been re-confirmed in a while.
+    var lastSeenAt: Date
+
     init(name: String, coordinate: CLLocationCoordinate2D,
-         altitude: Double, distance: Double, bearing: Double) {
+         altitude: Double, distance: Double, bearing: Double,
+         lastSeenAt: Date = Date()) {
         // Stable UUID derived from the peak's coordinate so the same peak keeps
         // its identity across refreshes, preventing marker flash and occlusion resets.
         let latBits = coordinate.latitude.bitPattern
@@ -38,6 +46,7 @@ struct NearbyPeak: Identifiable, Equatable {
         self.altitude = altitude
         self.distance = distance
         self.bearing = bearing
+        self.lastSeenAt = lastSeenAt
     }
     
     static func == (lhs: NearbyPeak, rhs: NearbyPeak) -> Bool {

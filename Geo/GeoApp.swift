@@ -23,6 +23,10 @@ struct GeoApp: App {
                         case .background:
                             self.appDelegate.applicationWillResignActive(UIApplication.shared)
                         case .active:
+                            // Pull anything Widget recorded while we were in
+                            // the background (barometer + last GPS) before we
+                            // overwrite the shared snapshot with our own state.
+                            self.appDelegate.restoreFromSharedStorage()
                             self.appDelegate.pushDataToWidget()
                         default: break
                     }

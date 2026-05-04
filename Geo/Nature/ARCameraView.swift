@@ -13,44 +13,63 @@ import CoreLocation
 /// When a LiDAR sensor is available, enables scene reconstruction so the
 /// `AROcclusionManager` can hide markers behind real-world surfaces (walls, etc.).
 struct ARCameraView: UIViewRepresentable {
-    
+
     /// Shared occlusion manager — receives mesh anchors from the AR session
     var occlusionManager: AROcclusionManager?
-    
+
     /// Shared session manager — publishes camera matrices every frame for overlay projection
     var sessionManager: ARSessionManager?
-    
+
+    /// When `false`, the AR session is paused. SwiftUI keeps tab views
+    /// alive even when they're not visible, so the parent toggles this
+    /// off as soon as the Nature tab disappears (or the app goes into
+    /// the background) to stop draining battery on the camera/IMU/LiDAR.
+    var isActive: Bool = true
+
     func makeUIView(context: Context) -> ARSCNView {
         let arView = ARSCNView()
         arView.session.delegate = context.coordinator
         arView.autoenablesDefaultLighting = true
         arView.automaticallyUpdatesLighting = true
-        
-        let config = ARWorldTrackingConfiguration()
-        config.worldAlignment = .gravityAndHeading
-        
-        // Detect the floor/ceiling for surface-distance display.
-        // Vertical plane detection is intentionally omitted: detected nearby surfaces
-        // (trees, fences, buildings) would incorrectly occlude distant outdoor GPS markers.
-        // LiDAR mesh occlusion (below) handles accurate close-range occlusion on supported devices.
-        config.planeDetection = [.horizontal]
-        
-        // Enable scene reconstruction (mesh) on LiDAR devices for occlusion
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            config.sceneReconstruction = .mesh
+
+        if isActive {
+            arView.session.run(Self.makeConfig())
+            context.coordinator.isRunning = true
         }
-        
-        arView.session.run(config)
-        
+
         // Store the ARSCNView in the coordinator so we can read its bounds
         context.coordinator.arView = arView
-        
+
         return arView
     }
-    
+
     func updateUIView(_ uiView: ARSCNView, context: Context) {
         context.coordinator.occlusionManager = occlusionManager
         context.coordinator.sessionManager = sessionManager
+
+        // Resume / pause to match the parent's intent. ARKit handles
+        // these calls cheaply when the state already matches.
+        if isActive, !context.coordinator.isRunning {
+            uiView.session.run(Self.makeConfig())
+            context.coordinator.isRunning = true
+            AppLog.ar.debug("AR session resumed")
+        } else if !isActive, context.coordinator.isRunning {
+            uiView.session.pause()
+            context.coordinator.isRunning = false
+            AppLog.ar.debug("AR session paused")
+        }
+    }
+
+    /// Centralised session configuration so `makeUIView` and `updateUIView`
+    /// stay in sync.
+    private static func makeConfig() -> ARWorldTrackingConfiguration {
+        let config = ARWorldTrackingConfiguration()
+        config.worldAlignment = .gravityAndHeading
+        config.planeDetection = [.horizontal]
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+            config.sceneReconstruction = .mesh
+        }
+        return config
     }
     
     func makeCoordinator() -> Coordinator {
@@ -66,6 +85,10 @@ struct ARCameraView: UIViewRepresentable {
         var occlusionManager: AROcclusionManager?
         var sessionManager: ARSessionManager?
         weak var arView: ARSCNView?
+        /// Tracks whether `session.run(...)` has been called more
+        /// recently than `session.pause()`. Lets `updateUIView` make
+        /// idempotent state-change decisions without querying ARKit.
+        var isRunning: Bool = false
         
         init(occlusionManager: AROcclusionManager?, sessionManager: ARSessionManager?) {
             self.occlusionManager = occlusionManager

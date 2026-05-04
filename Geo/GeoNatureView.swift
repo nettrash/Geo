@@ -13,14 +13,28 @@ import simd
 
 struct GeoNatureView: View {
     var app: GeoAppDelegate?
-    
+
     @StateObject private var peakFinder = PeakFinder()
     @StateObject private var motionManager = DeviceMotionManager()
     @StateObject private var occlusionManager = AROcclusionManager()
     @StateObject private var sessionManager = ARSessionManager()
+    /// Builds the terrain-aware skyline that `HorizonOverlayView`
+    /// renders instead of the geometric horizon when data is available.
+    @StateObject private var skylineCalculator = SkylineCalculator()
     @State private var cameraPermissionGranted = false
     @State private var showPermissionAlert = false
     @State private var historyPoints: [ARHistoryPoint] = []
+
+    /// Tracks whether this view is the user's currently visible tab AND
+    /// the app is in the foreground. Drives `ARCameraView.isActive` and
+    /// gates the AR-related work loops so we don't burn battery while
+    /// the Nature tab is off-screen.
+    @State private var isOnScreen: Bool = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var isARActive: Bool {
+        cameraPermissionGranted && isOnScreen && scenePhase == .active
+    }
     
     /// Stable location snapshot passed to the overlay.
     /// Only updated when the user moves more than 5 m, preventing GPS jitter
@@ -51,9 +65,22 @@ struct GeoNatureView: View {
         ZStack {
             if cameraPermissionGranted {
                 // AR Camera background
-                ARCameraView(occlusionManager: occlusionManager, sessionManager: sessionManager)
+                ARCameraView(occlusionManager: occlusionManager,
+                             sessionManager: sessionManager,
+                             isActive: isARActive)
                     .ignoresSafeArea()
-                
+
+                // Geographic horizon / terrain skyline line — drawn
+                // first so peak/history markers sit on top of it.
+                HorizonOverlayView(
+                    userLocation: overlayLocation,
+                    barometerAltitude: app?.barometer?.height,
+                    skylineSamples: skylineCalculator.samples,
+                    sessionManager: sessionManager
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
                 // Peak & history point markers positioned via GPS→ENU→ARKit projection
                 PeakOverlayView(
                     peaks: peakFinder.peaks,
@@ -181,13 +208,25 @@ struct GeoNatureView: View {
         }
         .onAppear {
             checkCameraPermission()
+            isOnScreen = true
+            if cameraPermissionGranted {
+                startAR()
+            }
         }
         .onDisappear {
+            isOnScreen = false
             motionManager.stop()
         }
         .onChange(of: cameraPermissionGranted) { _, granted in
             if granted {
                 startAR()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                motionManager.stop()
+            } else if isOnScreen && cameraPermissionGranted {
+                motionManager.start()
             }
         }
         .alert("Camera Access", isPresented: $showPermissionAlert) {
@@ -201,16 +240,16 @@ struct GeoNatureView: View {
             Text("Please enable camera access in Settings to use the Nature AR view.")
         }
         .onReceive(refreshTimer) { _ in
-            if cameraPermissionGranted {
-                refreshOverlayLocationIfNeeded()
-                searchForPeaks()
-                loadHistoryPoints()
-            }
+            // Skip the periodic work entirely when the AR view isn't on
+            // screen — keeps battery from being drained on background tabs.
+            guard isARActive else { return }
+            refreshOverlayLocationIfNeeded()
+            searchForPeaks()
+            loadHistoryPoints()
         }
         .onReceive(occlusionTimer) { _ in
-            if cameraPermissionGranted {
-                runOcclusionCheck()
-            }
+            guard isARActive else { return }
+            runOcclusionCheck()
         }
     }
     
@@ -275,6 +314,11 @@ struct GeoNatureView: View {
         guard let newLoc = app?.location?.location else { return }
         if let current = overlayLocation, newLoc.distance(from: current) < 5.0 { return }
         overlayLocation = newLoc
+        // Skyline recompute is internally throttled (≥500 m). It runs
+        // off the main actor and only mutates `samples` if it gets
+        // back a non-empty result, so calling it here on every
+        // location refresh is safe.
+        skylineCalculator.computeIfNeeded(observer: newLoc)
     }
     
     private func searchForPeaks() {
@@ -299,18 +343,25 @@ struct GeoNatureView: View {
             }
             return
         }
-        
-        history.Refresh()
-        
+
+        // Only re-query CoreData if a new sample has been recorded since
+        // the last refresh — saves an expensive fetch on every tick.
+        history.refreshIfNeeded()
+
         let maxDistance: CLLocationDistance = 1000
-        
-        historyPoints = history.historyItems
+        // Hysteresis: keep an already-displayed point in the scene until the
+        // user has moved noticeably further away. This prevents the AR scene
+        // from periodically wiping all history markers when CoreData is briefly
+        // empty or the user wanders right at the boundary of `maxDistance`.
+        let dropDistance: CLLocationDistance = maxDistance * 1.5
+
+        let newPoints = history.historyItems
             .suffix(200)
             .compactMap { item -> ARHistoryPoint? in
                 let itemLocation = CLLocation(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
                 let distance = location.distance(from: itemLocation)
                 guard distance <= maxDistance, distance > 1 else { return nil }
-                
+
                 let itemBearing = bearing(
                     from: location.coordinate,
                     to: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
@@ -326,25 +377,53 @@ struct GeoNatureView: View {
                     bearing: itemBearing
                 )
             }
+
+        // Merge with the previous set rather than replacing it. Once a marker
+        // has been added to the AR scene we only remove it when it is clearly
+        // out of range (`dropDistance`); a transient empty refresh — for
+        // example because the CoreData fetch was retried — must not destroy
+        // every marker the user is currently looking at.
+        var byID: [UUID: ARHistoryPoint] = [:]
+        for p in historyPoints { byID[p.id] = p }
+        for p in newPoints { byID[p.id] = p }
+
+        historyPoints = byID.values
+            .filter { point in
+                let pl = CLLocation(latitude: point.coordinate.latitude,
+                                    longitude: point.coordinate.longitude)
+                return location.distance(from: pl) <= dropDistance
+            }
+            .sorted { $0.date < $1.date }
     }
     
     private func runOcclusionCheck() {
         guard let userLoc = app?.location?.location else { return }
-        
+
+        // Heuristic: we treat the user as outdoors when GPS reports a
+        // wide horizontal accuracy window (typically only achievable
+        // outside) OR when the peak finder turned up several distant
+        // peaks. Either condition is a strong signal that the local
+        // "vertical planes" detected by ARKit are noise rather than
+        // real walls.
+        let distantPeakCount = peakFinder.peaks.filter { $0.distance > 500 }.count
+        let outdoorByAccuracy = userLoc.horizontalAccuracy > 25
+        let outdoorByPeaks = distantPeakCount >= 3
+        occlusionManager.isOutdoor = outdoorByAccuracy || outdoorByPeaks
+
         var targets: [AROcclusionManager.OcclusionTarget] = []
-        
+
         // Build ENU world positions for peaks
         for peak in peakFinder.peaks {
             let enu = gpsToENU(from: userLoc, to: peak.coordinate, toAlt: peak.altitude)
             targets.append(.init(id: peak.id, worldPosition: enu))
         }
-        
+
         // Build ENU world positions for history points
         for point in historyPoints {
             let enu = gpsToENU(from: userLoc, to: point.coordinate, toAlt: point.gpsAltitude)
             targets.append(.init(id: point.id, worldPosition: enu))
         }
-        
+
         occlusionManager.checkOcclusion(targets: targets)
     }
     

@@ -36,8 +36,31 @@ class History: NSObject, ObservableObject {
     let pressureDataSetMaxDefault: CGFloat = 1000
     let altitudeMinDefault: CGFloat = 0
     let altitudeMaxDefault: CGFloat = 10000
-    
+
     private let numberOfDays: Int = 30
+
+    /// Set to `true` whenever a new HistoryItem is inserted. Cleared by
+    /// `Refresh()`. Lets callers (e.g. the AR Nature view) skip the
+    /// expensive CoreData fetch when nothing has changed since the last
+    /// pass.
+    private var isDirty: Bool = true
+
+    /// Mark the cache stale. Called from anywhere that adds/edits a
+    /// `HistoryItem` outside of `Refresh()` itself (e.g. inbound Watch
+    /// samples or widget backfill).
+    func markDirty() {
+        self.isDirty = true
+    }
+
+    /// True when no fetch has happened yet, or when `markDirty()` has
+    /// been called since the last fetch.
+    var needsRefresh: Bool { isDirty }
+
+    /// Refresh only when actually needed; cheap no-op otherwise.
+    func refreshIfNeeded() {
+        guard isDirty else { return }
+        Refresh()
+    }
 
     private let dateFormatter: DateFormatter = {
             let formatter = DateFormatter()
@@ -65,20 +88,23 @@ class History: NSObject, ObservableObject {
             fetchRequest.sortDescriptors = [
                 NSSortDescriptor(keyPath: \HistoryItem.recordDate, ascending: true)
                 ]
-            
+
             self.historyItems = try controller.container.viewContext.fetch(fetchRequest)
         }
         catch let error {
             switch error {
             default:
                 self.historyItems = []
-                NSLog("Error fetching HistoryItems")
+                AppLog.history.error("Error fetching HistoryItems: \(String(describing: error))")
             }
         }
         self.pressureDataSetRefresh()
         self.barometerDataSetRefresh()
         self.gpsDataSetRefresh()
-        
+
+        // Successful refresh clears the dirty flag.
+        self.isDirty = false
+
         WidgetCenter.shared.reloadAllTimelines()
     }
     

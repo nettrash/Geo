@@ -7,61 +7,136 @@
 
 import Foundation
 import UIKit
+import CoreData
 import CoreLocation
 import WidgetKit
 @preconcurrency import BackgroundTasks
 
 class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
-    
+
     //Mountains data
     var mountainsData: MountainData? = nil
-    
+
     // Instance of barometer representation.
     var barometer: Barometer?
-    
+
     // Instance of location manager
     var location: Location?
-    
+
     // History
     var history: History = History()
-    
+
+    /// WatchConnectivity bridge — `nil` on devices that don't support it.
+    var connectivity: PhoneConnectivityManager?
+
     private let backgroundTaskIndentifier_Refresh = "me.nettrash.Geo.background.refresh"
     private let backgroundTaskIdentifier_AppRefresh = "me.nettrash.Geo.background.apprefresh"
     private var lastWidgetReloadDate: Date = .distantPast
-    
+
     // Initializing main stuctures for the app.
     func initialize() {
         loadMountains()
-        
+
         self.barometer = Barometer()
         self.barometer?.dataUpdated = { [weak self] in
             self?.location?.onBarometerUpdated()
         }
         self.barometer?.Start()
-        
+
         self.location = Location()
         self.location?.app = self
         self.location?.barometer = self.barometer
         self.location?.mountainsData = self.mountainsData
+
+        // Spin up WatchConnectivity. The manager is non-isolated and
+        // safe to construct from any thread; we set our own delegate
+        // pointer back into the manager so it can route inbound Watch
+        // samples into the data model.
+        self.connectivity = PhoneConnectivityManager()
+        self.connectivity?.app = self
+
+        // Pull anything Widget / Watch recorded while we were suspended back into
+        // the main app: rehydrate the in-memory barometer with the most recent
+        // sample and persist any background-captured reading into CoreData history.
+        restoreFromSharedStorage()
     }
-    
+
     /// Pushes the latest combined data to the widget.
     /// Delegates to Location which owns the unified data write path.
     func pushDataToWidget() {
-        guard let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") else { return }
-        
         let info = InformationToken(
             recordDate: Date(),
             gpsAltitude: self.location?.location?.altitude ?? 0.0,
             gpsSpeed: max(self.location?.location?.speed ?? 0.0, 0.0),
             barPreassure: self.barometer?.pressure ?? 0.0,
-            barAltitude: self.barometer?.height ?? 0.0
+            barAltitude: self.barometer?.height ?? 0.0,
+            gpsLatitude: self.location?.location?.coordinate.latitude ?? 0.0,
+            gpsLongitude: self.location?.location?.coordinate.longitude ?? 0.0
         )
-        if let encoded = try? JSONEncoder().encode(info) {
-            userDefaults.set(encoded, forKey: "ActualInformation")
-        }
-        
+        SharedSnapshotStore.write(info)
+        connectivity?.sendCurrentSnapshot(info)
         reloadWidgetIfNeeded()
+    }
+
+    /// Pull anything the Widget / Watch wrote while the main app was
+    /// suspended back into the active session:
+    ///
+    /// 1. Rehydrate `barometer.pressure / .height / .everest` from the
+    ///    most recent snapshot if the live sensor hasn't produced a
+    ///    value yet.
+    /// 2. Drain the rolling buffer of background snapshots into the
+    ///    CoreData history. Each insert is deduped by `recordDate` so
+    ///    repeated calls are idempotent.
+    func restoreFromSharedStorage() {
+        // Current snapshot — used to rehydrate in-memory barometer.
+        if let current = SharedSnapshotStore.readCurrent(),
+           let bar = self.barometer,
+           bar.pressure == 0,
+           current.barPreassure > 0 {
+            bar.pressure = current.barPreassure
+            bar.height = current.barAltitude
+            bar.everest = current.barAltitude / 8848
+        }
+
+        // Drain the ring buffer into CoreData. This includes background
+        // widget refreshes AND any inbound Watch samples that landed
+        // while we were suspended.
+        let buffered = SharedSnapshotStore.readBuffer()
+        guard !buffered.isEmpty else { return }
+
+        let context = PersistenceController.shared.container.viewContext
+        var inserted = 0
+        for token in buffered where token.barPreassure > 0 {
+            let request: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
+            request.predicate = NSPredicate(format: "recordDate == %@", token.recordDate as NSDate)
+            request.fetchLimit = 1
+            if let count = try? context.count(for: request), count > 0 { continue }
+
+            let item = HistoryItem(context: context)
+            item.recordDate = token.recordDate
+            item.barometerPressure = token.barPreassure
+            item.barometerAltitude = token.barAltitude
+            item.gpsAltitude = token.gpsAltitude
+            item.gpsVelocity = token.gpsSpeed
+            item.gpsLatitude = token.gpsLatitude
+            item.gpsLongitude = token.gpsLongitude
+            inserted += 1
+        }
+
+        if inserted > 0 {
+            do {
+                try context.save()
+                self.history.markDirty()
+                self.history.Refresh()
+                AppLog.app.debug("Backfilled \(inserted, privacy: .public) buffered samples")
+            } catch {
+                context.rollback()
+                AppLog.app.error("Failed to persist buffered samples: \(String(describing: error))")
+            }
+        }
+        // We've consumed the buffer either way — drop it so we don't
+        // re-process the same items on the next launch.
+        SharedSnapshotStore.clearBuffer()
     }
     
     /// Reload widget timelines at most every 30 seconds to avoid exceeding the system budget.
@@ -130,93 +205,77 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         do {
             try BGTaskScheduler.shared.submit(processingRequest)
         } catch {
-            print("Could not schedule background processing: \(error)")
+            AppLog.background.error("Could not schedule background processing: \(String(describing: error))")
         }
-        
+
         // Schedule the lightweight app refresh task (~every 15 min)
         let refreshRequest = BGAppRefreshTaskRequest(identifier: backgroundTaskIdentifier_AppRefresh)
         refreshRequest.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
-        
+
         do {
             try BGTaskScheduler.shared.submit(refreshRequest)
         } catch {
-            print("Could not schedule app refresh: \(error)")
+            AppLog.background.error("Could not schedule app refresh: \(String(describing: error))")
         }
     }
     
     func handleBackgroundProcessing(task: BGProcessingTask) {
         scheduleBackgroundProcessing()
-        
-        let operation = BackgroundRefreshOperation()
-        
-        task.expirationHandler = {
-            operation.cancel()
-        }
-        
-        operation.completionBlock = {
-            task.setTaskCompleted(success: !operation.isCancelled)
-        }
-        
-        OperationQueue.main.addOperation(operation)
+        runBackgroundRefresh(task: task)
     }
-    
+
     func handleAppRefresh(task: BGAppRefreshTask) {
         // Reschedule immediately so the next one is queued
         scheduleBackgroundProcessing()
-        
-        let operation = BackgroundRefreshOperation()
-        
-        task.expirationHandler = {
-            operation.cancel()
-        }
-        
-        operation.completionBlock = {
-            task.setTaskCompleted(success: !operation.isCancelled)
-        }
-        
-        OperationQueue.main.addOperation(operation)
+        runBackgroundRefresh(task: task)
     }
-    
-    /// Background operation that starts a fresh barometer, waits for a reading,
-    /// and pushes updated pressure/altitude data to the widget.
-    /// GPS data is preserved from the last known value.
-    func BackgroundRefreshOperation() -> Operation {
-        return BlockOperation {
-            print(">>> BackgroundRefreshOperation")
-            
-            let barometer = Barometer()
-            barometer.Start()
-            
-            // Give barometer a moment to produce a reading
-            Thread.sleep(forTimeInterval: 3)
-            
-            guard let userDefaults = UserDefaults(suiteName: "group.me.nettrash.Geo") else { return }
-            
-            // Read the last known GPS data and preserve it; only update barometer fields
-            var lastGPSAltitude: Double = 0
-            var lastGPSSpeed: Double = 0
-            if let data = userDefaults.object(forKey: "ActualInformation") as? Data,
-               let previous = try? JSONDecoder().decode(InformationToken.self, from: data) {
-                lastGPSAltitude = previous.gpsAltitude
-                lastGPSSpeed = previous.gpsSpeed
-            }
-            
-            let info = InformationToken(
-                recordDate: Date(),
-                gpsAltitude: lastGPSAltitude,
-                gpsSpeed: lastGPSSpeed,
-                barPreassure: barometer.pressure,
-                barAltitude: barometer.height
-            )
-            if let encoded = try? JSONEncoder().encode(info) {
-                userDefaults.set(encoded, forKey: "ActualInformation")
-            }
-            
-            barometer.Stop()
-            
-            WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
-            
-            print("<<< BackgroundRefreshOperation")
+
+    /// Drives the background refresh on a `Task` so the OperationQueue's
+    /// main thread stays free. Uses `withTaskCancellationHandler` so the
+    /// system's expiration callback can cancel us cleanly.
+    private func runBackgroundRefresh(task: BGTask) {
+        let work = Task.detached(priority: .utility) {
+            await Self.captureBarometerSampleAndPersist()
         }
+        task.expirationHandler = {
+            work.cancel()
+        }
+        Task {
+            _ = await work.value
+            task.setTaskCompleted(success: !work.isCancelled)
+        }
+    }
+
+    /// Background-safe sample capture. Lives off the main thread so it
+    /// doesn't block UI-related operations queued on `OperationQueue.main`.
+    private static func captureBarometerSampleAndPersist() async {
+        AppLog.background.debug("background refresh start")
+        let barometer = Barometer()
+        barometer.Start()
+
+        // Give the barometer time to deliver a sample without blocking a
+        // thread. `Task.sleep` is cancellation-aware, so the system's
+        // expiration handler will short-circuit this cleanly.
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+
+        let previous = SharedSnapshotStore.readCurrent()
+
+        let info = InformationToken(
+            recordDate: Date(),
+            gpsAltitude: previous?.gpsAltitude ?? 0,
+            gpsSpeed: previous?.gpsSpeed ?? 0,
+            barPreassure: barometer.pressure,
+            barAltitude: barometer.height,
+            gpsLatitude: previous?.gpsLatitude ?? 0,
+            gpsLongitude: previous?.gpsLongitude ?? 0
+        )
+        SharedSnapshotStore.write(info)
+        barometer.Stop()
+
+        // WidgetKit already de-duplicates closely-spaced timeline
+        // reloads internally, so we just request one and let the
+        // system decide.
+        WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
+        AppLog.background.debug("background refresh done")
     }
 }
