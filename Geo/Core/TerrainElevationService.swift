@@ -88,7 +88,12 @@ actor TerrainElevationService {
     private func fetchBatch(coords: [CLLocationCoordinate2D]) async -> [Double?] {
         guard !coords.isEmpty else { return [] }
 
-        let url = URL(string: "https://api.open-elevation.com/api/v1/lookup")!
+        // Defensive guard rather than force-unwrap. The literal is
+        // valid today; the safety blanket protects against typos a
+        // future patch might introduce.
+        guard let url = URL(string: "https://api.open-elevation.com/api/v1/lookup") else {
+            return Array(repeating: nil, count: coords.count)
+        }
         var req = URLRequest(url: url, timeoutInterval: timeout)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

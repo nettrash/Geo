@@ -127,7 +127,12 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
         let minDate: Date = Calendar.current.startOfDay(for: earliestDate)
         
         for idx in 0..<amountOfValuesToShow {
-            let currentDate: Date = Calendar.current.date(byAdding: Calendar.Component.day, value: idx, to: minDate)!
+            // Calendar arithmetic on a Gregorian calendar, adding a
+            // small positive integer of days, will not return nil in
+            // practice — but unwrap defensively rather than force-
+            // unwrap, since static analysers (App Store Review uses
+            // them) flag the `!` form.
+            guard let currentDate = Calendar.current.date(byAdding: .day, value: idx, to: minDate) else { continue }
             let minPreassure: CGFloat = self.historyItems
                 .filter { guard let rd = $0.recordDate else { return false }; return Calendar.current.startOfDay(for: rd) == currentDate }
                 .min(by: { $0.barometerPressure < $1.barometerPressure })?.barometerPressure ?? 0
@@ -165,7 +170,7 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
         let minDate: Date = Calendar.current.startOfDay(for: earliestDate)
         
         for idx in 0..<amountOfValuesToShow {
-            let currentDate: Date = Calendar.current.date(byAdding: Calendar.Component.day, value: idx, to: minDate)!
+            guard let currentDate = Calendar.current.date(byAdding: .day, value: idx, to: minDate) else { continue }
             let maxBarometerAltitude: CGFloat = self.historyItems
                 .filter { guard let rd = $0.recordDate else { return false }; return Calendar.current.startOfDay(for: rd) == currentDate }
                 .max(by: { $0.barometerAltitude < $1.barometerAltitude })?.barometerAltitude ?? 0
@@ -211,7 +216,7 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
         let minDate: Date = Calendar.current.startOfDay(for: earliestDate)
         
         for idx in 0..<amountOfValuesToShow {
-            let currentDate: Date = Calendar.current.date(byAdding: Calendar.Component.day, value: idx, to: minDate)!
+            guard let currentDate = Calendar.current.date(byAdding: .day, value: idx, to: minDate) else { continue }
             let maxGPSAltitude: CGFloat = self.historyItems
                 .filter { guard let rd = $0.recordDate else { return false }; return Calendar.current.startOfDay(for: rd) == currentDate }
                 .max(by: { $0.gpsAltitude < $1.gpsAltitude })?.gpsAltitude ?? 0

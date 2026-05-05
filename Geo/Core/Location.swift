@@ -40,14 +40,22 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     func initialize() {
         if (self.locationManager == nil) {
             self.locationManager = CLLocationManager()
-            
+
             self.locationManager!.delegate = self
             self.locationManager!.desiredAccuracy = kCLLocationAccuracyBest
             let status = self.locationManager!.authorizationStatus
             if status == .authorizedAlways || status == .authorizedWhenInUse {
                 startLocationMonitor()
             } else {
-                self.locationManager!.requestAlwaysAuthorization()
+                // Request only When-In-Use. Although the historical
+                // intent was to keep logging while the app was
+                // suspended, that work actually runs through
+                // `BGTaskScheduler` (see GeoAppDelegate), which does
+                // not require Always-level location access. Asking
+                // for Always when no Always-only API is used would
+                // fail App Store Review under guideline 5.1.1(i)
+                // (data minimisation).
+                self.locationManager!.requestWhenInUseAuthorization()
             }
         }
         if (self.mountainsData?.sevenPeaks?.mountains?.count ?? 0) > 0 {
