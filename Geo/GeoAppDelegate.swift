@@ -88,7 +88,8 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     ///    CoreData history. Each insert is deduped by `recordDate` so
     ///    repeated calls are idempotent.
     func restoreFromSharedStorage() {
-        // Current snapshot — used to rehydrate in-memory barometer.
+        // 1. Rehydrate barometer if the live sensor hasn't produced a
+        //    value yet — pure in-memory work, fine on the launch path.
         if let current = SharedSnapshotStore.readCurrent(),
            let bar = self.barometer,
            bar.pressure == 0,
@@ -98,45 +99,61 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             bar.everest = current.barAltitude / 8848
         }
 
-        // Drain the ring buffer into CoreData. This includes background
-        // widget refreshes AND any inbound Watch samples that landed
-        // while we were suspended.
+        // 2. Off-load the buffer drain. CloudKit's sync engine
+        //    routinely holds a SQLite read lock; if we save on the
+        //    main `viewContext` the post-save WAL checkpoint loops on
+        //    "database busy" and stalls the main thread, blocking the
+        //    UI from appearing. Routing the work through a background
+        //    context lets CoreData serialise it without blocking
+        //    launch. The viewContext picks up the inserts via
+        //    `automaticallyMergesChangesFromParent`.
         let buffered = SharedSnapshotStore.readBuffer()
         guard !buffered.isEmpty else { return }
 
-        let context = PersistenceController.shared.container.viewContext
-        var inserted = 0
-        for token in buffered where token.barPreassure > 0 {
-            let request: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
-            request.predicate = NSPredicate(format: "recordDate == %@", token.recordDate as NSDate)
-            request.fetchLimit = 1
-            if let count = try? context.count(for: request), count > 0 { continue }
+        let history = self.history
+        DispatchQueue.global(qos: .utility).async {
+            let context = PersistenceController.shared.container.newBackgroundContext()
+            context.perform {
+                var inserted = 0
+                for token in buffered where token.barPreassure > 0 {
+                    let request: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
+                    request.predicate = NSPredicate(format: "recordDate == %@", token.recordDate as NSDate)
+                    request.fetchLimit = 1
+                    if let count = try? context.count(for: request), count > 0 { continue }
 
-            let item = HistoryItem(context: context)
-            item.recordDate = token.recordDate
-            item.barometerPressure = token.barPreassure
-            item.barometerAltitude = token.barAltitude
-            item.gpsAltitude = token.gpsAltitude
-            item.gpsVelocity = token.gpsSpeed
-            item.gpsLatitude = token.gpsLatitude
-            item.gpsLongitude = token.gpsLongitude
-            inserted += 1
-        }
+                    let item = HistoryItem(context: context)
+                    item.recordDate = token.recordDate
+                    item.barometerPressure = token.barPreassure
+                    item.barometerAltitude = token.barAltitude
+                    item.gpsAltitude = token.gpsAltitude
+                    item.gpsVelocity = token.gpsSpeed
+                    item.gpsLatitude = token.gpsLatitude
+                    item.gpsLongitude = token.gpsLongitude
+                    inserted += 1
+                }
 
-        if inserted > 0 {
-            do {
-                try context.save()
-                self.history.markDirty()
-                self.history.Refresh()
-                AppLog.app.debug("Backfilled \(inserted, privacy: .public) buffered samples")
-            } catch {
-                context.rollback()
-                AppLog.app.error("Failed to persist buffered samples: \(String(describing: error))")
+                if inserted > 0 {
+                    do {
+                        try context.save()
+                        AppLog.app.debug("Backfilled \(inserted, privacy: .public) buffered samples")
+                    } catch {
+                        context.rollback()
+                        AppLog.app.error("Failed to persist buffered samples: \(String(describing: error))")
+                        // Leave the buffer in place so the next launch
+                        // can retry.
+                        return
+                    }
+                }
+
+                // Mark the cache stale so the next history view
+                // triggers a refresh on its own schedule.
+                DispatchQueue.main.async {
+                    history.markDirty()
+                }
+
+                SharedSnapshotStore.clearBuffer()
             }
         }
-        // We've consumed the buffer either way — drop it so we don't
-        // re-process the same items on the next launch.
-        SharedSnapshotStore.clearBuffer()
     }
     
     /// Reload widget timelines at most every 30 seconds to avoid exceeding the system budget.
@@ -187,10 +204,23 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     func registerBackgroundTasks() {
         if #available(iOS 13.0, *) {
             BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIndentifier_Refresh, using: nil) { task in
-                self.handleBackgroundProcessing(task: task as! BGProcessingTask)
+                // Conditional cast: if the system ever hands us a
+                // task of an unexpected concrete type, log it and
+                // mark the task complete rather than crashing.
+                guard let processingTask = task as? BGProcessingTask else {
+                    AppLog.background.error("Unexpected task type for processing identifier: \(type(of: task))")
+                    task.setTaskCompleted(success: false)
+                    return
+                }
+                self.handleBackgroundProcessing(task: processingTask)
             }
             BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIdentifier_AppRefresh, using: nil) { task in
-                self.handleAppRefresh(task: task as! BGAppRefreshTask)
+                guard let refreshTask = task as? BGAppRefreshTask else {
+                    AppLog.background.error("Unexpected task type for app-refresh identifier: \(type(of: task))")
+                    task.setTaskCompleted(success: false)
+                    return
+                }
+                self.handleAppRefresh(task: refreshTask)
             }
         }
     }

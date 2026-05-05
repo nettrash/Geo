@@ -10,8 +10,15 @@ import CoreData
 import CoreLocation
 import WidgetKit
 
+/// `@unchecked Sendable` — `History` is mutated exclusively on the
+/// main thread (every `Refresh`, `markDirty`, and dataset rebuild
+/// runs on `viewContext`'s queue, i.e. main). Marking it explicitly
+/// lets us hand the instance to background dispatch closures (e.g.
+/// the buffered-sample backfill in `GeoAppDelegate`) that hop back
+/// to main before touching it, without strict-concurrency
+/// diagnostics firing.
 @Observable
-class History: NSObject, ObservableObject {
+final class History: NSObject, ObservableObject, @unchecked Sendable {
     
     var historyItems: [HistoryItem] = []
     

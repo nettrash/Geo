@@ -1,0 +1,62 @@
+/*
+   Localizable.strings (English)
+   Geo
+
+   SwiftUI's `Text("...")` and `Button("...")` initializers look up
+   their string argument in `Localizable.strings` automatically, so
+   each entry below uses the English text both as the key *and* the
+   value. To add a new locale, copy this file into a new `<lang>.lproj/`
+   directory and translate the right-hand sides.
+*/
+
+// MARK: - Tab bar
+"Info" = "Info";
+"Stat" = "Stat";
+"Map" = "Map";
+"Nature" = "Nature";
+
+// MARK: - Headers (small caps in UI)
+"B A R O M E T E R" = "B A R O M E T E R";
+"S A T E L L I T E" = "S A T E L L I T E";
+"CLOSEST MOUNTAIN" = "CLOSEST MOUNTAIN";
+"HIGHEST MOUNTAIN" = "HIGHEST MOUNTAIN";
+"TRACKING" = "TRACKING";
+"STATISTICS" = "STATISTICS";
+
+// MARK: - Generic field labels
+"Name" = "Name";
+"Altitude" = "Altitude";
+"Pressure" = "Pressure";
+"Coordinates" = "Coordinates";
+"Distance" = "Distance";
+"Velocity" = "Velocity";
+"Geography" = "Geography";
+"Directions" = "Directions";
+"Show Map" = "Show Map";
+"Mountain" = "Mountain";
+"first ascent is unknown" = "first ascent is unknown";
+"Loading..." = "Loading...";
+
+// MARK: - History details
+"History point details" = "History point details";
+"Barometer information" = "Barometer information";
+"Satellite information" = "Satellite information";
+
+// MARK: - AR Nature view
+"Scanning" = "Scanning";
+"About the Nature view" = "About the Nature view";
+"The Nature view shows nearby mountain peaks overlaid on the camera. Continue to choose whether to grant camera access." = "The Nature view shows nearby mountain peaks overlaid on the camera. Continue to choose whether to grant camera access.";
+"The Nature view shows nearby mountain peaks overlaid on the camera. Camera access is currently turned off for Geo. You can re-enable it in iOS Settings and return to this tab." = "The Nature view shows nearby mountain peaks overlaid on the camera. Camera access is currently turned off for Geo. You can re-enable it in iOS Settings and return to this tab.";
+"Continue" = "Continue";
+
+// MARK: - Settings shortcuts
+"Open Settings" = "Open Settings";
+"Cancel" = "Cancel";
+
+// MARK: - Permission banner (location / motion)
+"Location & motion access required" = "Location & motion access required";
+"Location access required" = "Location access required";
+"Motion access required" = "Motion access required";
+"Tap to enable Location and Motion in Settings." = "Tap to enable Location and Motion in Settings.";
+"Tap to enable Location in Settings — needed for nearby peaks and the map." = "Tap to enable Location in Settings — needed for nearby peaks and the map.";
+"Tap to enable Motion in Settings — needed for barometer altitude." = "Tap to enable Motion in Settings — needed for barometer altitude.";

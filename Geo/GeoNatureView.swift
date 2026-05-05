@@ -22,7 +22,13 @@ struct GeoNatureView: View {
     /// renders instead of the geometric horizon when data is available.
     @StateObject private var skylineCalculator = SkylineCalculator()
     @State private var cameraPermissionGranted = false
-    @State private var showPermissionAlert = false
+    /// Tracks the current camera authorization state so the pre-prompt
+    /// view can show non-coercive button wording. Apple rejected an
+    /// earlier build (Guideline 5.1.1(iv)) for pre-pending an "Allow
+    /// Camera Access" button before the system permission prompt;
+    /// the fix is to use "Continue" for `.notDetermined` and to deep-link
+    /// straight to Settings for `.denied` / `.restricted`.
+    @State private var cameraAuthStatus: AVAuthorizationStatus = .notDetermined
     @State private var historyPoints: [ARHistoryPoint] = []
 
     /// Tracks whether this view is the user's currently visible tab AND
@@ -183,26 +189,47 @@ struct GeoNatureView: View {
                     Spacer()
                 }
             } else {
-                // Camera permission not granted
+                // Camera permission not granted. We split this into two
+                // states so the button never *asks* the user to "allow"
+                // anything — Apple's review team flagged that wording
+                // under Guideline 5.1.1(iv).
+                //
+                // • notDetermined → neutral "Continue" that proceeds to
+                //   the system permission prompt. The system prompt is
+                //   the only place where the user can grant access; we
+                //   don't pre-empt its language.
+                // • denied / restricted → "Open Settings" that deep-links
+                //   into iOS Settings, which is the only path back from
+                //   a previous denial.
                 VStack(spacing: 20) {
                     Image(systemName: "camera.fill")
                         .font(.system(size: 60))
                         .foregroundStyle(.secondary)
-                    
-                    Text("Camera Access Required")
+
+                    Text("About the Nature view")
                         .font(.title2.bold())
-                    
-                    Text("The Nature AR view needs camera access to show peaks around you in augmented reality.")
+
+                    Text(natureExplanation)
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
-                    
-                    Button("Allow Camera Access") {
-                        requestCameraPermission()
+
+                    if cameraAuthStatus == .notDetermined {
+                        Button("Continue") {
+                            requestCameraPermission()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                    } else {
+                        Button("Open Settings") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
                 }
             }
         }
@@ -228,16 +255,11 @@ struct GeoNatureView: View {
             } else if isOnScreen && cameraPermissionGranted {
                 motionManager.start()
             }
-        }
-        .alert("Camera Access", isPresented: $showPermissionAlert) {
-            Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Please enable camera access in Settings to use the Nature AR view.")
+            // The user may have flipped the Geo camera switch in
+            // Settings while we were inactive — re-read the
+            // authorisation status so the gate UI updates without
+            // needing a fresh `onAppear`.
+            if phase == .active { checkCameraPermission() }
         }
         .onReceive(refreshTimer) { _ in
             // Skip the periodic work entirely when the AR view isn't on
@@ -265,36 +287,47 @@ struct GeoNatureView: View {
         }
     }
     
+    /// Description shown above the action button in the pre-AR view.
+    /// Wording differs by state so a user who already denied access
+    /// gets a Settings-aware sentence instead of being told (again)
+    /// that the feature needs the camera.
+    private var natureExplanation: LocalizedStringKey {
+        switch cameraAuthStatus {
+        case .denied, .restricted:
+            return "The Nature view shows nearby mountain peaks overlaid on the camera. Camera access is currently turned off for Geo. You can re-enable it in iOS Settings and return to this tab."
+        default:
+            return "The Nature view shows nearby mountain peaks overlaid on the camera. Continue to choose whether to grant camera access."
+        }
+    }
+
     private func checkCameraPermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        cameraAuthStatus = status
+        switch status {
         case .authorized:
             cameraPermissionGranted = true
         case .notDetermined:
-            break
+            cameraPermissionGranted = false
         case .denied, .restricted:
             cameraPermissionGranted = false
         @unknown default:
-            break
+            cameraPermissionGranted = false
         }
     }
-    
+
     private func requestCameraPermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                Task { @MainActor in
-                    cameraPermissionGranted = granted
-                    if !granted {
-                        showPermissionAlert = true
-                    }
-                }
+        // Only call into the system prompt while the status is still
+        // `.notDetermined`. Once denied, the prompt no longer surfaces;
+        // the user has to flip the switch in Settings.
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined else {
+            cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
+            return
+        }
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            Task { @MainActor in
+                cameraPermissionGranted = granted
+                cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
             }
-        case .denied, .restricted:
-            showPermissionAlert = true
-        case .authorized:
-            cameraPermissionGranted = true
-        @unknown default:
-            break
         }
     }
     

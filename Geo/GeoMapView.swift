@@ -115,7 +115,10 @@ struct GeoMapView: View {
             MapPitchToggle()
         }
         .onAppear {
-            self.app?.history.Refresh()
+            // Lazy refresh — re-fetches only when CoreData has changed
+            // since the last pass. Stops a quick tab toggle from
+            // forcing a full 30-day fetch.
+            self.app?.history.refreshIfNeeded()
         }
         .sheet(isPresented: $isShowHistoryDetails) {
             if let historyItem = selected.selectedHistoryItem {

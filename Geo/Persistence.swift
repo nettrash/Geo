@@ -6,9 +6,10 @@
 //
 
 import CoreData
+import os
 
 struct PersistenceController {
-    static let shared = PersistenceController() 
+    static let shared = PersistenceController()
 
     static let preview: PersistenceController = {
         let result = PersistenceController(inMemory: true)
@@ -20,10 +21,10 @@ struct PersistenceController {
         do {
             try viewContext.save()
         } catch {
-            // Replace this implementation with code to handle t qhe error appropriately.
-            // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-            let nsError = error as NSError
-            fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            // Preview-only path. Log and continue with whatever we
+            // managed to insert; don't crash the SwiftUI canvas.
+            Logger(subsystem: "me.nettrash.Geo", category: "persistence")
+                .error("Preview viewContext save failed: \(String(describing: error))")
         }
         return result
     }()
@@ -31,26 +32,76 @@ struct PersistenceController {
     let container: NSPersistentCloudKitContainer
 
     init(inMemory: Bool = false) {
-        container = NSPersistentCloudKitContainer(name: "Geo")
-        if inMemory {
-            container.persistentStoreDescriptions.first!.url = URL(fileURLWithPath: "/dev/null")
-        }
-        container.loadPersistentStores(completionHandler: { (storeDescription, error) in
-            if let error = error as NSError? {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
+        let log = Logger(subsystem: "me.nettrash.Geo", category: "persistence")
 
-                /*
-                 Typical reasons for an error here include:
-                 * The parent directory does not exist, cannot be created, or disallows writing.
-                 * The persistent store is not accessible, due to permissions or data protection when the device is locked.
-                 * The device is out of space.
-                 * The store could not be migrated to the current model version.
-                 Check the error message to determine what the actual problem was.
-                 */
-                fatalError("Unresolved error \(error), \(error.userInfo)")
+        // Build the container, with a one-shot recovery: if the
+        // initial load fails (corruption, schema mismatch, disk
+        // full, …) we delete the on-disk store, log it, and fall
+        // back to an in-memory store so the app still launches and
+        // the user can recover the next time CloudKit syncs.
+        let buildContainer: (Bool) -> NSPersistentCloudKitContainer = { useInMemory in
+            let c = NSPersistentCloudKitContainer(name: "Geo")
+            if useInMemory {
+                c.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
             }
-        })
-        container.viewContext.automaticallyMergesChangesFromParent = true
+            return c
+        }
+
+        var c = buildContainer(inMemory)
+        var loadError: NSError?
+
+        c.loadPersistentStores { _, error in
+            if let error = error as NSError? {
+                loadError = error
+            }
+        }
+
+        // First load failed and we weren't already in-memory: delete
+        // the corrupted store and try again. This trades local data
+        // for app-launch reliability — CloudKit will replay items
+        // back from iCloud the next time the user signs in.
+        if let firstError = loadError, !inMemory {
+            log.error("Persistent store failed to load: \(String(describing: firstError)). Deleting and retrying.")
+
+            for desc in c.persistentStoreDescriptions {
+                if let url = desc.url, FileManager.default.fileExists(atPath: url.path) {
+                    do {
+                        try FileManager.default.removeItem(at: url)
+                        // Also remove the WAL / SHM siblings that
+                        // SQLite leaves behind.
+                        let wal = url.appendingPathExtension("wal")
+                        let shm = url.appendingPathExtension("shm")
+                        try? FileManager.default.removeItem(at: wal)
+                        try? FileManager.default.removeItem(at: shm)
+                    } catch {
+                        log.error("Failed to delete corrupted store at \(url.path): \(String(describing: error))")
+                    }
+                }
+            }
+
+            // Rebuild and try once more.
+            c = buildContainer(false)
+            var retryError: NSError?
+            c.loadPersistentStores { _, error in
+                if let error = error as NSError? { retryError = error }
+            }
+
+            // Retry also failed → fall back to in-memory so the app
+            // at least launches. The user keeps the session's data
+            // but nothing persists; iCloud will resync on relaunch
+            // once the underlying issue clears.
+            if let retryError {
+                log.fault("Retry of persistent-store load failed: \(String(describing: retryError)). Falling back to in-memory store.")
+                c = buildContainer(true)
+                c.loadPersistentStores { _, error in
+                    if let error = error as NSError? {
+                        log.fault("In-memory persistent-store load failed: \(String(describing: error))")
+                    }
+                }
+            }
+        }
+
+        c.viewContext.automaticallyMergesChangesFromParent = true
+        self.container = c
     }
 }

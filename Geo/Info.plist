@@ -9,6 +9,10 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Camera is used for augmented reality to show nearby mountain peaks around you.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Location is used to find nearby mountain peaks, show your position on the map, and continue logging altitude / pressure history while the app is in the background.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Location is used to find nearby mountain peaks and show your position on the map.</string>
 	<key>NSMotionUsageDescription</key>
@@ -17,6 +21,7 @@
 	<array>
 		<string>processing</string>
 		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
 </dict>
 </plist>

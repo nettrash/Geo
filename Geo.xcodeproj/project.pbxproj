@@ -65,6 +65,11 @@
 		F4F4F4052D4299650038B14D /* SkylineCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F4F4022D4299550038B14D /* SkylineCalculator.swift */; };
 		F4F4F4082D4299650038B14D /* SkylineGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F4F4032D4299550038B14D /* SkylineGeometryTests.swift */; };
 		F5F5F5012D4299650038B14D /* InformationToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E592D5842D4299550038B14D /* InformationToken.swift */; };
+		F6F6F6032D4299650038B14D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F6F6F6012D4299550038B14D /* PrivacyInfo.xcprivacy */; };
+		F6F6F6042D4299650038B14D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F6F6F6022D4299550038B14D /* PrivacyInfo.xcprivacy */; };
+		F7F7F7032D4299650038B14D /* PermissionsMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F7F7012D4299550038B14D /* PermissionsMonitor.swift */; };
+		F7F7F7042D4299650038B14D /* PermissionsBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F7F7022D4299550038B14D /* PermissionsBanner.swift */; };
+		F8F8F8032D4299650038B14D /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = F8F8F8022D4299550038B14D /* Localizable.strings */; };
 		E59C45282D2EC546007790E8 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E59C45272D2EC546007790E8 /* SwiftUI.framework */; };
 		E5A22D662DBFEA39008DB127 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E592D55A2D428DF80038B14D /* WidgetKit.framework */; };
 		E5A22D672DBFEA39008DB127 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5708AD42DBB9D2900CB66BB /* SwiftUI.framework */; };
@@ -266,6 +271,11 @@
 		F4F4F4012D4299550038B14D /* TerrainElevationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerrainElevationService.swift; sourceTree = "<group>"; };
 		F4F4F4022D4299550038B14D /* SkylineCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkylineCalculator.swift; sourceTree = "<group>"; };
 		F4F4F4032D4299550038B14D /* SkylineGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkylineGeometryTests.swift; sourceTree = "<group>"; };
+		F6F6F6012D4299550038B14D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F6F6F6022D4299550038B14D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F7F7F7012D4299550038B14D /* PermissionsMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsMonitor.swift; sourceTree = "<group>"; };
+		F7F7F7022D4299550038B14D /* PermissionsBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsBanner.swift; sourceTree = "<group>"; };
+		F8F8F8012D4299550038B14D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		E59C45272D2EC546007790E8 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		E5A22D652DBFEA39008DB127 /* Geo Watch WidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Geo Watch WidgetExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5A8C4A62F7345E100D77979 /* ARCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARCameraView.swift; sourceTree = "<group>"; };
@@ -449,6 +459,7 @@
 				E5E6CC2A2C8B2C7100779817 /* History.swift */,
 				E592D5842D4299550038B14D /* InformationToken.swift */,
 				E58E03B42C232E30002909A4 /* Location.swift */,
+				F7F7F7012D4299550038B14D /* PermissionsMonitor.swift */,
 				F2F2F2F92D4299550038B14D /* PhoneConnectivityManager.swift */,
 				F2F2F2F82D4299550038B14D /* SharedSnapshotStore.swift */,
 				F4F4F4012D4299550038B14D /* TerrainElevationService.swift */,
@@ -480,6 +491,7 @@
 				E56AC7862D43D1D600300854 /* AppIntent.swift */,
 				E592D5742D42970B0038B14D /* Assets.xcassets */,
 				E592D5752D42970B0038B14D /* Info.plist */,
+				F6F6F6022D4299550038B14D /* PrivacyInfo.xcprivacy */,
 				E592D5762D42970B0038B14D /* Widget.swift */,
 				E592D5772D42970B0038B14D /* WidgetBundle.swift */,
 				E592D5832D4298580038B14D /* WidgetExtension.entitlements */,
@@ -547,9 +559,12 @@
 				E584D8E62B3EEF970004973A /* Core */,
 				E5AAD28C2AAB5D950052522B /* GeoApp.swift */,
 				E5AAD28E2AAB5D950052522B /* MainView.swift */,
+				F7F7F7022D4299550038B14D /* PermissionsBanner.swift */,
 				E5AAD2902AAB5D980052522B /* Assets.xcassets */,
 				E5AAD2952AAB5D980052522B /* Persistence.swift */,
 				E5AAD29A2AAB5D980052522B /* Info.plist */,
+				F6F6F6012D4299550038B14D /* PrivacyInfo.xcprivacy */,
+				F8F8F8022D4299550038B14D /* Localizable.strings */,
 				E5AAD2972AAB5D980052522B /* Geo.xcdatamodeld */,
 				E5AAD2922AAB5D980052522B /* Preview Content */,
 				E584D8F02B3EFA5A0004973A /* GeoAppDelegate.swift */,
@@ -870,6 +885,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E592D57B2D42970B0038B14D /* Assets.xcassets in Resources */,
+				F6F6F6042D4299650038B14D /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -888,6 +904,8 @@
 				E5ED16F72C382C0E004C2E94 /* Launch Screen.storyboard in Resources */,
 				E5AAD2942AAB5D980052522B /* Preview Assets.xcassets in Resources */,
 				E5AAD2912AAB5D980052522B /* Assets.xcassets in Resources */,
+				F6F6F6032D4299650038B14D /* PrivacyInfo.xcprivacy in Resources */,
+				F8F8F8032D4299650038B14D /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1014,6 +1032,8 @@
 				F3F3F3F22D4299650038B14D /* Geometry.swift in Sources */,
 				F4F4F4042D4299650038B14D /* TerrainElevationService.swift in Sources */,
 				F4F4F4052D4299650038B14D /* SkylineCalculator.swift in Sources */,
+				F7F7F7032D4299650038B14D /* PermissionsMonitor.swift in Sources */,
+				F7F7F7042D4299650038B14D /* PermissionsBanner.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1111,6 +1131,14 @@
 			name = list.json;
 			sourceTree = "<group>";
 		};
+		F8F8F8022D4299550038B14D /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				F8F8F8012D4299550038B14D /* en */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
@@ -1122,7 +1150,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch App/Geo Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo Watch App/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1158,7 +1186,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch App/Geo Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo Watch App/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1190,7 +1218,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1212,7 +1240,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1232,7 +1260,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1253,7 +1281,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1276,7 +1304,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = Widget/WidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
@@ -1307,7 +1335,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = Widget/WidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
@@ -1336,7 +1364,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Geo Watch Widget/Info.plist";
@@ -1369,7 +1397,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch Widget/Geo Watch WidgetExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Geo Watch Widget/Info.plist";
@@ -1528,7 +1556,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Geo/Geo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
@@ -1574,7 +1602,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Geo/Geo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
@@ -1617,7 +1645,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
@@ -1635,7 +1663,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
@@ -1652,7 +1680,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
@@ -1669,7 +1697,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6801;
+				CURRENT_PROJECT_VERSION = 6814;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;

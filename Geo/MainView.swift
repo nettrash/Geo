@@ -10,11 +10,18 @@ import CoreData
 
 struct MainView: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @Environment(\.scenePhase) private var scenePhase
     @State var app: GeoAppDelegate?
-    
+
+    /// Single source of truth for "the user denied a permission we
+    /// need". `MainView` polls this on appear and on scene-active so
+    /// the user gets a banner that disappears as soon as they fix
+    /// the issue in Settings.
+    @StateObject private var permissions = PermissionsMonitor()
+
     var body: some View {
-        ZStack(content: {
-            
+        VStack(spacing: 0) {
+            PermissionsBanner(monitor: permissions)
             TabView {
                 GeoInfoView(app: app)
                     .tabItem {
@@ -37,7 +44,13 @@ struct MainView: View {
                         Text("Nature")
                     }
             }
-        })
+        }
+        .onAppear { permissions.refresh() }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Re-check whenever the user comes back from Settings —
+            // toggling a permission off / on takes effect immediately.
+            if newPhase == .active { permissions.refresh() }
+        }
     }
 }
 

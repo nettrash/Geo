@@ -146,6 +146,9 @@ extension PhoneConnectivityManager: WCSessionDelegate {
         item.gpsLongitude = token.gpsLongitude
         do {
             try context.save()
+            // Just mark the cache stale; UI will re-fetch on next view
+            // appearance. Avoids piling Refresh()-triggered fetches
+            // onto the main thread under WAL pressure.
             app.history.markDirty()
             WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
         } catch {

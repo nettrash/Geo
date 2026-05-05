@@ -7,6 +7,7 @@
 
 import Foundation
 import CoreLocation
+import WidgetKit
 
 @Observable
 class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
@@ -173,10 +174,15 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             return
         }
         // Mark dirty so the next read refreshes; don't trigger a fetch
-        // here — the AR view's poll loop will pick it up.
+        // here. `Refresh()` does several full-history fetches plus
+        // dataset rebuilds and used to fire on every CLLocationManager
+        // update, hammering the WAL on large stores. UI surfaces call
+        // `refreshIfNeeded()` when they actually need the data.
         app?.history.markDirty()
-        app?.history.Refresh()
         self.lastInfoDate = Date()
+        // Widgets still want a nudge on every save so the next
+        // timeline cycle picks up the freshest sample.
+        WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
     }
     
     @MainActor func trackingRefresh() {

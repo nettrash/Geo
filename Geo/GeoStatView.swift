@@ -51,7 +51,10 @@ struct GeoStatView: View {
     }
     
     init(app: GeoAppDelegate?) {
-        app?.history.Refresh()
+        // Lazy refresh — only re-fetches when a new HistoryItem has
+        // been inserted since the last fetch. Avoids hammering the
+        // CoreData store every time the view is constructed.
+        app?.history.refreshIfNeeded()
         self.history = (app ?? GeoAppDelegate()).history
     }
 
