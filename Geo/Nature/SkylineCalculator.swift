@@ -55,13 +55,16 @@ final class SkylineCalculator: ObservableObject {
     /// geometric horizon for any observer above ~3 km.
     private let maxRangeMeters: Double = 200_000
 
-    /// Bearings sampled — 6° spacing → 60 samples around the full circle.
-    private let bearingStepDeg: Double = 6
+    /// Bearings sampled — 2° spacing → 180 samples around the full circle.
+    /// Finer than 6° so narrow cliff edges are captured rather than
+    /// smoothed away by interpolation.
+    private let bearingStepDeg: Double = 2
 
     /// Distance samples per bearing, log-spaced. More samples closer
     /// to the observer (where small hills matter) and a few far ones
     /// for true horizon ridges.
     private let distancesMeters: [Double] = [
+        100, 200, 300,
         500, 1_000, 2_000, 4_000, 8_000,
         16_000, 32_000, 64_000, 128_000, 200_000
     ]
@@ -71,26 +74,28 @@ final class SkylineCalculator: ObservableObject {
 
     /// Trigger a recompute if the observer has moved far enough since
     /// the last one. Cheap to call from a Timer / onReceive.
-    func computeIfNeeded(observer: CLLocation) {
+    func computeIfNeeded(observer: CLLocation, barometerAltitude: Double? = nil) {
         if let last = lastObserver,
            last.distance(from: observer) < recomputeDistance,
            !samples.isEmpty {
             return
         }
-        compute(observer: observer)
+        compute(observer: observer, barometerAltitude: barometerAltitude)
     }
 
     /// Force a recompute regardless of distance moved.
-    func compute(observer: CLLocation) {
+    func compute(observer: CLLocation, barometerAltitude: Double? = nil) {
         fetchTask?.cancel()
         lastObserver = observer
         let captured = observer
+        let altOverride = barometerAltitude
         fetchTask = Task { @MainActor [weak self] in
             guard let self else { return }
             self.isComputing = true
             defer { self.isComputing = false }
             let new = await Self.computeSkyline(
                 observer: captured,
+                observerAltitudeOverride: altOverride,
                 bearingStepDeg: self.bearingStepDeg,
                 distances: self.distancesMeters,
                 maxRange: self.maxRangeMeters
@@ -113,6 +118,7 @@ final class SkylineCalculator: ObservableObject {
     /// Static + nonisolated so the whole pass can run off the main
     /// actor — there are thousands of trig calls per pass.
     nonisolated static func computeSkyline(observer: CLLocation,
+                                           observerAltitudeOverride: Double? = nil,
                                            bearingStepDeg: Double,
                                            distances: [Double],
                                            maxRange: Double) async -> [SkylineSample] {
@@ -146,7 +152,7 @@ final class SkylineCalculator: ObservableObject {
 
         // 3. For each bearing, pick the sample with the maximum
         //    apparent-altitude angle. That's the skyline.
-        let observerAlt = observer.altitude
+        let observerAlt = observerAltitudeOverride ?? observer.altitude
         var bestPerBearing: [Double: (sample: SkylineSample, angle: Double)] = [:]
         for (i, gp) in grid.enumerated() {
             guard let elev = elevations[i] else { continue }

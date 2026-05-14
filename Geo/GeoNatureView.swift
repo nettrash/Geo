@@ -173,6 +173,17 @@ struct GeoNatureView: View {
                                 .foregroundStyle(.yellow)
                         }
                         
+                        // Skyline loading indicator
+                        if skylineCalculator.isComputing {
+                            Image(systemName: "mountain.2")
+                                .foregroundStyle(.green)
+                                .font(.system(size: 12))
+                                .symbolEffect(.pulse)
+                            Text("Skyline")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(.green)
+                        }
+                        
                         Spacer()
                         
                         Image(systemName: "location.north.fill")
@@ -351,17 +362,12 @@ struct GeoNatureView: View {
         // off the main actor and only mutates `samples` if it gets
         // back a non-empty result, so calling it here on every
         // location refresh is safe.
-        skylineCalculator.computeIfNeeded(observer: newLoc)
+        skylineCalculator.computeIfNeeded(observer: newLoc,
+                                          barometerAltitude: app?.barometer?.height)
     }
     
     private func searchForPeaks() {
-        guard let location = app?.location?.location else {
-            Task {
-                try? await Task.sleep(for: .seconds(2))
-                searchForPeaks()
-            }
-            return
-        }
+        guard let location = app?.location?.location else { return }
         Task {
             await peakFinder.searchPeaks(near: location, mountainsData: app?.mountainsData)
         }
@@ -369,13 +375,7 @@ struct GeoNatureView: View {
     
     private func loadHistoryPoints() {
         guard let location = app?.location?.location,
-              let history = app?.history else {
-            Task {
-                try? await Task.sleep(for: .seconds(2))
-                loadHistoryPoints()
-            }
-            return
-        }
+              let history = app?.history else { return }
 
         // Only re-query CoreData if a new sample has been recorded since
         // the last refresh — saves an expensive fetch on every tick.
@@ -395,7 +395,7 @@ struct GeoNatureView: View {
                 let distance = location.distance(from: itemLocation)
                 guard distance <= maxDistance, distance > 1 else { return nil }
 
-                let itemBearing = bearing(
+                let itemBearing = Geometry.bearing(
                     from: location.coordinate,
                     to: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
                 )
@@ -447,54 +447,25 @@ struct GeoNatureView: View {
 
         // Build ENU world positions for peaks
         for peak in peakFinder.peaks {
-            let enu = gpsToENU(from: userLoc, to: peak.coordinate, toAlt: peak.altitude)
-            targets.append(.init(id: peak.id, worldPosition: enu))
+            let (east, north, up) = Geometry.gpsToENU(
+                from: userLoc.coordinate, originAltitude: userLoc.altitude,
+                to: peak.coordinate, targetAltitude: peak.altitude
+            )
+            targets.append(.init(id: peak.id, worldPosition: simd_float3(Float(east), Float(up), Float(-north))))
         }
 
         // Build ENU world positions for history points
         for point in historyPoints {
-            let enu = gpsToENU(from: userLoc, to: point.coordinate, toAlt: point.gpsAltitude)
-            targets.append(.init(id: point.id, worldPosition: enu))
+            let (east, north, up) = Geometry.gpsToENU(
+                from: userLoc.coordinate, originAltitude: userLoc.altitude,
+                to: point.coordinate, targetAltitude: point.gpsAltitude
+            )
+            targets.append(.init(id: point.id, worldPosition: simd_float3(Float(east), Float(up), Float(-north))))
         }
 
         occlusionManager.checkOcclusion(targets: targets)
     }
     
-    /// Convert GPS coordinate + altitude to ARKit world space (ENU) relative to user.
-    /// Includes Earth curvature compensation for distant points (>5km).
-    private func gpsToENU(from userLoc: CLLocation, to coord: CLLocationCoordinate2D, toAlt: Double) -> simd_float3 {
-        let latRef = userLoc.coordinate.latitude * .pi / 180
-        let metersPerDegreeLat = 111_320.0
-        let metersPerDegreeLon = 111_320.0 * cos(latRef)
-        
-        let dLat = coord.latitude - userLoc.coordinate.latitude
-        let dLon = coord.longitude - userLoc.coordinate.longitude
-        
-        let north = dLat * metersPerDegreeLat
-        let east = dLon * metersPerDegreeLon
-        
-        // Earth curvature correction for distant points
-        let horizontalDist = sqrt(north * north + east * east)
-        let earthRadius = 6_371_000.0 // meters
-        let curvatureDrop = (horizontalDist * horizontalDist) / (2.0 * earthRadius)
-        
-        // Apply curvature correction for points >5km away
-        let up = (toAlt - userLoc.altitude) - (horizontalDist > 5000 ? curvatureDrop : 0)
-        
-        // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North
-        return simd_float3(Float(east), Float(up), Float(-north))
-    }
-    
-    private func bearing(from start: CLLocationCoordinate2D, to end: CLLocationCoordinate2D) -> Double {
-        let lat1 = start.latitude * .pi / 180
-        let lat2 = end.latitude * .pi / 180
-        let dLon = (end.longitude - start.longitude) * .pi / 180
-        let y = sin(dLon) * cos(lat2)
-        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
-        var b = atan2(y, x) * 180 / .pi
-        if b < 0 { b += 360 }
-        return b
-    }
 }
 
 #Preview {

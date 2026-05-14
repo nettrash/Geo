@@ -38,7 +38,8 @@ struct PeakOverlayView: View {
             
             // History points (rendered first, behind peaks)
             ForEach(historyPoints) { point in
-                if !occludedIDs.contains(point.id) {
+                if !occludedIDs.contains(point.id)
+                    && (point.distance >= nearbyThreshold || occlusionManager.isSceneReady) {
                     if let screenPos = projectGPSPoint(
                         coordinate: point.coordinate,
                         altitude: point.gpsAltitude,
@@ -56,7 +57,8 @@ struct PeakOverlayView: View {
             
             // Peaks (rendered on top)
             ForEach(peaks) { peak in
-                if !occludedIDs.contains(peak.id) {
+                if !occludedIDs.contains(peak.id)
+                    && (peak.distance >= nearbyThreshold || occlusionManager.isSceneReady) {
                     if let screenPos = projectGPSPoint(
                         coordinate: peak.coordinate,
                         altitude: peak.altitude,
@@ -92,9 +94,9 @@ struct PeakOverlayView: View {
         guard let userLoc = userLocation, sessionManager.isTracking else { return nil }
         
         // 1. GPS → local ENU offset (meters)
-        let enu = gpsToENU(
-            from: userLoc.coordinate, fromAlt: userLoc.altitude,
-            to: coordinate, toAlt: altitude
+        let enu = Geometry.gpsToENU(
+            from: userLoc.coordinate, originAltitude: userLoc.altitude,
+            to: coordinate, targetAltitude: altitude
         )
         
         // 2. ENU → ARKit world space, offset by the camera's current world position.
@@ -124,36 +126,6 @@ struct PeakOverlayView: View {
         return screenPos
     }
     
-    /// Convert two GPS coordinates to a local East-North-Up (ENU) offset in meters.
-    /// Includes Earth curvature compensation for distant points (>5km).
-    private func gpsToENU(
-        from fromCoord: CLLocationCoordinate2D, fromAlt: Double,
-        to toCoord: CLLocationCoordinate2D, toAlt: Double
-    ) -> (east: Double, north: Double, up: Double) {
-        let latRef = fromCoord.latitude * .pi / 180
-        
-        // Approximate meters per degree at this latitude
-        let metersPerDegreeLat = 111_320.0
-        let metersPerDegreeLon = 111_320.0 * cos(latRef)
-        
-        let dLat = toCoord.latitude - fromCoord.latitude
-        let dLon = toCoord.longitude - fromCoord.longitude
-        
-        let north = dLat * metersPerDegreeLat
-        let east = dLon * metersPerDegreeLon
-        
-        // Earth curvature correction for distant points
-        // Without this, distant peaks appear higher than they actually are
-        let horizontalDist = sqrt(north * north + east * east)
-        let earthRadius = 6_371_000.0 // meters
-        let curvatureDrop = (horizontalDist * horizontalDist) / (2.0 * earthRadius)
-        
-        // Apply curvature correction only for distant points (>5km)
-        // This makes the horizon and distant peaks more realistic
-        let up = (toAlt - fromAlt) - (horizontalDist > 5000 ? curvatureDrop : 0)
-        
-        return (east, north, up)
-    }
     
     /// Points further away are more transparent
     private func opacityForDistance(_ distance: Double, maxDistance: Double) -> Double {

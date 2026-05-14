@@ -12,7 +12,7 @@ import SwiftUI
 struct HistoryPointMarkerView: View {
     let point: ARHistoryPoint
     
-    private let dateFormatter: DateFormatter = {
+    private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .short
         f.timeStyle = .short
@@ -22,7 +22,7 @@ struct HistoryPointMarkerView: View {
     var body: some View {
         VStack(spacing: 2) {
             // Date/time
-            Text(verbatim: dateFormatter.string(from: point.date))
+            Text(verbatim: Self.dateFormatter.string(from: point.date))
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.cyan)
                 .lineLimit(1)

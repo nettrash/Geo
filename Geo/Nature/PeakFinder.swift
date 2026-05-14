@@ -92,7 +92,7 @@ class PeakFinder: ObservableObject {
             guard now.timeIntervalSince(peak.lastSeenAt) <= ttl else { continue }
 
             peak.distance = d
-            peak.bearing = bearing(from: location.coordinate, to: peak.coordinate)
+            peak.bearing = Geometry.bearing(from: location.coordinate, to: peak.coordinate)
             recomputed.append(peak)
         }
 
@@ -141,7 +141,7 @@ class PeakFinder: ObservableObject {
                 guard distance <= searchRadius else { return nil }
                 guard let name = item.name, !name.isEmpty else { return nil }
                 
-                let bearing = self.bearing(
+                let bearing = Geometry.bearing(
                     from: location.coordinate,
                     to: coordinate
                 )
@@ -206,7 +206,7 @@ class PeakFinder: ObservableObject {
 
                 guard distance <= searchRadius else { return nil }
 
-                let peakBearing = bearing(
+                let peakBearing = Geometry.bearing(
                     from: location.coordinate,
                     to: CLLocationCoordinate2D(latitude: element.lat, longitude: element.lon)
                 )
@@ -253,8 +253,8 @@ class PeakFinder: ObservableObject {
                 
                 guard distance <= searchRadius else { continue }
                 
-                let mountainBearing = bearing(from: location.coordinate,
-                                               to: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                let mountainBearing = Geometry.bearing(from: location.coordinate,
+                                                       to: CLLocationCoordinate2D(latitude: lat, longitude: lon))
                 
                 results.append(NearbyPeak(
                     name: name,
@@ -269,19 +269,7 @@ class PeakFinder: ObservableObject {
         return results
     }
     
-    /// Calculate bearing (in degrees) from one coordinate to another
-    private func bearing(from start: CLLocationCoordinate2D, to end: CLLocationCoordinate2D) -> Double {
-        let lat1 = start.latitude * .pi / 180
-        let lat2 = end.latitude * .pi / 180
-        let dLon = (end.longitude - start.longitude) * .pi / 180
-        
-        let y = sin(dLon) * cos(lat2)
-        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
-        
-        var bearing = atan2(y, x) * 180 / .pi
-        if bearing < 0 { bearing += 360 }
-        return bearing
-    }
+
 }
 
 // MARK: - OpenStreetMap Overpass API Response Models
