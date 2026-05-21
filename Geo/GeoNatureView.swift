@@ -373,6 +373,12 @@ struct GeoNatureView: View {
         }
     }
     
+    /// How many of the most recent history points to keep visible in
+    /// the AR scene. Keeps the view from flooding with cyan dots when
+    /// the paired Watch streams 1 Hz of samples — the user only ever
+    /// wants to see the freshest few markers anyway.
+    private let maxVisibleHistoryPoints = 10
+
     private func loadHistoryPoints() {
         guard let location = app?.location?.location,
               let history = app?.history else { return }
@@ -420,13 +426,21 @@ struct GeoNatureView: View {
         for p in historyPoints { byID[p.id] = p }
         for p in newPoints { byID[p.id] = p }
 
-        historyPoints = byID.values
+        // Filter by distance, sort oldest → newest, then keep only the
+        // `maxVisibleHistoryPoints` most recent. `suffix` on a sorted
+        // array yields the freshest tail, so older markers fall off as
+        // new ones arrive. The cap is enforced on display only —
+        // CoreData history is left intact.
+        let visible = byID.values
             .filter { point in
                 let pl = CLLocation(latitude: point.coordinate.latitude,
                                     longitude: point.coordinate.longitude)
                 return location.distance(from: pl) <= dropDistance
             }
             .sorted { $0.date < $1.date }
+            .suffix(maxVisibleHistoryPoints)
+
+        historyPoints = Array(visible)
     }
     
     private func runOcclusionCheck() {
