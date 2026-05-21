@@ -20,39 +20,85 @@ struct Provider: AppIntentTimelineProvider {
     /// snapshot, and persists the combined result through
     /// `SharedSnapshotStore` (which also appends to the ring buffer that
     /// the main app drains on launch).
+    ///
+    /// Reads pressure from the relative stream and altitude from the
+    /// Apple-calibrated absolute stream (iOS 15+) in parallel. The
+    /// absolute stream uses Apple's location-tagged sea-level-pressure
+    /// data, so it isn't biased by weather like the raw barometric
+    /// formula is. Falls back to the formula only when the absolute
+    /// stream is unavailable or fails to deliver a reading.
     private func readFreshBarometer() async -> InformationToken? {
         guard CMAltimeter.isRelativeAltitudeAvailable() else { return nil }
 
-        return await withCheckedContinuation { continuation in
+        async let pressureSample = readPressureSample()
+        async let absoluteSample = readAbsoluteAltitudeSample()
+        let (ps, abs) = await (pressureSample, absoluteSample)
+
+        guard let pressure = ps else { return nil }
+
+        let altitude: Double
+        if let abs = abs {
+            altitude = abs
+        } else {
+            // Bootstrap fallback: biased pressure-only formula. Used
+            // only when the calibrated absolute stream is unavailable
+            // (older OS / hardware, or location authorisation not
+            // granted to the host app).
+            let P0: Double = 101.325
+            altitude = log(P0 / pressure) / 0.00012
+        }
+
+        // Preserve last known GPS data (including coordinates so
+        // the main app can backfill complete history items).
+        let previous = self.readLatestInformation()
+
+        let info = InformationToken(
+            recordDate: Date(),
+            gpsAltitude: previous?.gpsAltitude ?? 0.0,
+            gpsSpeed: previous?.gpsSpeed ?? 0.0,
+            barPreassure: pressure,
+            barAltitude: altitude,
+            gpsLatitude: previous?.gpsLatitude ?? 0.0,
+            gpsLongitude: previous?.gpsLongitude ?? 0.0
+        )
+
+        SharedSnapshotStore.write(info)
+        return info
+    }
+
+    /// One-shot relative-altitude read: starts updates, takes the first
+    /// sample, stops. Returns the absolute pressure in kPa.
+    private func readPressureSample() async -> Double? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Double?, Never>) in
             let altimeter = CMAltimeter()
+            var resumed = false
             altimeter.startRelativeAltitudeUpdates(to: .main) { data, _ in
+                // CoreMotion can enqueue multiple callbacks before
+                // `stop` takes effect; guard against double-resume,
+                // which would trap on a checked continuation.
+                if resumed { return }
+                resumed = true
                 altimeter.stopRelativeAltitudeUpdates()
+                continuation.resume(returning: data?.pressure.doubleValue)
+            }
+        }
+    }
 
-                guard let data = data else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                let pressure = data.pressure.doubleValue  // kPa
-                let P0: Double = 101.325
-                let h: Double = log(P0 / pressure) / 0.00012
-
-                // Preserve last known GPS data (including coordinates so
-                // the main app can backfill complete history items).
-                let previous = self.readLatestInformation()
-
-                let info = InformationToken(
-                    recordDate: Date(),
-                    gpsAltitude: previous?.gpsAltitude ?? 0.0,
-                    gpsSpeed: previous?.gpsSpeed ?? 0.0,
-                    barPreassure: pressure,
-                    barAltitude: h,
-                    gpsLatitude: previous?.gpsLatitude ?? 0.0,
-                    gpsLongitude: previous?.gpsLongitude ?? 0.0
-                )
-
-                SharedSnapshotStore.write(info)
-                continuation.resume(returning: info)
+    /// One-shot absolute-altitude read (iOS 15+). Returns Apple's
+    /// calibrated MSL altitude in metres, or `nil` if the device /
+    /// OS can't deliver one.
+    private func readAbsoluteAltitudeSample() async -> Double? {
+        guard #available(iOS 15.0, *), CMAltimeter.isAbsoluteAltitudeAvailable() else {
+            return nil
+        }
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Double?, Never>) in
+            let altimeter = CMAltimeter()
+            var resumed = false
+            altimeter.startAbsoluteAltitudeUpdates(to: .main) { data, _ in
+                if resumed { return }
+                resumed = true
+                altimeter.stopAbsoluteAltitudeUpdates()
+                continuation.resume(returning: data?.altitude)
             }
         }
     }

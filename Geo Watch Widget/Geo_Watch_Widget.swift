@@ -23,6 +23,14 @@ struct GeoProvider: TimelineProvider {
     private static let appGroupID = "group.me.nettrash.Geo"
     private static let pressureKey = "WatchBarometerPressure"
     private static let altitudeKey = "WatchBarometerAltitude"
+    // Calibration reference written by the Watch app whenever the
+    // paired iPhone sends a snapshot. The iPhone's `barAltitude` is
+    // Apple's calibrated MSL altitude (CMAbsoluteAltitudeData), and
+    // `barPreassure` is the pressure it observed at that altitude.
+    // Anchoring the Watch widget's pressure sample against this pair
+    // removes the weather bias the raw barometric formula has.
+    private static let calibPressureKey = "iPhoneCalibPressure"
+    private static let calibAltitudeKey = "iPhoneCalibAltitude"
 
     func placeholder(in context: Context) -> GeoEntry {
         GeoEntry(date: Date(), altitude: 0.0, pressure: 101.325)
@@ -42,8 +50,7 @@ struct GeoProvider: TimelineProvider {
 
                 if let data = data {
                     let pressure = data.pressure.doubleValue  // kPa
-                    let P0: Double = 101.325
-                    let h: Double = log(P0 / pressure) / 0.00012
+                    let h: Double = self.altitudeFromPressure(pressure)
 
                     // Save to UserDefaults so next read has fresh data too
                     if let ud = UserDefaults(suiteName: GeoProvider.appGroupID) {
@@ -70,6 +77,23 @@ struct GeoProvider: TimelineProvider {
             let refreshDate = Date().addingTimeInterval(300)
             completion(Timeline(entries: [entry], policy: .after(refreshDate)))
         }
+    }
+
+    /// Convert a freshly-sampled pressure (kPa) into altitude (m above
+    /// MSL). Prefers the iPhone-calibrated reference when available;
+    /// falls back to the standard-atmosphere formula otherwise.
+    private func altitudeFromPressure(_ pressure: Double) -> Double {
+        guard let ud = UserDefaults(suiteName: GeoProvider.appGroupID) else {
+            return log(101.325 / pressure) / 0.00012
+        }
+        let calibPressure = ud.double(forKey: GeoProvider.calibPressureKey)
+        let calibAltitude = ud.double(forKey: GeoProvider.calibAltitudeKey)
+        if calibPressure > 0 {
+            return calibAltitude + log(calibPressure / pressure) / 0.00012
+        }
+        // No iPhone calibration ever received — use the biased
+        // standard-atmosphere formula as a bootstrap.
+        return log(101.325 / pressure) / 0.00012
     }
 
     private func readFromUserDefaults() -> (Double, Double) {

@@ -23,11 +23,33 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
     static let everestKey = "WatchBarometerEverest"
     static let timestampKey = "WatchBarometerTimestamp"
 
+    // Calibration reference inherited from the paired iPhone. The
+    // iPhone's `barAltitude` is the Apple-calibrated MSL altitude
+    // (`CMAbsoluteAltitudeData`), and `barPreassure` is the pressure
+    // it observed at that altitude. Together they let the Watch
+    // convert its own pressure readings into calibrated altitude
+    // using the relative-pressure formula — which is what the
+    // barometer is actually good at — without needing location
+    // permission on the Watch.
+    static let calibPressureKey = "iPhoneCalibPressure"
+    static let calibAltitudeKey = "iPhoneCalibAltitude"
+    static let calibTimestampKey = "iPhoneCalibTimestamp"
+
     private let barometer = CMAltimeter()
     var barometerInformationPressure: Double = 0
     var barometerInformationDelta: Double = 0
     var barometerInformationHeight: Double = 0
     var barometerInformationEverest: Double = 0
+    /// Pressure (kPa) the iPhone last reported alongside its
+    /// calibrated altitude. Zero means no calibration available yet.
+    var iphoneCalibPressure: Double = 0
+    /// Calibrated MSL altitude (m) the iPhone last reported.
+    var iphoneCalibAltitude: Double = 0
+    /// When `iphoneCalibPressure` / `iphoneCalibAltitude` were
+    /// observed by the iPhone. Used by callers that care about
+    /// staleness; the formula itself works as long as the weather
+    /// hasn't shifted dramatically since.
+    var iphoneCalibTimestamp: Date = .distantPast
     /// Most recent GPS context received from the iPhone (latitude /
     /// longitude / altitude / speed). The Watch has no GPS of its own
     /// in this app, so this comes from the paired iPhone via WCSession.
@@ -59,6 +81,9 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
 
     /// Read both the unified `InformationToken` (preferred) and the
     /// legacy per-key state. The unified token wins when present.
+    /// Also restores the iPhone calibration reference, which lets
+    /// `startUpdating` compute calibrated altitude on the very first
+    /// barometer tick instead of waiting for a fresh WCSession push.
     func restoreFromSharedStorage() {
         if let token = SharedSnapshotStore.readCurrent(), token.barPreassure > 0 {
             self.barometerInformationPressure = token.barPreassure
@@ -68,28 +93,62 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
             self.iphoneGPSSpeed = token.gpsSpeed
             self.iphoneGPSLatitude = token.gpsLatitude
             self.iphoneGPSLongitude = token.gpsLongitude
-            return
         }
-        guard let userDefaults = UserDefaults(suiteName: GeoWatchAppDelegate.appGroupID) else { return }
-        let pressure = userDefaults.double(forKey: GeoWatchAppDelegate.pressureKey)
-        let altitude = userDefaults.double(forKey: GeoWatchAppDelegate.altitudeKey)
-        let delta = userDefaults.double(forKey: GeoWatchAppDelegate.deltaKey)
-        let everest = userDefaults.double(forKey: GeoWatchAppDelegate.everestKey)
-        guard pressure > 0 else { return }
-        self.barometerInformationPressure = pressure
-        self.barometerInformationHeight = altitude
-        self.barometerInformationDelta = delta
-        self.barometerInformationEverest = everest > 0 ? everest : altitude / 8848
+        if let userDefaults = UserDefaults(suiteName: GeoWatchAppDelegate.appGroupID) {
+            // Per-key legacy state.
+            let pressure = userDefaults.double(forKey: GeoWatchAppDelegate.pressureKey)
+            let altitude = userDefaults.double(forKey: GeoWatchAppDelegate.altitudeKey)
+            let delta = userDefaults.double(forKey: GeoWatchAppDelegate.deltaKey)
+            let everest = userDefaults.double(forKey: GeoWatchAppDelegate.everestKey)
+            if self.barometerInformationPressure == 0 && pressure > 0 {
+                self.barometerInformationPressure = pressure
+                self.barometerInformationHeight = altitude
+                self.barometerInformationDelta = delta
+                self.barometerInformationEverest = everest > 0 ? everest : altitude / 8848
+            }
+            // iPhone calibration reference.
+            let calibPressure = userDefaults.double(forKey: GeoWatchAppDelegate.calibPressureKey)
+            let calibAltitude = userDefaults.double(forKey: GeoWatchAppDelegate.calibAltitudeKey)
+            let calibTimestamp = userDefaults.double(forKey: GeoWatchAppDelegate.calibTimestampKey)
+            if calibPressure > 0 {
+                self.iphoneCalibPressure = calibPressure
+                self.iphoneCalibAltitude = calibAltitude
+                self.iphoneCalibTimestamp = calibTimestamp > 0
+                    ? Date(timeIntervalSince1970: calibTimestamp)
+                    : .distantPast
+            }
+        }
     }
 
     /// Called by `WatchConnectivityManager` when the paired iPhone
     /// pushes its latest snapshot. Updates GPS context (the Watch keeps
-    /// using its own barometer for altitude/pressure).
+    /// using its own barometer for altitude/pressure) and refreshes
+    /// the iPhone calibration reference so subsequent Watch readings
+    /// inherit the iPhone's weather-corrected absolute altitude.
     func applyInbound(_ token: InformationToken) {
         self.iphoneGPSAltitude = token.gpsAltitude
         self.iphoneGPSSpeed = token.gpsSpeed
         self.iphoneGPSLatitude = token.gpsLatitude
         self.iphoneGPSLongitude = token.gpsLongitude
+
+        // Always refresh the iPhone calibration reference when the
+        // inbound snapshot contains a barometer reading — even if the
+        // Watch already has its own. The Watch's altitude is derived
+        // from this reference by the formula
+        //   watchAlt = refAlt + log(refP / nowP) / 0.00012
+        // so a fresher reference (closer in time to "now") tracks the
+        // real atmosphere better.
+        if token.barPreassure > 0 {
+            self.iphoneCalibPressure = token.barPreassure
+            self.iphoneCalibAltitude = token.barAltitude
+            self.iphoneCalibTimestamp = token.recordDate
+            if let ud = UserDefaults(suiteName: GeoWatchAppDelegate.appGroupID) {
+                ud.set(token.barPreassure, forKey: GeoWatchAppDelegate.calibPressureKey)
+                ud.set(token.barAltitude, forKey: GeoWatchAppDelegate.calibAltitudeKey)
+                ud.set(token.recordDate.timeIntervalSince1970,
+                       forKey: GeoWatchAppDelegate.calibTimestampKey)
+            }
+        }
 
         // If the iPhone has a fresher barometer reading and we have
         // none of our own, adopt it.
@@ -115,17 +174,34 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
             let pressure = data.pressure.doubleValue
             let delta = data.relativeAltitude.doubleValue
 
-            //Ph = P0 * exp(-0.00012 * h)
-            //ln(P0 / Ph) = 0.00012 * h
-            // h = ln(P0 / Ph) / 0.00012
-            // P0 = 101.325
-            let P0: Double = 101.325
-            let Ph: Double = pressure
-            let h: Double = log(P0 / Ph) / 0.00012
-            let everest: Double = h / 8848
-
             Task { @MainActor in
                 guard let self = self else { return }
+
+                // Compute altitude. Prefer the iPhone's calibrated
+                // reference if we have one — `iphoneCalibAltitude` is
+                // the Apple-calibrated MSL value, so anchoring off it
+                // removes the weather bias inherent in the raw
+                // barometric formula. Falls back to the biased formula
+                // when no calibration has arrived yet (Watch run
+                // standalone, or paired iPhone never opened).
+                let h: Double
+                if self.iphoneCalibPressure > 0 {
+                    // Same scale-height constant as the fallback
+                    // formula; the difference is anchoring against a
+                    // known calibrated point instead of standard sea
+                    // level.
+                    h = self.iphoneCalibAltitude
+                        + log(self.iphoneCalibPressure / pressure) / 0.00012
+                } else {
+                    //Ph = P0 * exp(-0.00012 * h)
+                    //ln(P0 / Ph) = 0.00012 * h
+                    // h = ln(P0 / Ph) / 0.00012
+                    // P0 = 101.325
+                    let P0: Double = 101.325
+                    h = log(P0 / pressure) / 0.00012
+                }
+                let everest: Double = h / 8848
+
                 self.barometerInformationPressure = pressure
                 self.barometerInformationDelta = delta
                 self.barometerInformationHeight = h
