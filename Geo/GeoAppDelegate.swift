@@ -201,7 +201,15 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         }
     }
     
-    func registerBackgroundTasks() {
+    // Marked `nonisolated` because `BGTaskScheduler` invokes the
+    // registered handler closures on a background dispatch queue.
+    // Under Swift 6, `GeoAppDelegate` is implicitly `@MainActor`
+    // (via `UIApplicationDelegate`), so calling MainActor-isolated
+    // methods from the BG closure trips a runtime isolation check
+    // (SIGTRAP / brk 1 in libdispatch via libswift_Concurrency).
+    // The handlers below only touch `BGTaskScheduler` and spin work
+    // off into `Task.detached`, so they're safe to run off-main.
+    nonisolated func registerBackgroundTasks() {
         if #available(iOS 13.0, *) {
             BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIndentifier_Refresh, using: nil) { task in
                 // Conditional cast: if the system ever hands us a
@@ -224,8 +232,8 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             }
         }
     }
-    
-    func scheduleBackgroundProcessing() {
+
+    nonisolated func scheduleBackgroundProcessing() {
         // Schedule the heavy processing task
         let processingRequest = BGProcessingTaskRequest(identifier: backgroundTaskIndentifier_Refresh)
         processingRequest.requiresNetworkConnectivity = false
@@ -249,12 +257,12 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         }
     }
     
-    func handleBackgroundProcessing(task: BGProcessingTask) {
+    nonisolated func handleBackgroundProcessing(task: BGProcessingTask) {
         scheduleBackgroundProcessing()
         runBackgroundRefresh(task: task)
     }
 
-    func handleAppRefresh(task: BGAppRefreshTask) {
+    nonisolated func handleAppRefresh(task: BGAppRefreshTask) {
         // Reschedule immediately so the next one is queued
         scheduleBackgroundProcessing()
         runBackgroundRefresh(task: task)
@@ -263,7 +271,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     /// Drives the background refresh on a `Task` so the OperationQueue's
     /// main thread stays free. Uses `withTaskCancellationHandler` so the
     /// system's expiration callback can cancel us cleanly.
-    private func runBackgroundRefresh(task: BGTask) {
+    nonisolated private func runBackgroundRefresh(task: BGTask) {
         let work = Task.detached(priority: .utility) {
             await Self.captureBarometerSampleAndPersist()
         }
