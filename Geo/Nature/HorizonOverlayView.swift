@@ -124,10 +124,19 @@ struct HorizonOverlayView: View {
                 let normalised = ((bearingDeg.truncatingRemainder(dividingBy: 360)) + 360)
                     .truncatingRemainder(dividingBy: 360)
                 let interp = interpolateSkyline(at: normalised, samples: skyline)
-                // Cap distance at the geometric horizon so we never
-                // project a point that the observer geometrically
-                // can't see.
-                return (min(interp.distance, geometricHorizonDist), interp.altitude)
+                // Use the sample's actual distance. We must NOT clip
+                // it to `geometricHorizonDist` — a peak whose
+                // elevation lifts its tip above the observer's eye
+                // line is visible past the sea-level geometric
+                // horizon, and clipping the distance while keeping
+                // the altitude would project it at the wrong
+                // horizontal range and badly inflate its apparent
+                // angle (a 5 km-tall peak at 150 km would render as
+                // if it were at 35 km). Samples that genuinely sit
+                // below the horizon get filtered later by
+                // `isWithinExtendedBounds` — their projected screen
+                // y falls off the bottom of the frame.
+                return (interp.distance, interp.altitude)
             }()
 
             // World-space position of the skyline point.

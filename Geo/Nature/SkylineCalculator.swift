@@ -60,13 +60,27 @@ final class SkylineCalculator: ObservableObject {
     /// smoothed away by interpolation.
     private let bearingStepDeg: Double = 2
 
-    /// Distance samples per bearing, log-spaced. More samples closer
-    /// to the observer (where small hills matter) and a few far ones
-    /// for true horizon ridges.
+    /// Distance samples per bearing.
+    ///
+    /// Spacing matters: along a single bearing the silhouette is
+    /// whichever sample has the largest apparent-altitude angle, so
+    /// any peak that sits between two sample distances is invisible
+    /// to the picker. The previous schedule doubled every step after
+    /// 500 m (8 → 16 → 32 → 64 km), which produced ~8 km mid-range
+    /// gaps capable of swallowing entire ridges.
+    ///
+    /// This schedule keeps the close-in metric step (~200 m), then
+    /// closes every octave above 1 km with a midpoint so no
+    /// consecutive ratio exceeds ~1.5×. ~20 samples × 180 bearings ≈
+    /// 3 600 elevation queries per full recompute; the cache in
+    /// `TerrainElevationService` amortises that to nearly zero on
+    /// subsequent recomputes since the user has to move ≥500 m
+    /// before we re-run.
     private let distancesMeters: [Double] = [
-        100, 200, 300,
-        500, 1_000, 2_000, 4_000, 8_000,
-        16_000, 32_000, 64_000, 128_000, 200_000
+        100, 200, 400, 600, 800, 1_000,
+        1_500, 2_000, 3_000, 5_000, 7_000, 10_000,
+        15_000, 22_000, 32_000, 48_000,
+        70_000, 100_000, 140_000, 200_000
     ]
 
     private var lastObserver: CLLocation?
