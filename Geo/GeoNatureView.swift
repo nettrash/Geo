@@ -66,6 +66,26 @@ struct GeoNatureView: View {
         if occlusionManager.wallDistance != nil { return "Plane" }
         return nil
     }
+
+    /// History points that have actually passed every filter the AR
+    /// scene applies before drawing them — i.e. time + area
+    /// (`loadHistoryPoints`) plus the per-frame visibility rules that
+    /// `PeakOverlayView` uses (`!occluded` and either far enough or
+    /// the scene-reconstruction mesh is ready). Drives the top-bar
+    /// counter so it reflects what the user can actually see, not the
+    /// 10-item cap on the candidate set.
+    ///
+    /// Mirrors the threshold constant `nearbyThreshold = 100` defined
+    /// in `PeakOverlayView`; kept in sync manually because that is a
+    /// private constant in the view.
+    private var visibleHistoryPoints: [ARHistoryPoint] {
+        let occluded = occlusionManager.occludedIDs
+        let nearbyThreshold: Double = 100
+        return historyPoints.filter { point in
+            guard !occluded.contains(point.id) else { return false }
+            return point.distance >= nearbyThreshold || occlusionManager.isSceneReady
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -140,7 +160,7 @@ struct GeoNatureView: View {
                         
                         Image(systemName: "mappin.circle.fill")
                             .foregroundStyle(.cyan)
-                        Text(verbatim: "\(historyPoints.count)")
+                        Text(verbatim: "\(visibleHistoryPoints.count)")
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.white)
                         
