@@ -373,10 +373,13 @@ struct GeoNatureView: View {
         }
     }
     
-    /// How many of the most recent history points to keep visible in
-    /// the AR scene. Keeps the view from flooding with cyan dots when
-    /// the paired Watch streams 1 Hz of samples — the user only ever
-    /// wants to see the freshest few markers anyway.
+    /// How many of the most recent history points to consider for the
+    /// AR scene. The time filter is applied first against
+    /// `history.historyItems`; the area filter then narrows that
+    /// candidate set to whatever's within view distance, so the
+    /// displayed count is bounded above by this value but can be
+    /// lower (down to zero) when the user is far from where the
+    /// freshest samples were recorded.
     private let maxVisibleHistoryPoints = 10
 
     private func loadHistoryPoints() {
@@ -387,60 +390,44 @@ struct GeoNatureView: View {
         // the last refresh — saves an expensive fetch on every tick.
         history.refreshIfNeeded()
 
+        // Step 1 — time filter. `history.historyItems` is sorted
+        // ascending by `recordDate` after `History.Refresh()`, so
+        // `suffix(maxVisibleHistoryPoints)` yields the most recent
+        // samples. If the underlying fetch is briefly empty (e.g.
+        // a CoreData retry mid-save), leave the markers we're
+        // already showing in place rather than wipe the AR scene
+        // blank for one frame.
+        let recentItems = history.historyItems.suffix(maxVisibleHistoryPoints)
+        guard !recentItems.isEmpty else { return }
+
+        // Step 2 — area filter. From the time-selected candidates,
+        // keep only the ones whose recorded GPS coordinate sits
+        // within `maxDistance` of the user. Points that landed on
+        // top of the user (distance ≤ 1 m) are also dropped: they'd
+        // project to the camera origin and just clutter the scene.
         let maxDistance: CLLocationDistance = 1000
-        // Hysteresis: keep an already-displayed point in the scene until the
-        // user has moved noticeably further away. This prevents the AR scene
-        // from periodically wiping all history markers when CoreData is briefly
-        // empty or the user wanders right at the boundary of `maxDistance`.
-        let dropDistance: CLLocationDistance = maxDistance * 1.5
+        let filtered: [ARHistoryPoint] = recentItems.compactMap { item in
+            let itemLocation = CLLocation(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
+            let distance = location.distance(from: itemLocation)
+            guard distance <= maxDistance, distance > 1 else { return nil }
 
-        let newPoints = history.historyItems
-            .suffix(200)
-            .compactMap { item -> ARHistoryPoint? in
-                let itemLocation = CLLocation(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
-                let distance = location.distance(from: itemLocation)
-                guard distance <= maxDistance, distance > 1 else { return nil }
+            let itemBearing = Geometry.bearing(
+                from: location.coordinate,
+                to: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
+            )
+            return ARHistoryPoint(
+                date: item.recordDate ?? Date(),
+                coordinate: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude),
+                gpsAltitude: item.gpsAltitude,
+                barometerAltitude: item.barometerAltitude,
+                pressure: item.barometerPressure,
+                speed: item.gpsVelocity,
+                distance: distance,
+                bearing: itemBearing
+            )
+        }
 
-                let itemBearing = Geometry.bearing(
-                    from: location.coordinate,
-                    to: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
-                )
-                return ARHistoryPoint(
-                    date: item.recordDate ?? Date(),
-                    coordinate: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude),
-                    gpsAltitude: item.gpsAltitude,
-                    barometerAltitude: item.barometerAltitude,
-                    pressure: item.barometerPressure,
-                    speed: item.gpsVelocity,
-                    distance: distance,
-                    bearing: itemBearing
-                )
-            }
-
-        // Merge with the previous set rather than replacing it. Once a marker
-        // has been added to the AR scene we only remove it when it is clearly
-        // out of range (`dropDistance`); a transient empty refresh — for
-        // example because the CoreData fetch was retried — must not destroy
-        // every marker the user is currently looking at.
-        var byID: [UUID: ARHistoryPoint] = [:]
-        for p in historyPoints { byID[p.id] = p }
-        for p in newPoints { byID[p.id] = p }
-
-        // Filter by distance, sort oldest → newest, then keep only the
-        // `maxVisibleHistoryPoints` most recent. `suffix` on a sorted
-        // array yields the freshest tail, so older markers fall off as
-        // new ones arrive. The cap is enforced on display only —
-        // CoreData history is left intact.
-        let visible = byID.values
-            .filter { point in
-                let pl = CLLocation(latitude: point.coordinate.latitude,
-                                    longitude: point.coordinate.longitude)
-                return location.distance(from: pl) <= dropDistance
-            }
-            .sorted { $0.date < $1.date }
-            .suffix(maxVisibleHistoryPoints)
-
-        historyPoints = Array(visible)
+        historyPoints = filtered.sorted { $0.date < $1.date }
     }
     
     private func runOcclusionCheck() {
