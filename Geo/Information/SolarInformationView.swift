@@ -42,7 +42,7 @@ struct SolarInformationView: View {
 
     @ViewBuilder
     private func content(now: Date) -> some View {
-        VStack {
+        VStack(spacing: 0) {
             if let loc = location?.location {
                 let lat = loc.coordinate.latitude
                 let lon = loc.coordinate.longitude
@@ -83,11 +83,13 @@ struct SolarInformationView: View {
         HStack(alignment: .top) {
             Text(label)
                 .font(.subheadline)
-                .padding()
+                .padding(.horizontal)
+                .padding(.vertical, 4)
             Spacer()
             Text(value)
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding()
+                .padding(.horizontal)
+                .padding(.vertical, 4)
         }
     }
 
@@ -96,12 +98,12 @@ struct SolarInformationView: View {
         return HStack(alignment: .top) {
             Text("Countdown")
                 .font(.subheadline)
-                .padding()
+                .padding(.horizontal)
+                .padding(.vertical, 4)
             Spacer()
             Group {
                 if let target {
                     Text("\(Self.countdownString(target.timeIntervalSince(now))) to \(label)")
-                        .fontWeight(.semibold)
                 } else if times.isPolarDay {
                     Text("Sun up all day")
                 } else if times.isPolarNight {
@@ -111,7 +113,8 @@ struct SolarInformationView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding()
+            .padding(.horizontal)
+            .padding(.vertical, 4)
         }
     }
 
@@ -155,4 +158,8 @@ struct SolarInformationView: View {
         let sec = s % 60
         return h > 0 ? "\(h)h \(m)m" : "\(m)m \(sec)s"
     }
+}
+
+#Preview {
+    SolarInformationView(location: nil)
 }
