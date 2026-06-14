@@ -11,6 +11,11 @@ agrees across the phone, the home-screen widget, the Watch screen and the Watch
 complication, plus 39 verified bug fixes and 24 improvements.
 
 ### Added
+- **Peak bearing & compass arrow** — the closest- and highest-mountain cards now
+  show the true bearing to the peak ("117° SE") with an arrow that rotates to your
+  live heading, so it always points at the summit — a low-power, AR-free
+  "point me toward it" finder. Includes a "calibrate compass" hint when the
+  magnetometer drifts; the compass runs only while the Info tab is open.
 - **Sun panel** — today's solar windows for your exact position **and altitude**:
   dawn, sunrise, golden hour (AM/PM), solar noon, sunset, dusk and day length, with
   a live "X h to sunset" countdown (rolling on to tomorrow's sunrise after dark).
