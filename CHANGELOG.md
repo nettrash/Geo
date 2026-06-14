@@ -11,6 +11,12 @@ agrees across the phone, the home-screen widget, the Watch screen and the Watch
 complication, plus 39 verified bug fixes and 24 improvements.
 
 ### Added
+- **Sun panel** — today's solar windows for your exact position **and altitude**:
+  dawn, sunrise, golden hour (AM/PM), solar noon, sunset, dusk and day length, with
+  a live "X h to sunset" countdown (rolling on to tomorrow's sunrise after dark).
+  100 % on-device (NOAA solar algorithm); the altitude horizon-dip makes the sun
+  rise earlier and set later from a summit. Polar day/night handled. For
+  alpine-start planning, turning around before dark, and golden-hour photography.
 - **Storm warning** — the classic mountaineering/sailing barometer use: a single
   advisory "pressure falling fast" local notification when the barometer drops
   sharply (the leading above-tree-line storm indicator). The 3-hour tendency is a
