@@ -33,6 +33,9 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     // History
     var history: History = History()
 
+    // Trip Recorder (M5c) — recording state + saved-trip list for the Stat tab.
+    var tripRecorder: TripRecorder?
+
     /// WatchConnectivity bridge — `nil` on devices that don't support it.
     var connectivity: PhoneConnectivityManager?
 
@@ -56,6 +59,8 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         self.location?.mountainsData = self.mountainsData
 
         self.deviceMotion = DeviceMotionManager()
+
+        self.tripRecorder = TripRecorder(history: self.history)
 
         // Spin up WatchConnectivity. The manager is non-isolated and
         // safe to construct from any thread; we set our own delegate

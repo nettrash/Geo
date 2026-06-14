@@ -489,3 +489,232 @@ enum StormWarning {
         return PressureTrend(classification: cls, changeHPaOver3h: change3h)
     }
 }
+
+// MARK: - Trip Recorder (M5c)
+
+/// One sample fed to the trip-summary math. Neutral value type so the stat
+/// functions stay pure + testable without Core Data, and byte-identical to
+/// Android `me.nettrash.geo.util.TripSample`.
+struct TripSample: Sendable {
+    let timeMs: Int64
+    let altitude: Double   // barometric altitude (m) — precise relative change
+    let latitude: Double
+    let longitude: Double
+    let speed: Double      // m/s
+}
+
+/// Computed summary of an outing. All distances in metres, times in seconds.
+struct TripSummary: Equatable, Sendable {
+    var totalAscent: Double = 0
+    var totalDescent: Double = 0
+    var maxAltitude: Double = 0
+    var minAltitude: Double = 0
+    var distance: Double = 0
+    var movingTime: Double = 0
+}
+
+/// Pure trip-summary math. Byte-identical to Android `TripStats`.
+enum TripStats {
+    /// Altitude deltas below this are treated as sensor noise and don't
+    /// count toward ascent/descent — without it jitter inflates elevation
+    /// gain wildly.
+    static let ascentSmoothingMeters = 3.0
+    /// Below this speed the user is considered stopped (excluded from moving time).
+    static let movingSpeedMps = 0.5
+    /// Cap a single inter-sample gap so a long pause / background gap can't
+    /// inflate moving time.
+    static let maxSegmentSeconds = 60.0
+
+    /// Summarise a time-ascending list of samples. Ascent/descent use a
+    /// moving-reference hysteresis so slow real climbs still count while
+    /// sub-3 m noise is dropped; distance is the haversine path over valid
+    /// GPS points; moving time sums only segments above the speed floor.
+    static func summary(_ samples: [TripSample]) -> TripSummary {
+        guard let first = samples.first else { return TripSummary() }
+
+        var maxAlt = first.altitude
+        var minAlt = first.altitude
+        for sample in samples {
+            maxAlt = max(maxAlt, sample.altitude)
+            minAlt = min(minAlt, sample.altitude)
+        }
+
+        var ref = first.altitude
+        var ascent = 0.0
+        var descent = 0.0
+        var distance = 0.0
+        var movingTime = 0.0
+
+        for i in 1..<samples.count {
+            let prev = samples[i - 1]
+            let cur = samples[i]
+
+            let delta = cur.altitude - ref
+            if delta >= ascentSmoothingMeters {
+                ascent += delta
+                ref = cur.altitude
+            } else if delta <= -ascentSmoothingMeters {
+                descent += -delta
+                ref = cur.altitude
+            }
+
+            if !(prev.latitude == 0 && prev.longitude == 0),
+               !(cur.latitude == 0 && cur.longitude == 0) {
+                distance += Geometry.distanceBetween(lat1: prev.latitude, lon1: prev.longitude,
+                                                     lat2: cur.latitude, lon2: cur.longitude)
+            }
+
+            let dtSec = Double(cur.timeMs - prev.timeMs) / 1000.0
+            if dtSec > 0, cur.speed >= movingSpeedMps {
+                movingTime += min(dtSec, maxSegmentSeconds)
+            }
+        }
+
+        return TripSummary(totalAscent: ascent, totalDescent: descent,
+                           maxAltitude: maxAlt, minAltitude: minAlt,
+                           distance: distance, movingTime: movingTime)
+    }
+}
+
+extension History {
+
+    /// Recorded samples in `[start, end]`, recordDate-ascending (uses the
+    /// recordDate index). Excludes garbage zero-pressure rows.
+    func getItemsBetween(start: Date, end: Date) -> [HistoryItem] {
+        let context = PersistenceController.shared.container.viewContext
+        let request: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
+        request.predicate = NSPredicate(format: "recordDate >= %@ AND recordDate <= %@ AND barometerPressure > 0",
+                                        start as NSDate, end as NSDate)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \HistoryItem.recordDate, ascending: true)]
+        return (try? context.fetch(request)) ?? []
+    }
+
+    /// History rows in `[start, end]` mapped to neutral stat samples
+    /// (barometric altitude for precise relative change).
+    func tripSamples(start: Date, end: Date) -> [TripSample] {
+        getItemsBetween(start: start, end: end).compactMap { item in
+            guard let date = item.recordDate else { return nil }
+            return TripSample(timeMs: Int64(date.timeIntervalSince1970 * 1000),
+                              altitude: item.barometerAltitude,
+                              latitude: item.gpsLatitude,
+                              longitude: item.gpsLongitude,
+                              speed: item.gpsVelocity)
+        }
+    }
+
+    /// Barometric-altitude elevation profile for `[start, end]`, downsampled
+    /// to at most `maxPoints` points for charting.
+    func tripElevationProfile(start: Date, end: Date, maxPoints: Int = 120) -> [Double] {
+        guard maxPoints > 0 else { return [] }   // "at most maxPoints" — 0 means none
+        let altitudes = getItemsBetween(start: start, end: end).map { $0.barometerAltitude }
+        guard altitudes.count > maxPoints else { return altitudes }
+        let stride = Double(altitudes.count) / Double(maxPoints)
+        return (0..<maxPoints).map { altitudes[Int(Double($0) * stride)] }
+    }
+
+    /// Create + persist a `Trip` whose summary is computed once from the
+    /// samples in `[start, end]` and denormalised so it survives history
+    /// pruning. Returns the saved trip, or `nil` on failure.
+    @discardableResult
+    func saveTrip(name: String, start: Date, end: Date) -> Trip? {
+        let context = PersistenceController.shared.container.viewContext
+        let summary = TripStats.summary(tripSamples(start: start, end: end))
+
+        let trip = Trip(context: context)
+        trip.id = UUID()
+        trip.name = name
+        trip.startDate = start
+        trip.endDate = end
+        trip.totalAscent = summary.totalAscent
+        trip.totalDescent = summary.totalDescent
+        trip.maxAltitude = summary.maxAltitude
+        trip.minAltitude = summary.minAltitude
+        trip.distance = summary.distance
+        trip.movingTime = summary.movingTime
+        do {
+            try context.save()
+            return trip
+        } catch {
+            AppLog.history.error("Failed to save trip: \(String(describing: error))")
+            context.rollback()
+            return nil
+        }
+    }
+
+    /// All saved trips, newest first.
+    func fetchTrips() -> [Trip] {
+        let context = PersistenceController.shared.container.viewContext
+        let request: NSFetchRequest<Trip> = Trip.fetchRequest()
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \Trip.startDate, ascending: false)]
+        return (try? context.fetch(request)) ?? []
+    }
+
+    func deleteTrip(_ trip: Trip) {
+        let context = PersistenceController.shared.container.viewContext
+        context.delete(trip)
+        try? context.save()
+    }
+}
+
+// `Trip` already conforms to `Identifiable` via Core Data codegen (it has
+// an `id` attribute), so no manual conformance is needed.
+
+/// Observable wrapper around in-progress trip recording plus the saved trip
+/// list. The in-progress start time is persisted (UserDefaults) so a
+/// recording survives an app restart; saving denormalises the summary via
+/// `History.saveTrip`. Owned by `GeoAppDelegate`, consumed by the Stat tab.
+@Observable
+final class TripRecorder {
+    private let startKey = "TripRecordingStartedAt"
+    private let history: History
+
+    /// Non-nil while a trip is being recorded.
+    var startedAt: Date?
+    /// Saved trips, newest first.
+    var trips: [Trip] = []
+
+    init(history: History) {
+        self.history = history
+        self.startedAt = UserDefaults.standard.object(forKey: startKey) as? Date
+        reload()
+    }
+
+    var isRecording: Bool { startedAt != nil }
+
+    func start() {
+        let now = Date()
+        startedAt = now
+        UserDefaults.standard.set(now, forKey: startKey)
+    }
+
+    @discardableResult
+    func stop(name: String) -> Trip? {
+        guard let start = startedAt else { return nil }
+        // Keep the in-progress recording if the save fails (e.g. a transient
+        // Core Data / CloudKit error) so the user can retry rather than lose it.
+        guard let trip = history.saveTrip(name: name, start: start, end: Date()) else {
+            return nil
+        }
+        cancel()
+        reload()
+        return trip
+    }
+
+    /// Abandon the in-progress recording without saving a trip.
+    func cancel() {
+        startedAt = nil
+        UserDefaults.standard.removeObject(forKey: startKey)
+    }
+
+    func reload() { trips = history.fetchTrips() }
+
+    func delete(_ trip: Trip) {
+        history.deleteTrip(trip)
+        reload()
+    }
+
+    func elevationProfile(for trip: Trip) -> [Double] {
+        guard let start = trip.startDate, let end = trip.endDate else { return [] }
+        return history.tripElevationProfile(start: start, end: end)
+    }
+}

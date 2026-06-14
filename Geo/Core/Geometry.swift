@@ -115,13 +115,27 @@ enum Geometry {
         return atan2(apparentRise, distance)
     }
 
-    /// 8-point compass abbreviation (N / NE / E / SE / S / SW / W / NW) for a
-    /// bearing in degrees from true north. Kept identical to Android
-    /// `GeoCalculations.cardinalDirection`.
+    /// Great-circle (haversine) distance in metres between two coordinates.
+    /// Kept identical to Android `GeoCalculations.distanceBetween` so trip
+    /// distances match across platforms.
+    static func distanceBetween(lat1: Double, lon1: Double,
+                                lat2: Double, lon2: Double,
+                                radius R: Double = earthRadius) -> Double {
+        let dLat = (lat2 - lat1) * .pi / 180
+        let dLon = (lon2 - lon1) * .pi / 180
+        let a = sin(dLat / 2) * sin(dLat / 2)
+              + cos(lat1 * .pi / 180) * cos(lat2 * .pi / 180) * sin(dLon / 2) * sin(dLon / 2)
+        let c = 2 * atan2(a.squareRoot(), (1 - a).squareRoot())
+        return R * c
+    }
+
     /// 8-point compass labels, hoisted so `cardinalDirection` doesn't
     /// re-allocate the array on every (per-heading-update) call.
     private static let cardinalLabels = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
+    /// 8-point compass abbreviation (N / NE / E / SE / S / SW / W / NW) for a
+    /// bearing in degrees from true north. Kept identical to Android
+    /// `GeoCalculations.cardinalDirection`.
     static func cardinalDirection(_ bearingDeg: Double) -> String {
         // Guard non-finite input before the integer conversion: `Int(NaN)`
         // traps in Swift. (Android maps NaN→0→"N" via the JVM cast; make

@@ -228,3 +228,73 @@ final class SolarTests: XCTestCase {
         XCTAssertLessThan(sunrise.timeIntervalSince(query), 3 * 3600)  // ~19 min, not 24 h
     }
 }
+
+/// Trip-summary stats tests (M5c). Mirrored by Android `TripStatsTest` —
+/// same golden inputs and expected values, so a divergence fails on the
+/// affected platform.
+final class TripStatsTests: XCTestCase {
+
+    private func sample(_ t: Int64, _ alt: Double,
+                        lat: Double = 45, lon: Double = 8, speed: Double = 1) -> TripSample {
+        TripSample(timeMs: t, altitude: alt, latitude: lat, longitude: lon, speed: speed)
+    }
+
+    func testEmptyAndSingle() {
+        XCTAssertEqual(TripStats.summary([]), TripSummary())
+        let s = TripStats.summary([sample(0, 123)])
+        XCTAssertEqual(s.totalAscent, 0)
+        XCTAssertEqual(s.totalDescent, 0)
+        XCTAssertEqual(s.maxAltitude, 123)
+        XCTAssertEqual(s.minAltitude, 123)
+    }
+
+    func testFlatWithJitterIsFiltered() {
+        let alts: [Double] = [100, 101, 100, 102, 99, 101, 100]
+        let s = TripStats.summary(alts.enumerated().map { sample(Int64($0.offset * 1000), $0.element) })
+        XCTAssertEqual(s.totalAscent, 0, accuracy: 1e-9)    // all deltas < 3 m
+        XCTAssertEqual(s.totalDescent, 0, accuracy: 1e-9)
+        XCTAssertEqual(s.maxAltitude, 102)
+        XCTAssertEqual(s.minAltitude, 99)
+    }
+
+    func testSlowClimbCapturedDespiteSmallSteps() {
+        let alts: [Double] = [100, 102, 104, 106, 108, 110]   // +2 m steps, +10 m total
+        let s = TripStats.summary(alts.enumerated().map { sample(Int64($0.offset * 1000), $0.element) })
+        XCTAssertEqual(s.totalAscent, 8, accuracy: 1e-9)      // two confirmed 4 m steps; 2 m residual dropped
+        XCTAssertEqual(s.totalDescent, 0, accuracy: 1e-9)
+    }
+
+    func testAscentDescent() {
+        let s = TripStats.summary([sample(0, 100), sample(1000, 200), sample(2000, 150)])
+        XCTAssertEqual(s.totalAscent, 100, accuracy: 1e-9)
+        XCTAssertEqual(s.totalDescent, 50, accuracy: 1e-9)
+        XCTAssertEqual(s.maxAltitude, 200)
+        XCTAssertEqual(s.minAltitude, 100)
+    }
+
+    func testDistanceHaversine() {
+        let s = TripStats.summary([sample(0, 100, lat: 45, lon: 8, speed: 2),
+                                   sample(1000, 100, lat: 45.001, lon: 8, speed: 2)])
+        XCTAssertEqual(s.distance, 111.2, accuracy: 1.5)   // ~0.001° lat ≈ 111 m
+        XCTAssertEqual(s.movingTime, 1, accuracy: 1e-9)
+    }
+
+    func testMovingTimeExcludesStops() {
+        let s = TripStats.summary([sample(0, 100, speed: 2),
+                                   sample(10_000, 100, speed: 2),     // moving 10 s
+                                   sample(20_000, 100, speed: 0.1),   // stopped 10 s
+                                   sample(30_000, 100, speed: 1)])    // moving 10 s
+        XCTAssertEqual(s.movingTime, 20, accuracy: 1e-9)
+    }
+
+    func testMovingTimeSegmentCap() {
+        let s = TripStats.summary([sample(0, 100, speed: 2), sample(120_000, 100, speed: 2)])
+        XCTAssertEqual(s.movingTime, 60, accuracy: 1e-9)   // 120 s gap capped to 60 s
+    }
+
+    func testInvalidGpsSkippedInDistance() {
+        let s = TripStats.summary([sample(0, 100, lat: 0, lon: 0, speed: 2),    // (0,0) invalid
+                                   sample(1000, 100, lat: 45.001, lon: 8, speed: 2)])
+        XCTAssertEqual(s.distance, 0, accuracy: 1e-9)
+    }
+}

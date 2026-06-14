@@ -11,6 +11,11 @@ agrees across the phone, the home-screen widget, the Watch screen and the Watch
 complication, plus 39 verified bug fixes and 24 improvements.
 
 ### Added
+- **Trip Recorder** — one tap on the Stat tab wraps the always-on sample stream
+  into a named outing. Each trip shows total ascent/descent (with sub-3 m noise
+  smoothed so the number doesn't inflate), max/min altitude, distance, moving time,
+  and an elevation profile. 100 % on-device — the new `Trip` store auto-syncs via
+  your private CloudKit, no server. A recording survives an app restart.
 - **Peak bearing & compass arrow** — the closest- and highest-mountain cards now
   show the true bearing to the peak ("117° SE") with an arrow that rotates to your
   live heading, so it always points at the summit — a low-power, AR-free
