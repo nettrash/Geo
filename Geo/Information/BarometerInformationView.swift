@@ -9,9 +9,12 @@ import SwiftUI
 
 struct BarometerInformationView: View {
     @State var barometer: Barometer?;
-    
+    /// History supplies the de-trended 3-hour pressure tendency (M5a)
+    /// rendered as the trend chip below; `nil` in previews.
+    @State var history: History?
+
     var body: some View {
-        ZStack {            
+        ZStack {
             Text("B A R O M E T E R")
                 .opacity(0.2)
                 .font(.title)
@@ -19,7 +22,7 @@ struct BarometerInformationView: View {
                 .padding()
 
             VStack {
-                
+
                 HStack(alignment: .top) {
                     Text("Pressure")
                         .font(.subheadline)
@@ -35,7 +38,22 @@ struct BarometerInformationView: View {
                     }
                     .padding()
                 }
-                
+
+                if let trend = history?.latestPressureTrend, trend.classification != .unknown {
+                    HStack(alignment: .top) {
+                        Text("3 h trend")
+                            .font(.subheadline)
+                            .padding()
+                        Spacer()
+                        Text(Self.trendLabel(trend))
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Self.trendColor(trend.classification))
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding()
+                    }
+                }
+
                 HStack(alignment: .top) {
                     Text("Altitude")
                         .font(.subheadline)
@@ -75,8 +93,34 @@ struct BarometerInformationView: View {
             .padding()
         }
     }
+
+    /// Short label for the de-trended 3-hour tendency, including the
+    /// magnitude for the alert-worthy classes.
+    private static func trendLabel(_ trend: PressureTrend) -> String {
+        switch trend.classification {
+        case .fallingFast:
+            return String(format: "↓↓ Falling fast (%.0f hPa)", abs(trend.changeHPaOver3h))
+        case .falling:
+            return String(format: "↓ Falling (%.0f hPa)", abs(trend.changeHPaOver3h))
+        case .steady:
+            return "→ Steady"
+        case .rising:
+            return String(format: "↑ Rising (%.0f hPa)", abs(trend.changeHPaOver3h))
+        case .unknown:
+            return ""
+        }
+    }
+
+    private static func trendColor(_ cls: PressureTrendClass) -> Color {
+        switch cls {
+        case .fallingFast: return .red
+        case .falling:     return .orange
+        case .rising:      return .green
+        case .steady, .unknown: return .secondary
+        }
+    }
 }
 
 #Preview {
-    BarometerInformationView(barometer: nil)
+    BarometerInformationView(barometer: nil, history: nil)
 }
