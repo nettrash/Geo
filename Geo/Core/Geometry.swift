@@ -114,6 +114,24 @@ enum Geometry {
         let apparentRise = (targetAltitude - observerAltitude) - curvatureDrop
         return atan2(apparentRise, distance)
     }
+
+    /// 8-point compass abbreviation (N / NE / E / SE / S / SW / W / NW) for a
+    /// bearing in degrees from true north. Kept identical to Android
+    /// `GeoCalculations.cardinalDirection`.
+    /// 8-point compass labels, hoisted so `cardinalDirection` doesn't
+    /// re-allocate the array on every (per-heading-update) call.
+    private static let cardinalLabels = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+    static func cardinalDirection(_ bearingDeg: Double) -> String {
+        // Guard non-finite input before the integer conversion: `Int(NaN)`
+        // traps in Swift. (Android maps NaN→0→"N" via the JVM cast; make
+        // both explicit and identical.)
+        guard bearingDeg.isFinite else { return "N" }
+        let normalized = bearingDeg.truncatingRemainder(dividingBy: 360)
+        let positive = (normalized + 360).truncatingRemainder(dividingBy: 360)
+        let index = Int((positive + 22.5).truncatingRemainder(dividingBy: 360) / 45)
+        return cardinalLabels[index % 8]
+    }
 }
 
 // MARK: - Solar position & day-window math (NOAA / Meeus)

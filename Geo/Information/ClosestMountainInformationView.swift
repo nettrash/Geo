@@ -11,6 +11,7 @@ import CoreLocation
 
 struct ClosestMountainInformationView: View {
     @State var location: Location?;
+    var motion: DeviceMotionManager?
 
     var body: some View {
         ZStack {
@@ -46,6 +47,13 @@ struct ClosestMountainInformationView: View {
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
+                }
+
+                if let motion {
+                    PeakBearingRow(userCoordinate: location?.location?.coordinate,
+                                   peakLatitude: location?.closestMountain?.coordinates?.latitude,
+                                   peakLongitude: location?.closestMountain?.coordinates?.longitude,
+                                   motion: motion)
                 }
 
                 HStack(alignment: .top) {
@@ -147,6 +155,60 @@ struct ClosestMountainInformationView: View {
     }
 }
 
+/// Distance-paired "point me toward it" row: a true-bearing readout
+/// ("117° SE") plus an arrow that rotates to the device's live heading so
+/// it always points at the peak. Reused by the closest- and highest-peak
+/// cards. Renders nothing until both the observer and peak coordinates are
+/// known. A low-power, AR-free direction finder.
+struct PeakBearingRow: View {
+    let userCoordinate: CLLocationCoordinate2D?
+    let peakLatitude: Double?
+    let peakLongitude: Double?
+    @ObservedObject var motion: DeviceMotionManager
+
+    /// True bearing (deg) from observer to peak, or `nil` when either
+    /// coordinate is missing or an unset `(0,0)`.
+    private var bearing: Double? {
+        guard let user = userCoordinate, let plat = peakLatitude, let plon = peakLongitude,
+              CLLocationCoordinate2DIsValid(user),
+              !(user.latitude == 0 && user.longitude == 0),
+              !(plat == 0 && plon == 0) else { return nil }
+        let peak = CLLocationCoordinate2D(latitude: plat, longitude: plon)
+        return Geometry.bearing(from: user, to: peak)
+    }
+
+    var body: some View {
+        if let bearing {
+            VStack(spacing: 2) {
+                HStack(alignment: .top) {
+                    Text("Bearing")
+                        .font(.subheadline)
+                        .padding()
+                    Spacer()
+                    HStack(spacing: 6) {
+                        // `location.north.fill` points up; rotating by
+                        // (bearing − heading) aims it at the peak's real-world
+                        // direction relative to where the device points.
+                        Image(systemName: "location.north.fill")
+                            .rotationEffect(.degrees(bearing - motion.heading))
+                        Text(verbatim: "\(Int(bearing.rounded()) % 360)° \(Geometry.cardinalDirection(bearing))")
+                    }
+                    .padding()
+                }
+                if motion.headingAccuracy < 0 || motion.headingAccuracy > 25 {
+                    HStack {
+                        Spacer()
+                        Text("Calibrate compass — move in a figure-8")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .padding([.horizontal, .bottom], 8)
+                    }
+                }
+            }
+        }
+    }
+}
+
 #Preview {
-    ClosestMountainInformationView(location: nil)
+    ClosestMountainInformationView(location: nil, motion: nil)
 }

@@ -16,6 +16,13 @@ class DeviceMotionManager: NSObject, ObservableObject, CLLocationManagerDelegate
     @Published var heading: Double = 0       // compass heading in degrees (0-360)
     @Published var pitch: Double = 0         // device pitch in radians
     @Published var roll: Double = 0          // device roll in radians
+    /// Maximum deviation (degrees) between reported and true heading, as
+    /// reported by Core Location. `< 0` means the heading is invalid /
+    /// the magnetometer needs calibration; larger values mean worse
+    /// accuracy. Drives the "calibrate compass" hint. Starts optimistic
+    /// (0) so the hint isn't shown before the first heading callback —
+    /// mirrors Android's `SENSOR_STATUS_ACCURACY_HIGH` initial value.
+    @Published var headingAccuracy: Double = 0
     
     private let motionManager = CMMotionManager()
     private let headingManager = CLLocationManager()
@@ -56,10 +63,22 @@ class DeviceMotionManager: NSObject, ObservableObject, CLLocationManagerDelegate
     // MARK: - CLLocationManagerDelegate
     
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        guard newHeading.headingAccuracy >= 0 else { return }
-        let h = newHeading.trueHeading > 0 ? newHeading.trueHeading : newHeading.magneticHeading
-        Task { @MainActor [weak self] in
-            self?.heading = h
+        let accuracy = newHeading.headingAccuracy
+        // Publish accuracy regardless so the calibrate hint can react; only
+        // accept the heading value itself when it's valid.
+        if accuracy >= 0 {
+            // `trueHeading` is in [0, 360); only the `-1` sentinel means it
+            // couldn't be computed. Use `>= 0` so a valid due-true-north
+            // (0.0) reading isn't discarded for the magnetic fallback.
+            let h = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+            Task { @MainActor [weak self] in
+                self?.heading = h
+                self?.headingAccuracy = accuracy
+            }
+        } else {
+            Task { @MainActor [weak self] in
+                self?.headingAccuracy = accuracy
+            }
         }
     }
 }

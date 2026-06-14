@@ -24,6 +24,12 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     // Instance of location manager
     var location: Location?
 
+    // Compass / device-heading source for the peak-bearing arrows. Owned
+    // here (like barometer/location) and passed to the Info views so only
+    // the small bearing row observes its frequent heading updates — not the
+    // whole Info tab. Started/stopped by the Info view's lifecycle.
+    var deviceMotion: DeviceMotionManager?
+
     // History
     var history: History = History()
 
@@ -48,6 +54,8 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         self.location?.app = self
         self.location?.barometer = self.barometer
         self.location?.mountainsData = self.mountainsData
+
+        self.deviceMotion = DeviceMotionManager()
 
         // Spin up WatchConnectivity. The manager is non-isolated and
         // safe to construct from any thread; we set our own delegate
