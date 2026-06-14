@@ -315,6 +315,15 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         // expiration handler will short-circuit this cleanly.
         try? await Task.sleep(nanoseconds: 3_000_000_000)
 
+        // `try?` swallows the sleep's `CancellationError`, so if the BGTask
+        // expired during the wait we'd otherwise carry on. Bail before
+        // writing a (possibly empty) snapshot, touching CoreData, or posting
+        // a notification after the system has told us to stop.
+        guard !Task.isCancelled else {
+            barometer.Stop()
+            return
+        }
+
         let previous = SharedSnapshotStore.readCurrent()
 
         let info = InformationToken(
@@ -380,7 +389,11 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         var byTime: [TimeInterval: PressureSample] = [:]
         func add(_ sample: PressureSample) {
             guard sample.pressureKPa > 0, sample.date >= windowStart, sample.date <= now else { return }
-            byTime[sample.date.timeIntervalSince1970.rounded()] = sample
+            // Truncate to the whole second so a buffered snapshot and its
+            // exact CoreData mirror collapse to one key. (`.rounded()` would
+            // round to the *nearest* second, splitting a calendar second at
+            // the .5 boundary.)
+            byTime[sample.date.timeIntervalSince1970.rounded(.down)] = sample
         }
         coreDataSamples.forEach(add)
         for token in SharedSnapshotStore.readBuffer() {
@@ -389,6 +402,9 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         add(PressureSample(date: latest.recordDate, pressureKPa: latest.barPreassure, altitudeM: latest.gpsAltitude))
 
         let trend = StormWarning.tendency(Array(byTime.values), now: now)
+        // Don't post an alert if the BGTask was cancelled while we were
+        // assembling the sample set / hitting CoreData above.
+        guard !Task.isCancelled else { return }
         handleStormTrend(trend, now: now)
     }
 
@@ -396,10 +412,14 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     /// notification. Recovery to steady/rising resets the cooldown so a
     /// genuinely new storm can alert promptly.
     private static func handleStormTrend(_ trend: PressureTrend, now: Date) {
-        let defaults = UserDefaults(suiteName: SharedSnapshotStore.appGroupID)
+        // Fall back to `.standard` if the App Group suite is unavailable: the
+        // cooldown is read/written only here in the main app process, so it
+        // doesn't need cross-process sharing — and a nil store would let the
+        // cooldown silently break and re-fire the alert on every tick.
+        let defaults = UserDefaults(suiteName: SharedSnapshotStore.appGroupID) ?? .standard
         switch trend.classification {
         case .steady, .rising:
-            defaults?.removeObject(forKey: stormLastNotifiedKey)
+            defaults.removeObject(forKey: stormLastNotifiedKey)
             return
         case .unknown, .falling:
             return
@@ -407,11 +427,11 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             break
         }
 
-        let last = defaults?.object(forKey: stormLastNotifiedKey) as? Date ?? .distantPast
+        let last = defaults.object(forKey: stormLastNotifiedKey) as? Date ?? .distantPast
         guard now.timeIntervalSince(last) >= StormWarning.notificationCooldownHours * 3600 else { return }
 
         postStormNotification(dropHPa: abs(trend.changeHPaOver3h))
-        defaults?.set(now, forKey: stormLastNotifiedKey)
+        defaults.set(now, forKey: stormLastNotifiedKey)
     }
 
     /// Deliver the storm-warning notification, gated on authorization so a
