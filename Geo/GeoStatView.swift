@@ -161,7 +161,10 @@ private struct TripsSectionView: View {
             TextField("Trip name", text: $tripName)
             Button("Save") {
                 let trimmed = tripName.trimmingCharacters(in: .whitespacesAndNewlines)
-                recorder.stop(name: trimmed.isEmpty ? TripFormat.defaultName(Date()) : trimmed)
+                // Fall back to a name based on the recording START time (still set
+                // here, before stop), so it matches the prefilled default.
+                let fallback = TripFormat.defaultName(recorder.startedAt ?? Date())
+                recorder.stop(name: trimmed.isEmpty ? fallback : trimmed)
             }
             Button("Cancel", role: .cancel) { }
         }

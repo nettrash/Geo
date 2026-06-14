@@ -605,8 +605,9 @@ extension History {
     /// Barometric-altitude elevation profile for `[start, end]`, downsampled
     /// to at most `maxPoints` points for charting.
     func tripElevationProfile(start: Date, end: Date, maxPoints: Int = 120) -> [Double] {
+        guard maxPoints > 0 else { return [] }   // "at most maxPoints" — 0 means none
         let altitudes = getItemsBetween(start: start, end: end).map { $0.barometerAltitude }
-        guard altitudes.count > maxPoints, maxPoints > 0 else { return altitudes }
+        guard altitudes.count > maxPoints else { return altitudes }
         let stride = Double(altitudes.count) / Double(maxPoints)
         return (0..<maxPoints).map { altitudes[Int(Double($0) * stride)] }
     }
@@ -689,7 +690,11 @@ final class TripRecorder {
     @discardableResult
     func stop(name: String) -> Trip? {
         guard let start = startedAt else { return nil }
-        let trip = history.saveTrip(name: name, start: start, end: Date())
+        // Keep the in-progress recording if the save fails (e.g. a transient
+        // Core Data / CloudKit error) so the user can retry rather than lose it.
+        guard let trip = history.saveTrip(name: name, start: start, end: Date()) else {
+            return nil
+        }
         cancel()
         reload()
         return trip

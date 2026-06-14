@@ -113,8 +113,11 @@ struct PersistenceController {
         if error.domain == NSCocoaErrorDomain, (134100...134190).contains(error.code) {
             return true
         }
-        // SQLITE_CORRUPT (11) / SQLITE_NOTADB (26) in the underlying error.
+        // SQLITE_CORRUPT (11) / SQLITE_NOTADB (26) in the underlying SQLite
+        // error. The domain check matters: code 11 in NSPOSIXErrorDomain is
+        // EAGAIN (a transient lock), which must NOT trigger a destructive reset.
         if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError,
+           underlying.domain == "NSSQLiteErrorDomain",
            underlying.code == 11 || underlying.code == 26 {
             return true
         }
