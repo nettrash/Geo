@@ -58,14 +58,10 @@ struct GeoStatView: View {
                 Button {
                     self.showClearHistoryConfirmation = true
                 } label: {
-                    Text("Clear history")
-                        .font(.system(size: 14))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .foregroundColor(.white)
-                        .background(Color(red: 1.0, green: 0.231, blue: 0.188))  // #FF3B30, matches Android
-                        .cornerRadius(8)
+                    Label("Clear history", systemImage: "trash")
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 1.0, green: 0.231, blue: 0.188))  // #FF3B30 red (destructive)
                 .padding()
             }
         })
