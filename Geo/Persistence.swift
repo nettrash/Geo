@@ -34,15 +34,16 @@ struct PersistenceController {
     init(inMemory: Bool = false) {
         let log = Logger(subsystem: "me.nettrash.Geo", category: "persistence")
 
-        // Build the container, with a one-shot recovery: if the
-        // initial load fails (corruption, schema mismatch, disk
-        // full, …) we delete the on-disk store, log it, and fall
-        // back to an in-memory store so the app still launches and
-        // the user can recover the next time CloudKit syncs.
         let buildContainer: (Bool) -> NSPersistentCloudKitContainer = { useInMemory in
             let c = NSPersistentCloudKitContainer(name: "Geo")
-            if useInMemory {
-                c.persistentStoreDescriptions.first?.url = URL(fileURLWithPath: "/dev/null")
+            if let desc = c.persistentStoreDescriptions.first {
+                if useInMemory {
+                    desc.url = URL(fileURLWithPath: "/dev/null")
+                }
+                // Make sure the additive lightweight migration (e.g. the
+                // Trip entity) is always attempted before any failure path.
+                desc.shouldMigrateStoreAutomatically = true
+                desc.shouldInferMappingModelAutomatically = true
             }
             return c
         }
@@ -56,42 +57,41 @@ struct PersistenceController {
             }
         }
 
-        // First load failed and we weren't already in-memory: delete
-        // the corrupted store and try again. This trades local data
-        // for app-launch reliability — CloudKit will replay items
-        // back from iCloud the next time the user signs in.
         if let firstError = loadError, !inMemory {
-            log.error("Persistent store failed to load: \(String(describing: firstError)). Deleting and retrying.")
+            // Only RESET the on-disk store for errors that genuinely mean it
+            // can't be opened against the current model (failed/incompatible
+            // migration, or SQLite corruption). Transient errors (I/O, disk
+            // pressure, file locks, CloudKit) must NOT destroy data — deleting
+            // unconditionally would lose any offline / not-yet-synced rows.
+            if Self.isStoreUnopenable(firstError) {
+                log.error("Persistent store unopenable (code \(firstError.code, privacy: .public)): \(String(describing: firstError)). Backing up + resetting.")
 
-            for desc in c.persistentStoreDescriptions {
-                if let url = desc.url, FileManager.default.fileExists(atPath: url.path) {
-                    do {
-                        try FileManager.default.removeItem(at: url)
-                        // Also remove the WAL / SHM siblings that
-                        // SQLite leaves behind.
-                        let wal = url.appendingPathExtension("wal")
-                        let shm = url.appendingPathExtension("shm")
-                        try? FileManager.default.removeItem(at: wal)
-                        try? FileManager.default.removeItem(at: shm)
-                    } catch {
-                        log.error("Failed to delete corrupted store at \(url.path): \(String(describing: error))")
+                for desc in c.persistentStoreDescriptions {
+                    if let url = desc.url, FileManager.default.fileExists(atPath: url.path) {
+                        Self.backupStore(at: url, log: log)   // best-effort, recoverable copy
+                        Self.removeStore(at: url, log: log)
                     }
                 }
-            }
 
-            // Rebuild and try once more.
-            c = buildContainer(false)
-            var retryError: NSError?
-            c.loadPersistentStores { _, error in
-                if let error = error as NSError? { retryError = error }
-            }
-
-            // Retry also failed → fall back to in-memory so the app
-            // at least launches. The user keeps the session's data
-            // but nothing persists; iCloud will resync on relaunch
-            // once the underlying issue clears.
-            if let retryError {
-                log.fault("Retry of persistent-store load failed: \(String(describing: retryError)). Falling back to in-memory store.")
+                c = buildContainer(false)
+                var retryError: NSError?
+                c.loadPersistentStores { _, error in
+                    if let error = error as NSError? { retryError = error }
+                }
+                if let retryError {
+                    log.fault("Retry after reset failed: \(String(describing: retryError)). Falling back to in-memory.")
+                    c = buildContainer(true)
+                    c.loadPersistentStores { _, error in
+                        if let error = error as NSError? {
+                            log.fault("In-memory persistent-store load failed: \(String(describing: error))")
+                        }
+                    }
+                }
+            } else {
+                // Transient / non-corruption error: keep the on-disk data
+                // intact and run on an in-memory store for this session only.
+                // The next launch retries the real store once the issue clears.
+                log.error("Persistent store failed to load (transient, code \(firstError.code, privacy: .public)): \(String(describing: firstError)). Using in-memory this session WITHOUT deleting on-disk data.")
                 c = buildContainer(true)
                 c.loadPersistentStores { _, error in
                     if let error = error as NSError? {
@@ -103,5 +103,51 @@ struct PersistenceController {
 
         c.viewContext.automaticallyMergesChangesFromParent = true
         self.container = c
+    }
+
+    /// True only for load errors that mean the store cannot be opened against
+    /// the current model and a reset is the sole recovery: Core Data
+    /// migration / model-incompatibility errors (codes 134100–134190) or
+    /// SQLite file corruption. Everything else is treated as transient.
+    private static func isStoreUnopenable(_ error: NSError) -> Bool {
+        if error.domain == NSCocoaErrorDomain, (134100...134190).contains(error.code) {
+            return true
+        }
+        // SQLITE_CORRUPT (11) / SQLITE_NOTADB (26) in the underlying error.
+        if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError,
+           underlying.code == 11 || underlying.code == 26 {
+            return true
+        }
+        return false
+    }
+
+    private static func sidecarURLs(for url: URL) -> [URL] {
+        [url,
+         URL(fileURLWithPath: url.path + "-wal"),
+         URL(fileURLWithPath: url.path + "-shm")]
+    }
+
+    /// Best-effort `*.backup` copy of the store (+ WAL/SHM) before a reset, so
+    /// a destroyed store is at least recoverable off-device.
+    private static func backupStore(at url: URL, log: Logger) {
+        for file in sidecarURLs(for: url) where FileManager.default.fileExists(atPath: file.path) {
+            let backup = URL(fileURLWithPath: file.path + ".backup")
+            try? FileManager.default.removeItem(at: backup)
+            do {
+                try FileManager.default.copyItem(at: file, to: backup)
+            } catch {
+                log.error("Backup failed for \(file.lastPathComponent, privacy: .public): \(String(describing: error))")
+            }
+        }
+    }
+
+    private static func removeStore(at url: URL, log: Logger) {
+        for file in sidecarURLs(for: url) where FileManager.default.fileExists(atPath: file.path) {
+            do {
+                try FileManager.default.removeItem(at: file)
+            } catch {
+                log.error("Failed to delete \(file.lastPathComponent, privacy: .public): \(String(describing: error))")
+            }
+        }
     }
 }

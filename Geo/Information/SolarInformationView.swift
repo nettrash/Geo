@@ -43,6 +43,7 @@ struct SolarInformationView: View {
     @ViewBuilder
     private func content(now: Date) -> some View {
         VStack(spacing: 0) {
+            Spacer().frame(height: 10)
             if let loc = location?.location {
                 let lat = loc.coordinate.latitude
                 let lon = loc.coordinate.longitude
