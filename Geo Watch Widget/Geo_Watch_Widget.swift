@@ -84,16 +84,21 @@ struct GeoProvider: TimelineProvider {
     /// falls back to the standard-atmosphere formula otherwise.
     private func altitudeFromPressure(_ pressure: Double) -> Double {
         guard let ud = UserDefaults(suiteName: GeoProvider.appGroupID) else {
-            return log(101.325 / pressure) / 0.00012
+            return Atmosphere.altitude(pressureKPa: pressure)
         }
         let calibPressure = ud.double(forKey: GeoProvider.calibPressureKey)
         let calibAltitude = ud.double(forKey: GeoProvider.calibAltitudeKey)
         if calibPressure > 0 {
-            return calibAltitude + log(calibPressure / pressure) / 0.00012
+            // Lapse-rate analog anchored against the iPhone's calibrated
+            // point; subtracting the two lapse-rate altitudes preserves
+            // the calibration offset (Improvements #10/#11).
+            return calibAltitude
+                + (Atmosphere.altitude(pressureKPa: pressure)
+                   - Atmosphere.altitude(pressureKPa: calibPressure))
         }
-        // No iPhone calibration ever received — use the biased
+        // No iPhone calibration ever received — use the lapse-rate
         // standard-atmosphere formula as a bootstrap.
-        return log(101.325 / pressure) / 0.00012
+        return Atmosphere.altitude(pressureKPa: pressure)
     }
 
     private func readFromUserDefaults() -> (Double, Double) {
@@ -124,7 +129,7 @@ struct AltitudeCornerView: View {
     }
 
     private var gaugeValue: Double {
-        min(max(altitude, 0), 8900)
+        min(max(altitude, 0), Atmosphere.everestHeightM)
     }
 
     var body: some View {
@@ -132,16 +137,16 @@ struct AltitudeCornerView: View {
         .font(.system(size: 16, weight: .bold, design: .rounded))
         .minimumScaleFactor(0.3)
         .widgetLabel {
-            Gauge(value: gaugeValue, in: 0...8900) {
+            Gauge(value: gaugeValue, in: 0...Atmosphere.everestHeightM) {
                 EmptyView()
             }
             .gaugeStyle(.linearCapacity)
             .tint(Gradient(stops: [
                 .init(color: .green, location: 0.0),
-                .init(color: .green, location: 4000.0 / 8848.0),
-                .init(color: .orange, location: 5000.0 / 8848.0),
-                .init(color: .orange, location: 7480.0 / 8848.0),
-                .init(color: .red, location: 8480.0 / 8848.0),
+                .init(color: .green, location: 4000.0 / Atmosphere.everestHeightM),
+                .init(color: .orange, location: 5000.0 / Atmosphere.everestHeightM),
+                .init(color: .orange, location: 7480.0 / Atmosphere.everestHeightM),
+                .init(color: .red, location: 8480.0 / Atmosphere.everestHeightM),
                 .init(color: .red, location: 1.0),
             ]))
         }
@@ -166,11 +171,11 @@ struct AltitudeCircularView: View {
     }
 
     private var gaugeValue: Double {
-        min(max(altitude, 0), 8848)
+        min(max(altitude, 0), Atmosphere.everestHeightM)
     }
 
     var body: some View {
-        Gauge(value: gaugeValue, in: 0...8848) {
+        Gauge(value: gaugeValue, in: 0...Atmosphere.everestHeightM) {
             Image(systemName: "mountain.2.fill")
                 .font(.system(size: 8))
         } currentValueLabel: {
@@ -184,10 +189,10 @@ struct AltitudeCircularView: View {
         .gaugeStyle(.accessoryCircular)
         .tint(Gradient(stops: [
             .init(color: .green, location: 0.0),
-            .init(color: .green, location: 4000.0 / 8848.0),
-            .init(color: .orange, location: 5000.0 / 8848.0),
-            .init(color: .orange, location: 7480.0 / 8848.0),
-            .init(color: .red, location: 8480.0 / 8848.0),
+            .init(color: .green, location: 4000.0 / Atmosphere.everestHeightM),
+            .init(color: .orange, location: 5000.0 / Atmosphere.everestHeightM),
+            .init(color: .orange, location: 7480.0 / Atmosphere.everestHeightM),
+            .init(color: .red, location: 8480.0 / Atmosphere.everestHeightM),
             .init(color: .red, location: 1.0),
         ]))
     }
@@ -240,7 +245,7 @@ struct AltitudeRectangularView: View {
     }
 
     private var gaugeValue: Double {
-        min(max(altitude, 0), 8848)
+        min(max(altitude, 0), Atmosphere.everestHeightM)
     }
 
     var body: some View {
@@ -256,16 +261,16 @@ struct AltitudeRectangularView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Gauge(value: gaugeValue, in: 0...8848) {
+            Gauge(value: gaugeValue, in: 0...Atmosphere.everestHeightM) {
                 EmptyView()
             }
             .gaugeStyle(.linearCapacity)
             .tint(Gradient(stops: [
                 .init(color: .green, location: 0.0),
-                .init(color: .green, location: 4000.0 / 8848.0),
-                .init(color: .orange, location: 5000.0 / 8848.0),
-                .init(color: .orange, location: 7480.0 / 8848.0),
-                .init(color: .red, location: 8480.0 / 8848.0),
+                .init(color: .green, location: 4000.0 / Atmosphere.everestHeightM),
+                .init(color: .orange, location: 5000.0 / Atmosphere.everestHeightM),
+                .init(color: .orange, location: 7480.0 / Atmosphere.everestHeightM),
+                .init(color: .red, location: 8480.0 / Atmosphere.everestHeightM),
                 .init(color: .red, location: 1.0),
             ]))
 

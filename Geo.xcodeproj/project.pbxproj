@@ -15,6 +15,7 @@
 		E56AC7872D43D1D600300854 /* AppIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56AC7862D43D1D600300854 /* AppIntent.swift */; };
 		E56AC7AF2D43E0BF00300854 /* Geo Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = E56AC78C2D43E0BE00300854 /* Geo Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E56AC7BB2D43E86900300854 /* InformationToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E592D5842D4299550038B14D /* InformationToken.swift */; };
+		A71A05E700000000000000B1 /* Atmosphere.swift in Sources */ = {isa = PBXBuildFile; fileRef = A71A05E700000000000000F1 /* Atmosphere.swift */; };
 		E5708ACF2DBB9CF000CB66BB /* ClockKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5708ACE2DBB9CF000CB66BB /* ClockKit.framework */; };
 		E5708AD12DBB9D0A00CB66BB /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5708AD02DBB9D0A00CB66BB /* CoreFoundation.framework */; };
 		E5708AD32DBB9D0F00CB66BB /* CoreMotion.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E5708AD22DBB9D0F00CB66BB /* CoreMotion.framework */; };
@@ -45,7 +46,9 @@
 		E592D57E2D42970B0038B14D /* Widget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E592D5762D42970B0038B14D /* Widget.swift */; };
 		E592D57F2D42970B0038B14D /* WidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E592D5772D42970B0038B14D /* WidgetBundle.swift */; };
 		E592D5852D42995F0038B14D /* InformationToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E592D5842D4299550038B14D /* InformationToken.swift */; };
+		A71A05E700000000000000B2 /* Atmosphere.swift in Sources */ = {isa = PBXBuildFile; fileRef = A71A05E700000000000000F1 /* Atmosphere.swift */; };
 		E592D5862D4299650038B14D /* InformationToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E592D5842D4299550038B14D /* InformationToken.swift */; };
+		A71A05E700000000000000B3 /* Atmosphere.swift in Sources */ = {isa = PBXBuildFile; fileRef = A71A05E700000000000000F1 /* Atmosphere.swift */; };
 		F2F2F3002D4299650038B14D /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2F2F2F12D4299550038B14D /* AppLog.swift */; };
 		F2F2F3012D4299650038B14D /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2F2F2F12D4299550038B14D /* AppLog.swift */; };
 		F2F2F3022D4299650038B14D /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2F2F2F12D4299550038B14D /* AppLog.swift */; };
@@ -65,6 +68,7 @@
 		F4F4F4052D4299650038B14D /* SkylineCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F4F4022D4299550038B14D /* SkylineCalculator.swift */; };
 		F4F4F4082D4299650038B14D /* SkylineGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F4F4032D4299550038B14D /* SkylineGeometryTests.swift */; };
 		F5F5F5012D4299650038B14D /* InformationToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E592D5842D4299550038B14D /* InformationToken.swift */; };
+		A71A05E700000000000000B4 /* Atmosphere.swift in Sources */ = {isa = PBXBuildFile; fileRef = A71A05E700000000000000F1 /* Atmosphere.swift */; };
 		F6F6F6032D4299650038B14D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F6F6F6012D4299550038B14D /* PrivacyInfo.xcprivacy */; };
 		F6F6F6042D4299650038B14D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F6F6F6022D4299550038B14D /* PrivacyInfo.xcprivacy */; };
 		F7F7F7032D4299650038B14D /* PermissionsMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F7F7012D4299550038B14D /* PermissionsMonitor.swift */; };
@@ -261,6 +265,7 @@
 		E592D5822D4298380038B14D /* Geo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Geo.entitlements; sourceTree = "<group>"; };
 		E592D5832D4298580038B14D /* WidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WidgetExtension.entitlements; sourceTree = "<group>"; };
 		E592D5842D4299550038B14D /* InformationToken.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InformationToken.swift; sourceTree = "<group>"; };
+		A71A05E700000000000000F1 /* Atmosphere.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Atmosphere.swift; sourceTree = "<group>"; };
 		F2F2F2F12D4299550038B14D /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		F2F2F2F82D4299550038B14D /* SharedSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedSnapshotStore.swift; sourceTree = "<group>"; };
 		F2F2F2F92D4299550038B14D /* PhoneConnectivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneConnectivityManager.swift; sourceTree = "<group>"; };
@@ -458,6 +463,7 @@
 				F3F3F3F12D4299550038B14D /* Geometry.swift */,
 				E5E6CC2A2C8B2C7100779817 /* History.swift */,
 				E592D5842D4299550038B14D /* InformationToken.swift */,
+				A71A05E700000000000000F1 /* Atmosphere.swift */,
 				E58E03B42C232E30002909A4 /* Location.swift */,
 				F7F7F7012D4299550038B14D /* PermissionsMonitor.swift */,
 				F2F2F2F92D4299550038B14D /* PhoneConnectivityManager.swift */,
@@ -933,6 +939,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E56AC7BB2D43E86900300854 /* InformationToken.swift in Sources */,
+				A71A05E700000000000000B1 /* Atmosphere.swift in Sources */,
 				F2F2F3012D4299650038B14D /* AppLog.swift in Sources */,
 				F2F2F3112D4299650038B14D /* SharedSnapshotStore.swift in Sources */,
 			);
@@ -957,6 +964,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E592D5862D4299650038B14D /* InformationToken.swift in Sources */,
+				A71A05E700000000000000B3 /* Atmosphere.swift in Sources */,
 				E56AC7872D43D1D600300854 /* AppIntent.swift in Sources */,
 				E592D57E2D42970B0038B14D /* Widget.swift in Sources */,
 				E592D57F2D42970B0038B14D /* WidgetBundle.swift in Sources */,
@@ -972,6 +980,7 @@
 				F2F2F3032D4299650038B14D /* AppLog.swift in Sources */,
 				F2F2F3132D4299650038B14D /* SharedSnapshotStore.swift in Sources */,
 				F5F5F5012D4299650038B14D /* InformationToken.swift in Sources */,
+				A71A05E700000000000000B4 /* Atmosphere.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1005,6 +1014,7 @@
 				E5D68BEF2D27F1ED00E30A18 /* GraphLine.swift in Sources */,
 				E57221FD2C21C82C008D466B /* GeoNatureView.swift in Sources */,
 				E592D5852D42995F0038B14D /* InformationToken.swift in Sources */,
+				A71A05E700000000000000B2 /* Atmosphere.swift in Sources */,
 				E5EE4DD32CA5B315006EC1DE /* GraphView.swift in Sources */,
 				E5BE6A2B2DB77B0C0034F772 /* DataPoint.swift in Sources */,
 				E5EF82C92DB678EF00CC5843 /* LegendView.swift in Sources */,
@@ -1150,7 +1160,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch App/Geo Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo Watch App/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1165,7 +1175,7 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.Geo.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1186,7 +1196,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch App/Geo Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo Watch App/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1201,7 +1211,7 @@
 					"@executable_path/Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.Geo.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1218,11 +1228,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "me.nettrash.Geo.Geo-Watch-AppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1240,11 +1250,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "me.nettrash.Geo.Geo-Watch-AppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1260,11 +1270,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "me.nettrash.Geo.Geo-Watch-AppUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1281,11 +1291,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "me.nettrash.Geo.Geo-Watch-AppUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1304,7 +1314,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = Widget/WidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
@@ -1317,7 +1327,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.Geo.Widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1335,7 +1345,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = Widget/WidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
@@ -1348,7 +1358,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.Geo.Widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1364,7 +1374,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Geo Watch Widget/Info.plist";
@@ -1377,7 +1387,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "me.nettrash.Geo.watchkitapp.Geo-Watch-Widget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1397,7 +1407,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch Widget/Geo Watch WidgetExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Geo Watch Widget/Info.plist";
@@ -1410,7 +1420,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "me.nettrash.Geo.watchkitapp.Geo-Watch-Widget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1556,7 +1566,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Geo/Geo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
@@ -1581,7 +1591,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.Geo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1602,7 +1612,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Geo/Geo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
@@ -1627,7 +1637,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = me.nettrash.Geo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1645,10 +1655,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = nettrash.GeoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1663,10 +1673,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = nettrash.GeoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1680,10 +1690,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = nettrash.GeoUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1697,10 +1707,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6842;
+				CURRENT_PROJECT_VERSION = 6851;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = nettrash.GeoUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;

@@ -37,6 +37,10 @@
 "first ascent is unknown" = "first ascent is unknown";
 "Loading..." = "Loading...";
 
+// MARK: - Coordinate unit abbreviations
+"unit_latitude" = "lat";
+"unit_longitude" = "lon";
+
 // MARK: - History details
 "History point details" = "History point details";
 "Barometer information" = "Barometer information";

@@ -27,9 +27,9 @@ struct SatelliteInformationView: View {
                         .padding()
                     Spacer()
                     VStack {
-                        Text(verbatim: "\(String(format: "%.6f", location?.location?.coordinate.latitude ?? 0.0)) lt")
+                        Text(verbatim: "\(String(format: "%.6f", location?.location?.coordinate.latitude ?? 0.0)) \(String(localized: "unit_latitude"))")
                             .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text(verbatim: "\(String(format: "%.6f", location?.location?.coordinate.longitude ?? 0.0)) lg")
+                        Text(verbatim: "\(String(format: "%.6f", location?.location?.coordinate.longitude ?? 0.0)) \(String(localized: "unit_longitude"))")
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()

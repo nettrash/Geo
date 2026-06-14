@@ -46,6 +46,15 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
 
     private let numberOfDays: Int = 30
 
+    /// How long a `HistoryItem` is kept before retention pruning removes
+    /// it. ~366 days so a full year (including a leap day) of history is
+    /// always available to the statistics views.
+    private let retentionDays: Int = 366
+
+    /// Ensures the launch-time retention prune runs only once per
+    /// `History` lifetime, on the first `Refresh()`.
+    private var didPrune: Bool = false
+
     /// Set to `true` whenever a new HistoryItem is inserted. Cleared by
     /// `Refresh()`. Lets callers (e.g. the AR Nature view) skip the
     /// expensive CoreData fetch when nothing has changed since the last
@@ -84,6 +93,14 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
         }()
 
     func Refresh() {
+        // Retention prune, once per launch: drop items older than the
+        // retention window before the first fetch so stale rows never
+        // accumulate. Failure-tolerant — logged and ignored on error.
+        if !self.didPrune {
+            self.didPrune = true
+            self.prune()
+        }
+
         do {
             let controller = PersistenceController.shared
             let fetchRequest: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
@@ -114,7 +131,60 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
 
         WidgetCenter.shared.reloadAllTimelines()
     }
-    
+
+    /// Retention prune: delete `HistoryItem`s older than `retentionDays`.
+    /// Uses a fetch-and-delete on `viewContext` (rather than a batch
+    /// delete) so the deletions are tracked for CloudKit sync and merged
+    /// into the live context. Failure-tolerant: any error is logged and
+    /// swallowed so a prune failure never blocks a refresh.
+    func prune() {
+        let context = PersistenceController.shared.container.viewContext
+        guard let cutoffDate = Calendar.current.date(byAdding: .day, value: -self.retentionDays, to: Date()) else { return }
+        let fetchRequest: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "recordDate < %@", cutoffDate as CVarArg)
+        do {
+            let stale = try context.fetch(fetchRequest)
+            guard !stale.isEmpty else { return }
+            for item in stale {
+                context.delete(item)
+            }
+            if context.hasChanges {
+                try context.save()
+            }
+        } catch {
+            AppLog.history.error("Error pruning HistoryItems: \(String(describing: error))")
+        }
+    }
+
+    /// Delete every `HistoryItem` and reset the in-memory datasets.
+    /// Destructive — callers must gate this behind a user confirmation.
+    /// Failure-tolerant: any error is logged and swallowed.
+    func clearAll() {
+        let context = PersistenceController.shared.container.viewContext
+        let fetchRequest: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
+        do {
+            let all = try context.fetch(fetchRequest)
+            for item in all {
+                context.delete(item)
+            }
+            if context.hasChanges {
+                try context.save()
+            }
+        } catch {
+            AppLog.history.error("Error clearing HistoryItems: \(String(describing: error))")
+        }
+
+        // Reset the in-memory state regardless of the delete outcome so
+        // the views reflect an empty store immediately.
+        self.historyItems = []
+        self.pressureDataSet = []
+        self.altitudeBarometerDataSet = []
+        self.altitudeGPSDataSet = []
+        self.markDirty()
+
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     func pressureDataSetRefresh() {
         self.pressureDataSet.removeAll()
 
@@ -122,10 +192,8 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
             return
         }
         
-        guard let earliestItem = self.historyItems.min(by: { ($0.recordDate ?? .distantPast) < ($1.recordDate ?? .distantPast) }),
-              let earliestDate = earliestItem.recordDate else { return }
-        let minDate: Date = Calendar.current.startOfDay(for: earliestDate)
-        
+        guard let minDate: Date = Calendar.current.date(byAdding: .day, value: -(self.numberOfDays - 1), to: Calendar.current.startOfDay(for: Date())) else { return }
+
         for idx in 0..<amountOfValuesToShow {
             // Calendar arithmetic on a Gregorian calendar, adding a
             // small positive integer of days, will not return nil in
@@ -165,10 +233,8 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
             return
         }
         
-        guard let earliestItem = self.historyItems.min(by: { ($0.recordDate ?? .distantPast) < ($1.recordDate ?? .distantPast) }),
-              let earliestDate = earliestItem.recordDate else { return }
-        let minDate: Date = Calendar.current.startOfDay(for: earliestDate)
-        
+        guard let minDate: Date = Calendar.current.date(byAdding: .day, value: -(self.numberOfDays - 1), to: Calendar.current.startOfDay(for: Date())) else { return }
+
         for idx in 0..<amountOfValuesToShow {
             guard let currentDate = Calendar.current.date(byAdding: .day, value: idx, to: minDate) else { continue }
             let maxBarometerAltitude: CGFloat = self.historyItems
@@ -187,7 +253,7 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
         guard let minDataItem = self.altitudeBarometerDataSet.min(by: { $0.Value < $1.Value }),
               let maxDataItem = self.altitudeBarometerDataSet.max(by: { $0.Value < $1.Value }) else { return }
         
-        if (minDataItem.Value - 250 > altitudeMinDefault) {
+        if (minDataItem.Value - 50 > altitudeMinDefault) {
             self.altitudeBarometerDataSetMin = minDataItem.Value - 50
         } else {
             if (minDataItem.Value < altitudeMinDefault) {
@@ -195,7 +261,7 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
             }
         }
 
-        if (maxDataItem.Value + 250 < altitudeMaxDefault) {
+        if (maxDataItem.Value + 50 < altitudeMaxDefault) {
             self.altitudeBarometerDataSetMax = maxDataItem.Value + 50
         } else {
             if (maxDataItem.Value > altitudeMaxDefault) {
@@ -211,10 +277,8 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
             return
         }
         
-        guard let earliestItem = self.historyItems.min(by: { ($0.recordDate ?? .distantPast) < ($1.recordDate ?? .distantPast) }),
-              let earliestDate = earliestItem.recordDate else { return }
-        let minDate: Date = Calendar.current.startOfDay(for: earliestDate)
-        
+        guard let minDate: Date = Calendar.current.date(byAdding: .day, value: -(self.numberOfDays - 1), to: Calendar.current.startOfDay(for: Date())) else { return }
+
         for idx in 0..<amountOfValuesToShow {
             guard let currentDate = Calendar.current.date(byAdding: .day, value: idx, to: minDate) else { continue }
             let maxGPSAltitude: CGFloat = self.historyItems
@@ -233,7 +297,7 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
         guard let minDataItem = self.altitudeGPSDataSet.min(by: { $0.Value < $1.Value }),
               let maxDataItem = self.altitudeGPSDataSet.max(by: { $0.Value < $1.Value }) else { return }
         
-        if (minDataItem.Value - 250 > altitudeMinDefault) {
+        if (minDataItem.Value - 50 > altitudeMinDefault) {
             self.altitudeGPSDataSetMin = minDataItem.Value - 50
         } else {
             if (minDataItem.Value < altitudeMinDefault) {
@@ -241,7 +305,7 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
             }
         }
 
-        if (maxDataItem.Value + 250 < altitudeMaxDefault) {
+        if (maxDataItem.Value + 50 < altitudeMaxDefault) {
             self.altitudeGPSDataSetMax = maxDataItem.Value + 50
         } else {
             if maxDataItem.Value > altitudeMaxDefault {
@@ -292,43 +356,6 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
                 self.trackingAltitudeDataSetMax = maxValue
             }
         }
-    }
-    
-    private class func weekAggregateFetchRequest(_ nMaxCount: Int) -> NSFetchRequest<NSFetchRequestResult> {
-        let keypathExpAltitudeBar = NSExpression(forKeyPath: "altitudeBAR")
-        let expressionMaxAltitudeBAR = NSExpression(forFunction: "max:", arguments: [keypathExpAltitudeBar])
-        
-        let descMaxAltitudeBar = NSExpressionDescription()
-        descMaxAltitudeBar.expression = expressionMaxAltitudeBAR
-        descMaxAltitudeBar.name = "maxAltitudeBAR"
-        descMaxAltitudeBar.expressionResultType = .doubleAttributeType
-
-        let keypathExpPressure = NSExpression(forKeyPath: "pressure")
-        let expressionMinPressure = NSExpression(forFunction: "min:", arguments: [keypathExpPressure])
-        
-        let descMinPressure = NSExpressionDescription()
-        descMinPressure.expression = expressionMinPressure
-        descMinPressure.name = "minPressure"
-        descMinPressure.expressionResultType = .doubleAttributeType
-
-        let keypathExpEverest = NSExpression(forKeyPath: "everest")
-        let expressionMaxEverest = NSExpression(forFunction: "max:", arguments: [keypathExpEverest])
-        
-        let descMaxEverest = NSExpressionDescription()
-        descMaxEverest.expression = expressionMaxEverest
-        descMaxEverest.name = "maxEverest"
-        descMaxEverest.expressionResultType = .doubleAttributeType
-
-        let request = NSFetchRequest<NSFetchRequestResult>(entityName: "HistoryItem")
-        request.returnsObjectsAsFaults = false
-        request.propertiesToGroupBy = ["day"]
-        request.propertiesToFetch = ["day", descMaxAltitudeBar, descMinPressure, descMaxEverest]
-        request.resultType = .dictionaryResultType
-        request.fetchLimit = nMaxCount
-        let sortDay = NSSortDescriptor(key: "day", ascending: false)
-        request.sortDescriptors = [sortDay]
-        request.predicate = NSPredicate(format: "pressure > 0")
-        return request
     }
 
 }

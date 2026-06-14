@@ -86,6 +86,12 @@ final class SkylineCalculator: ObservableObject {
     private var lastObserver: CLLocation?
     private var fetchTask: Task<Void, Never>?
 
+    /// Monotonic generation tag for in-flight passes. Each `compute`
+    /// bumps it and captures the new value; a finishing pass only clears
+    /// `isComputing` if it is still the latest generation, so a cancelled
+    /// pass can't clear the flag for the pass that superseded it.
+    private var computeGeneration: Int = 0
+
     /// Trigger a recompute if the observer has moved far enough since
     /// the last one. Cheap to call from a Timer / onReceive.
     func computeIfNeeded(observer: CLLocation, barometerAltitude: Double? = nil) {
@@ -103,10 +109,19 @@ final class SkylineCalculator: ObservableObject {
         lastObserver = observer
         let captured = observer
         let altOverride = barometerAltitude
+        computeGeneration &+= 1
+        let generation = computeGeneration
         fetchTask = Task { @MainActor [weak self] in
             guard let self else { return }
             self.isComputing = true
-            defer { self.isComputing = false }
+            // Only clear the flag if we're still the current pass. A
+            // newer `compute` may have cancelled us and started its own
+            // pass; clearing `isComputing` unconditionally here would
+            // hide that in-flight pass's spinner. (`computeGeneration`
+            // is only mutated on the main actor, so this is race-free.)
+            defer {
+                if self.computeGeneration == generation { self.isComputing = false }
+            }
             let new = await Self.computeSkyline(
                 observer: captured,
                 observerAltitudeOverride: altOverride,
@@ -125,6 +140,18 @@ final class SkylineCalculator: ObservableObject {
                 self.samples = new
             }
         }
+    }
+
+    /// Cancel any in-flight compute so the Open-Elevation batches stop.
+    /// Called from the Nature view's `onDisappear` so the thousands of
+    /// elevation queries a recompute spawns don't keep running once the
+    /// user leaves the AR tab. The calculator is reused across AR
+    /// teardown/rebuild, so a later `compute` can still launch a fresh
+    /// pass. Mirrors the Android port's `SkylineCalculator.cancel()`.
+    func cancel() {
+        fetchTask?.cancel()
+        fetchTask = nil
+        isComputing = false
     }
 
     // MARK: - Pure computation
@@ -166,7 +193,11 @@ final class SkylineCalculator: ObservableObject {
 
         // 3. For each bearing, pick the sample with the maximum
         //    apparent-altitude angle. That's the skyline.
-        let observerAlt = observerAltitudeOverride ?? observer.altitude
+        // Defence in depth: a barometer override is an absolute altitude
+        // that is exactly 0 before its first sample (and on barometer-less
+        // devices), so ignore a non-positive override and fall back to GPS
+        // altitude rather than computing the skyline at sea level.
+        let observerAlt = (observerAltitudeOverride.flatMap { $0 > 0 ? $0 : nil }) ?? observer.altitude
         var bestPerBearing: [Double: (sample: SkylineSample, angle: Double)] = [:]
         for (i, gp) in grid.enumerated() {
             guard let elev = elevations[i] else { continue }

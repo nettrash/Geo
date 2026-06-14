@@ -32,7 +32,12 @@ struct PeakOverlayView: View {
     }
     
     var body: some View {
-        GeometryReader { geometry in
+        // Read the per-frame tick so SwiftUI re-evaluates this body every
+        // frame. The camera matrices are plain (non-@Published) properties
+        // on `sessionManager`, so this is the only signal that keeps the
+        // projected markers live as the device moves.
+        _ = sessionManager.frameTick
+        return GeometryReader { geometry in
             let screenWidth = geometry.size.width
             let screenHeight = geometry.size.height
             
@@ -103,13 +108,9 @@ struct PeakOverlayView: View {
         // The viewMatrix transforms ARKit world-space points (origin = session start).
         // Without the offset the direction to the peak drifts by however much
         // the camera has moved since the session began — very visible for nearby points.
-        // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North
-        let camCol = sessionManager.cameraTransform.columns.3
-        let worldPoint = simd_float3(
-            Float(enu.east)  + camCol.x,
-            Float(enu.up)    + camCol.y,
-            Float(-enu.north) + camCol.z
-        )
+        // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North.
+        // Shared projection so the occlusion-target builder can't diverge.
+        let worldPoint = sessionManager.worldPoint(east: enu.east, up: enu.up, north: enu.north)
         
         // 3. Project to screen via AR camera matrices
         guard let screenPos = sessionManager.projectToScreen(worldPoint) else {
