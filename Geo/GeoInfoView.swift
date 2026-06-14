@@ -152,8 +152,11 @@ struct SolarInformationView: View {
         if let sunrise = times.sunrise, now < sunrise { return ("sunrise", sunrise) }
         if let sunset = times.sunset, now < sunset { return ("sunset", sunset) }
         if times.isPolarDay || times.isPolarNight { return ("", nil) }
-        let tomorrow = Solar.times(date: now.addingTimeInterval(86_400),
-                                   latitude: lat, longitude: lon, altitude: alt)
+        // Advance one *local* day (DST-aware) rather than a fixed 86 400 s,
+        // which would skip a day in the late evening before a spring-forward.
+        let tomorrowDate = Calendar.current.date(byAdding: .day, value: 1, to: now)
+            ?? now.addingTimeInterval(86_400)
+        let tomorrow = Solar.times(date: tomorrowDate, latitude: lat, longitude: lon, altitude: alt)
         if let sunrise = tomorrow.sunrise { return ("sunrise", sunrise) }
         return ("", nil)
     }
