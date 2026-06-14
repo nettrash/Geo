@@ -191,7 +191,7 @@ struct PeakBearingRow: View {
                         // direction relative to where the device points.
                         Image(systemName: "location.north.fill")
                             .rotationEffect(.degrees(bearing - motion.heading))
-                        Text(verbatim: "\(Int(bearing.rounded()))° \(Geometry.cardinalDirection(bearing))")
+                        Text(verbatim: "\(Int(bearing.rounded()) % 360)° \(Geometry.cardinalDirection(bearing))")
                     }
                     .padding()
                 }

@@ -52,7 +52,6 @@ struct GeoInfoView: View {
                     if newPhase == .active { app?.deviceMotion?.start() }
                     else { app?.deviceMotion?.stop() }
                 }
-            /*}*/
         })
     }
 }
