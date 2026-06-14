@@ -37,7 +37,7 @@ final class NearbyPeakTests: XCTestCase {
         XCTAssertNotEqual(a.id, b.id)
     }
 
-    func testMergeByIDInDictionaryDeduplicates() {
+    func testMergeByIDInDictionaryDeduplicates() throws {
         // Simulate the merge step in PeakFinder: two snapshots of the
         // same peak (different distances because the user moved) should
         // collapse into a single dictionary entry.
@@ -50,6 +50,7 @@ final class NearbyPeakTests: XCTestCase {
         byID[oldEntry.id] = oldEntry
         byID[freshEntry.id] = freshEntry  // overwrites
         XCTAssertEqual(byID.count, 1)
-        XCTAssertEqual(byID[oldEntry.id]?.distance, 800, accuracy: 0.001)
+        let merged = try XCTUnwrap(byID[oldEntry.id])
+        XCTAssertEqual(merged.distance, 800, accuracy: 0.001)
     }
 }
