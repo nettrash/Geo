@@ -257,6 +257,10 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
                let hLat = c.latitude, let hLon = c.longitude {
                 let distanceH = loc.distance(from: CLLocation(latitude: hLat, longitude: hLon))
                 self.highestMountainDistance = distanceH
+            } else {
+                // No valid highest-mountain coordinates → clear rather than
+                // leave a stale distance (the value is optional).
+                self.highestMountainDistance = nil
             }
         } else {
             self.closestMountain = nil

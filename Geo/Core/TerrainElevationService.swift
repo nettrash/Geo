@@ -102,6 +102,7 @@ actor TerrainElevationService {
 
         // Privacy: round each request location to the cache grid before
         // sending it to a third-party API.
+        var anyInsert = false
         for chunkStart in stride(from: 0, to: pending.count, by: batchSize) {
             // Cooperative cancellation — abort if the caller cancelled.
             if Task.isCancelled { return results }
@@ -112,22 +113,23 @@ actor TerrainElevationService {
             let elevations = await fetchBatch(coords: chunk.map { Self.quantise($0.coord) })
 
             // Stitch results back in original order; populate cache.
-            var didInsert = false
             for (req, elevation) in zip(chunk, elevations) {
                 if let elev = elevation {
                     let k = Self.key(req.coord)
-                    if cache[k] == nil { didInsert = true }
+                    if cache[k] == nil { anyInsert = true }
                     cache[k] = elev
                     touchLRU(k)
                     results[req.index] = elev
                 }
             }
-            // Write-through after each batch populates the cache, evicting
-            // the coldest entries first if we crossed the LRU cap.
-            if didInsert {
-                evictIfNeeded()
-                saveCacheToDisk()
-            }
+        }
+
+        // Coalesce the LRU eviction + disk write to a single pass at the end
+        // rather than once per ~100-point batch: a cold skyline pass would
+        // otherwise trigger many full-cache JSON encodes/writes in a row.
+        if anyInsert {
+            evictIfNeeded()
+            saveCacheToDisk()
         }
 
         return results
