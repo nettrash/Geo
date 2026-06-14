@@ -118,3 +118,113 @@ final class StormWarningTests: XCTestCase {
         XCTAssertEqual(trend.classification, .unknown)
     }
 }
+
+/// Solar-event math tests (M-feature: golden-hour / sunrise-sunset panel).
+/// Mirrored by Android `SolarTest` — same golden cases and tolerances, so
+/// a divergence in either platform's NOAA implementation fails its tests.
+/// All asserted values are minutes past 00:00 UTC of the given date.
+final class SolarTests: XCTestCase {
+
+    // London, ~(51.4778, 0), midsummer 2023-06-21: sunrise ≈ 03:43 UTC,
+    // sunset ≈ 20:21 UTC (well-known published values).
+    func testLondonMidsummerAnchor() {
+        let sunrise = Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                            latitude: 51.4778, longitude: 0.0,
+                                            elevationDeg: Solar.sunriseElevation, rising: true)
+        let sunset = Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                           latitude: 51.4778, longitude: 0.0,
+                                           elevationDeg: Solar.sunriseElevation, rising: false)
+        XCTAssertEqual(try XCTUnwrap(sunrise), 223, accuracy: 15)   // 03:43 UTC
+        XCTAssertEqual(try XCTUnwrap(sunset), 1221, accuracy: 15)   // 20:21 UTC
+    }
+
+    // Equator, equinox-ish: day ≈ 12 h, solar noon ≈ 12:00 UTC at lon 0.
+    func testEquatorEquinoxDayLength() {
+        let sunrise = try? XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 3, day: 21,
+                                     latitude: 0, longitude: 0,
+                                     elevationDeg: Solar.sunriseElevation, rising: true))
+        let sunset = try? XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 3, day: 21,
+                                    latitude: 0, longitude: 0,
+                                    elevationDeg: Solar.sunriseElevation, rising: false))
+        let noon = Solar.solarNoonUTCMinutes(year: 2023, month: 3, day: 21, longitude: 0)
+        XCTAssertEqual(try XCTUnwrap(sunset! - sunrise!), 727, accuracy: 20)  // ~12 h 07 m
+        XCTAssertEqual(noon, 727, accuracy: 15)                               // ~12:07 UTC
+    }
+
+    // Sunrise / sunset are symmetric about solar noon.
+    func testSymmetryAboutNoon() throws {
+        let noon = Solar.solarNoonUTCMinutes(year: 2023, month: 6, day: 21, longitude: 8)
+        let sunrise = try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                    latitude: 46, longitude: 8,
+                                    elevationDeg: Solar.sunriseElevation, rising: true))
+        let sunset = try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                   latitude: 46, longitude: 8,
+                                   elevationDeg: Solar.sunriseElevation, rising: false))
+        XCTAssertEqual(noon - sunrise, sunset - noon, accuracy: 0.1)
+    }
+
+    // Altitude horizon-dip: from a summit the sun rises earlier and sets
+    // later than at sea level.
+    func testAltitudeMakesSunriseEarlierSunsetLater() throws {
+        func sunrise(_ alt: Double) throws -> Double {
+            try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                          latitude: 46, longitude: 8,
+                          elevationDeg: Solar.sunriseElevation - Solar.horizonDipDegrees(altitude: alt),
+                          rising: true))
+        }
+        func sunset(_ alt: Double) throws -> Double {
+            try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                          latitude: 46, longitude: 8,
+                          elevationDeg: Solar.sunriseElevation - Solar.horizonDipDegrees(altitude: alt),
+                          rising: false))
+        }
+        XCTAssertLessThan(try sunrise(3000), try sunrise(0))
+        XCTAssertGreaterThan(try sunset(3000), try sunset(0))
+        XCTAssertEqual(Solar.horizonDipDegrees(altitude: 0), 0, accuracy: 1e-9)
+    }
+
+    // Event ordering across the day.
+    func testEventOrdering() throws {
+        func ev(_ elev: Double, _ rising: Bool) throws -> Double {
+            try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                          latitude: 46, longitude: 8, elevationDeg: elev, rising: rising))
+        }
+        let dawn = try ev(Solar.civilElevation, true)
+        let sunrise = try ev(Solar.sunriseElevation, true)
+        let noon = Solar.solarNoonUTCMinutes(year: 2023, month: 6, day: 21, longitude: 8)
+        let sunset = try ev(Solar.sunriseElevation, false)
+        let dusk = try ev(Solar.civilElevation, false)
+        XCTAssertTrue(dawn < sunrise && sunrise < noon && noon < sunset && sunset < dusk)
+    }
+
+    // High Arctic midsummer: the sun never sets — sunrise/sunset undefined,
+    // and the aggregate reports polar day.
+    func testPolarDay() {
+        let sunrise = Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                            latitude: 80, longitude: 0,
+                                            elevationDeg: Solar.sunriseElevation, rising: true)
+        XCTAssertNil(sunrise)
+
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let date = utc.date(from: DateComponents(year: 2023, month: 6, day: 21, hour: 12))!
+        let times = Solar.times(date: date, latitude: 80, longitude: 0, altitude: 0, calendar: utc)
+        XCTAssertTrue(times.isPolarDay)
+        XCTAssertNil(times.sunset)
+    }
+
+    // Date-line clock zone (UTC+13, e.g. Samoa, lon −171.8): the day's solar
+    // events must fall on the queried LOCAL day, not be shifted +1 day —
+    // and the countdown to today's sunrise must be minutes, not ~24 h.
+    func testFarEastClockZoneAnchorsToLocalDay() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 13 * 3600))
+        let query = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 6, day: 21,
+                                                                hour: 6, minute: 30)))
+        let times = Solar.times(date: query, latitude: -13.76, longitude: -171.8, altitude: 0, calendar: cal)
+        let sunrise = try XCTUnwrap(times.sunrise)
+        XCTAssertEqual(cal.dateComponents([.year, .month, .day], from: sunrise),
+                       cal.dateComponents([.year, .month, .day], from: query))
+        XCTAssertLessThan(sunrise.timeIntervalSince(query), 3 * 3600)  // ~19 min, not 24 h
+    }
+}
