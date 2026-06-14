@@ -79,6 +79,20 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
         startUpdating()
     }
 
+    /// Pause the altimeter when the app is no longer active so the
+    /// barometer doesn't keep firing while the wrist is down / the app
+    /// is backgrounded, draining the Watch battery.
+    func applicationWillResignActive() {
+        stopUpdating()
+    }
+
+    /// Resume the altimeter when the app becomes active again. Guarded by
+    /// `isUpdating` inside `startUpdating()`, so it's safe even if called
+    /// alongside the initial launch start.
+    func applicationDidBecomeActive() {
+        startUpdating()
+    }
+
     /// Read both the unified `InformationToken` (preferred) and the
     /// legacy per-key state. The unified token wins when present.
     /// Also restores the iPhone calibration reference, which lets
@@ -88,7 +102,7 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
         if let token = SharedSnapshotStore.readCurrent(), token.barPreassure > 0 {
             self.barometerInformationPressure = token.barPreassure
             self.barometerInformationHeight = token.barAltitude
-            self.barometerInformationEverest = token.barAltitude / 8848
+            self.barometerInformationEverest = token.barAltitude / Atmosphere.everestHeightM
             self.iphoneGPSAltitude = token.gpsAltitude
             self.iphoneGPSSpeed = token.gpsSpeed
             self.iphoneGPSLatitude = token.gpsLatitude
@@ -104,7 +118,7 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
                 self.barometerInformationPressure = pressure
                 self.barometerInformationHeight = altitude
                 self.barometerInformationDelta = delta
-                self.barometerInformationEverest = everest > 0 ? everest : altitude / 8848
+                self.barometerInformationEverest = everest > 0 ? everest : altitude / Atmosphere.everestHeightM
             }
             // iPhone calibration reference.
             let calibPressure = userDefaults.double(forKey: GeoWatchAppDelegate.calibPressureKey)
@@ -155,7 +169,7 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
         if self.barometerInformationPressure == 0 && token.barPreassure > 0 {
             self.barometerInformationPressure = token.barPreassure
             self.barometerInformationHeight = token.barAltitude
-            self.barometerInformationEverest = token.barAltitude / 8848
+            self.barometerInformationEverest = token.barAltitude / Atmosphere.everestHeightM
         }
 
         AppLog.watch.debug("Received iPhone snapshot")
@@ -171,7 +185,10 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
         altimeter.startRelativeAltitudeUpdates(to: .main) { [weak self] data, _ in
             guard let data = data else { return }
 
-            let pressure = data.pressure.doubleValue
+            // Clamp the live sample to a sane window (Improvement #11:
+            // 300–1100 hPa = 30–110 kPa) so one bad sensor reading can't
+            // produce NaN or wildly out-of-range altitude.
+            let pressure = min(max(data.pressure.doubleValue, 30.0), 110.0)
             let delta = data.relativeAltitude.doubleValue
 
             Task { @MainActor in
@@ -186,21 +203,20 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
                 // standalone, or paired iPhone never opened).
                 let h: Double
                 if self.iphoneCalibPressure > 0 {
-                    // Same scale-height constant as the fallback
-                    // formula; the difference is anchoring against a
-                    // known calibrated point instead of standard sea
-                    // level.
+                    // Lapse-rate analog of the relative-pressure formula,
+                    // anchored against the iPhone's known calibrated
+                    // point instead of standard sea level. Subtracting
+                    // the two lapse-rate altitudes preserves that
+                    // calibration offset (Improvements #10/#11).
                     h = self.iphoneCalibAltitude
-                        + log(self.iphoneCalibPressure / pressure) / 0.00012
+                        + (Atmosphere.altitude(pressureKPa: pressure)
+                           - Atmosphere.altitude(pressureKPa: self.iphoneCalibPressure))
                 } else {
-                    //Ph = P0 * exp(-0.00012 * h)
-                    //ln(P0 / Ph) = 0.00012 * h
-                    // h = ln(P0 / Ph) / 0.00012
-                    // P0 = 101.325
-                    let P0: Double = 101.325
-                    h = log(P0 / pressure) / 0.00012
+                    // Lapse-rate altitude from the raw pressure sample,
+                    // assuming standard sea-level pressure.
+                    h = Atmosphere.altitude(pressureKPa: pressure)
                 }
-                let everest: Double = h / 8848
+                let everest: Double = h / Atmosphere.everestHeightM
 
                 self.barometerInformationPressure = pressure
                 self.barometerInformationDelta = delta
@@ -220,6 +236,16 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
             }
         }
         self.isUpdating = true
+    }
+
+    /// Stop relative-altitude updates. Paired with `startUpdating()` so
+    /// the altimeter isn't left running while the app is inactive or
+    /// backgrounded. The last calibrated reading is left intact for the
+    /// UI / widget; only live sampling stops.
+    func stopUpdating() {
+        guard isUpdating else { return }
+        self.barometer.stopRelativeAltitudeUpdates()
+        self.isUpdating = false
     }
 
     /// Build the unified snapshot from current Watch state + last known

@@ -54,7 +54,12 @@ struct HorizonOverlayView: View {
     private let maxSegmentGap: CGFloat = 600
 
     var body: some View {
-        GeometryReader { geometry in
+        // Read the per-frame tick so SwiftUI re-evaluates this body every
+        // frame. The camera matrices are plain (non-@Published) properties
+        // on `sessionManager`, so this is the only signal that keeps the
+        // projected horizon line live as the device moves.
+        _ = sessionManager.frameTick
+        return GeometryReader { geometry in
             let layout = horizonLayout(in: geometry.size)
 
             ZStack {
@@ -78,8 +83,13 @@ struct HorizonOverlayView: View {
             return HorizonLayout(segments: [], labels: [])
         }
 
-        // Effective observer height above sea level in metres.
-        let observerAltitude = max(barometerAltitude ?? userLoc.altitude, 0)
+        // Effective observer height above sea level in metres. The
+        // barometer reports an absolute altitude that stays exactly 0
+        // until its first sample lands (and permanently on barometer-less
+        // devices), so a non-positive value is treated as absent and we
+        // fall back to GPS altitude rather than clamping the observer to
+        // sea level.
+        let observerAltitude = barometerAltitude.flatMap { $0 > 0 ? $0 : nil } ?? userLoc.altitude
         // Floor so very-low altitudes still produce a meaningful line.
         let h = max(observerAltitude, 1.5)
 
@@ -88,9 +98,10 @@ struct HorizonOverlayView: View {
         // explodes.
         let geometricHorizonDist = sqrt(2 * earthRadius * h + h * h)
 
-        // Camera origin — anchors the line to the user, not the AR
-        // session's world origin (which can drift).
-        let camCol = sessionManager.cameraTransform.columns.3
+        // World points below are built via `sessionManager.worldPoint(...)`,
+        // which anchors them to the camera origin (not the AR session's
+        // world origin, which can drift) — the same shared projection used
+        // by the marker overlay and the occlusion-target builder.
 
         // Camera heading (degrees, 0 = N, 90 = E). Camera looks down
         // its local −Z axis; the −Z column of the world transform is
@@ -150,11 +161,7 @@ struct HorizonOverlayView: View {
             let curvatureDrop = (distance * distance) / (2 * earthRadius)
             let up = (altitude - observerAltitude) - curvatureDrop
 
-            let world = simd_float3(
-                Float(east) + camCol.x,
-                Float(up) + camCol.y,
-                Float(-north) + camCol.z
-            )
+            let world = sessionManager.worldPoint(east: east, up: up, north: north)
 
             if let screen = sessionManager.projectToScreen(world),
                screen.x.isFinite, screen.y.isFinite,
@@ -194,11 +201,7 @@ struct HorizonOverlayView: View {
             let east = geometricHorizonDist * sin(theta)
             let north = geometricHorizonDist * cos(theta)
             let up = -h
-            let world = simd_float3(
-                Float(east) + camCol.x,
-                Float(up) + camCol.y,
-                Float(-north) + camCol.z
-            )
+            let world = sessionManager.worldPoint(east: east, up: up, north: north)
             guard let screen = sessionManager.projectToScreen(world),
                   screen.x.isFinite, screen.y.isFinite,
                   isWithinExtendedBounds(screen, size: size) else { continue }

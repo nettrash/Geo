@@ -1,0 +1,39 @@
+# SwiftLint configuration for Geo (CI lint gate).
+#
+# Intentionally lenient: it reports style as warnings (annotated in the PR)
+# and fails only on genuine error-severity issues, so the lint job is a
+# useful signal without blocking on the existing codebase's style. Tighten
+# rules over time as desired.
+
+included:
+  - Geo
+  - Geo Watch App
+  - Geo Watch Widget
+  - Widget
+
+excluded:
+  - Geo/Content
+  - GeoTests
+  - GeoUITests
+  - Geo Watch AppTests
+  - Geo Watch AppUITests
+
+disabled_rules:
+  - line_length
+  - todo
+  - identifier_name
+  - type_name
+  - function_body_length
+  - type_body_length
+  - file_length
+  - cyclomatic_complexity
+  - large_tuple
+  - nesting
+  - function_parameter_count
+  - for_where
+  - trailing_comma
+
+# Downgrade the rules that are error-severity by default so style issues
+# never fail CI (only real problems surface as errors).
+force_cast: warning
+force_try: warning

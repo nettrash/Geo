@@ -32,6 +32,22 @@ final class PhoneConnectivityManager: NSObject, @unchecked Sendable {
 
     private let session: WCSession?
 
+    /// Two-tier throttle for the inbound watch->history path. The Watch
+    /// streams a fresh snapshot (with a new `Date()`) on every ~1 Hz
+    /// barometer tick, so the exact-`recordDate` dedup below never
+    /// collides and history would grow ~3600 rows/hour while the app is
+    /// foregrounded. Mirror Android's `WearInboundListener`: skip the
+    /// insert when pressure has barely moved *and* too little time has
+    /// passed since the last persisted sample. Both fields are only
+    /// touched from `handleInbound`, which is `@MainActor`-isolated.
+    private var lastPersistedPressure: Double?
+    private var lastPersistedDate: Date?
+
+    /// Skip inserts when pressure hasn't moved at least this much (kPa).
+    private static let pressureDeltaKPa: Double = 0.1
+    /// Hard minimum spacing between inserts, regardless of pressure delta.
+    private static let minInterval: TimeInterval = 30
+
     override init() {
         if WCSession.isSupported() {
             self.session = WCSession.default
@@ -124,15 +140,35 @@ extension PhoneConnectivityManager: WCSessionDelegate {
         if let bar = app.barometer, bar.pressure == 0, token.barPreassure > 0 {
             bar.pressure = token.barPreassure
             bar.height = token.barAltitude
-            bar.everest = token.barAltitude / 8848
+            bar.everest = token.barAltitude / Atmosphere.everestHeightM
         }
 
         // 2. Persist the inbound sample as a history item if it doesn't
         //    duplicate one we already have at that timestamp.
         guard token.barPreassure > 0 else { return }
+
+        // 2a. Two-tier throttle (mirrors Android's WearInboundListener):
+        //     the Watch sends ~1 Hz, each with a fresh recordDate, so the
+        //     exact-timestamp dedup below never collides. Skip the insert
+        //     when pressure has barely moved AND too little time has
+        //     passed since the last persisted sample.
+        if let lastPressure = lastPersistedPressure, let lastDate = lastPersistedDate {
+            let deltaPressure = abs(token.barPreassure - lastPressure)
+            let deltaTime = token.recordDate.timeIntervalSince(lastDate)
+            if deltaPressure < Self.pressureDeltaKPa && deltaTime < Self.minInterval {
+                return
+            }
+        }
+
         let context = PersistenceController.shared.container.viewContext
         let request: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
-        request.predicate = NSPredicate(format: "recordDate == %@", token.recordDate as NSDate)
+        // Widen the dedup from exact equality to a small time window so a
+        // redelivered (e.g. application-context) sample near the same
+        // instant doesn't create a second near-identical row.
+        let windowStart = token.recordDate.addingTimeInterval(-1) as NSDate
+        let windowEnd = token.recordDate.addingTimeInterval(1) as NSDate
+        request.predicate = NSPredicate(format: "recordDate >= %@ AND recordDate <= %@",
+                                        windowStart, windowEnd)
         request.fetchLimit = 1
         if let count = try? context.count(for: request), count > 0 { return }
 
@@ -146,6 +182,10 @@ extension PhoneConnectivityManager: WCSessionDelegate {
         item.gpsLongitude = token.gpsLongitude
         do {
             try context.save()
+            // Record what we just persisted so the throttle above can
+            // compare the next inbound sample against it.
+            lastPersistedPressure = token.barPreassure
+            lastPersistedDate = token.recordDate
             // Just mark the cache stale; UI will re-fetch on next view
             // appearance. Avoids piling Refresh()-triggered fetches
             // onto the main thread under WAL pressure.

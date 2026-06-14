@@ -9,7 +9,10 @@ import SwiftUI
 
 struct GeoStatView: View {
     @ObservedObject var history: History
-        
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var showClearHistoryConfirmation = false
+    private let app: GeoAppDelegate?
+
     var body: some View {
         ZStack(content: {
             Image("GeoBig")
@@ -34,7 +37,7 @@ struct GeoStatView: View {
                     .padding()
                 GraphView(Caption: "PRESSURE", Data: $history.pressureDataSet, Lines: [GraphLine(value: 760, text: "normal", color: Color.green)],
                           min: $history.pressureDataSetMin, max: $history.pressureDataSetMax, measurement: "mm Hg")
-                if self.history.pressureDataSetMin < 0 {
+                if self.history.altitudeBarometerDataSetMin < 0 {
                     GraphView(Caption: "ALTITUDE BAROMETER", Data: $history.altitudeBarometerDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red), GraphLine(value: 0, text: "sea level", color: Color.blue)],
                               min: $history.altitudeBarometerDataSetMin, max: $history.altitudeBarometerDataSetMax, measurement: "m")
                 } else {
@@ -46,15 +49,41 @@ struct GeoStatView: View {
                 } else {
                     GraphView(Caption: "ALTITUDE GPS", Data: $history.altitudeGPSDataSet, Lines: [GraphLine(value: 4500, text: "thin air", color: Color.yellow), GraphLine(value: 7980, text: "death zone", color: Color.red)], min: $history.altitudeGPSDataSetMin, max: $history.altitudeGPSDataSetMax, measurement: "m")
                 }
+                Button("Clear history") {
+                    self.showClearHistoryConfirmation = true
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding()
             }
         })
+        .alert("Clear all history?", isPresented: $showClearHistoryConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Clear", role: .destructive) {
+                self.history.clearAll()
+                self.history.refreshIfNeeded()
+            }
+        }
+        .onAppear {
+            // Lazy refresh — re-fetches only when CoreData has changed
+            // since the last pass. TabView builds the tab subtrees
+            // up-front, so init does not re-run on tab re-selection;
+            // this keeps the graphs live when the user returns here.
+            self.app?.history.refreshIfNeeded()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                self.app?.history.refreshIfNeeded()
+            }
+        }
     }
-    
+
     init(app: GeoAppDelegate?) {
         // Lazy refresh — only re-fetches when a new HistoryItem has
         // been inserted since the last fetch. Avoids hammering the
         // CoreData store every time the view is constructed.
         app?.history.refreshIfNeeded()
+        self.app = app
         self.history = (app ?? GeoAppDelegate()).history
     }
 

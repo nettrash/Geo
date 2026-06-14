@@ -114,7 +114,7 @@ final class SkylineGeometryTests: XCTestCase {
         return best?.sample
     }
 
-    func testSkylinePicksMountainOverFlatTerrain() {
+    func testSkylinePicksMountainOverFlatTerrain() throws {
         // From sea level: a 1500 m peak 5 km away should easily beat
         // a 50 m hill 500 m away, AND the geometric horizon at 200
         // km, because its apparent angle is by far the largest.
@@ -123,12 +123,12 @@ final class SkylineGeometryTests: XCTestCase {
             (5_000, 1_500),
             (200_000, 0)
         ]
-        let pick = pickSkyline(samples: samples, observerAltitude: 0)
-        XCTAssertEqual(pick?.distance, 5_000, accuracy: 1)
-        XCTAssertEqual(pick?.altitude, 1_500, accuracy: 1)
+        let pick = try XCTUnwrap(pickSkyline(samples: samples, observerAltitude: 0))
+        XCTAssertEqual(pick.distance, 5_000, accuracy: 1)
+        XCTAssertEqual(pick.altitude, 1_500, accuracy: 1)
     }
 
-    func testSkylinePicksGeometricHorizonOnFlatPlain() {
+    func testSkylinePicksGeometricHorizonOnFlatPlain() throws {
         // Every sample is at sea level → all apparent angles ≤ 0.
         // The closest one wins because it has the smallest
         // (least negative) curvature drop.
@@ -137,17 +137,17 @@ final class SkylineGeometryTests: XCTestCase {
             (10_000, 0),
             (100_000, 0)
         ]
-        let pick = pickSkyline(samples: samples, observerAltitude: 100)
-        XCTAssertEqual(pick?.distance, 1_000, accuracy: 1)
+        let pick = try XCTUnwrap(pickSkyline(samples: samples, observerAltitude: 100))
+        XCTAssertEqual(pick.distance, 1_000, accuracy: 1)
     }
 
-    func testSkylineIgnoresSubmergedSamples() {
+    func testSkylineIgnoresSubmergedSamples() throws {
         // A point well below sea level shouldn't beat a higher peak.
         let samples: [(Double, Double)] = [
             (5_000, -50),
             (5_000, 200)
         ]
-        let pick = pickSkyline(samples: samples, observerAltitude: 0)
-        XCTAssertEqual(pick?.altitude, 200, accuracy: 1)
+        let pick = try XCTUnwrap(pickSkyline(samples: samples, observerAltitude: 0))
+        XCTAssertEqual(pick.altitude, 200, accuracy: 1)
     }
 }

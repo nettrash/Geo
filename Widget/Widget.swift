@@ -40,12 +40,11 @@ struct Provider: AppIntentTimelineProvider {
         if let abs = abs {
             altitude = abs
         } else {
-            // Bootstrap fallback: biased pressure-only formula. Used
-            // only when the calibrated absolute stream is unavailable
-            // (older OS / hardware, or location authorisation not
-            // granted to the host app).
-            let P0: Double = 101.325
-            altitude = log(P0 / pressure) / 0.00012
+            // Bootstrap fallback: lapse-rate pressure-only formula.
+            // Used only when the calibrated absolute stream is
+            // unavailable (older OS / hardware, or location
+            // authorisation not granted to the host app).
+            altitude = Atmosphere.altitude(pressureKPa: pressure)
         }
 
         // Preserve last known GPS data (including coordinates so
@@ -139,34 +138,48 @@ struct WidgetEntryView : View {
     @Environment(\.widgetFamily) var family: WidgetFamily
     var entry: Provider.Entry
 
+    /// Shared staleness threshold (seconds). Beyond this age the snapshot
+    /// is treated as stale: the header switches to a relative age and the
+    /// carried-forward GPS section is dimmed. Kept in sync with the
+    /// Android widget (30 min).
+    private static let stalenessThreshold: TimeInterval = 30 * 60
+
     var body: some View {
         ZStack {
             Image("Background")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .opacity(0.3)
-            
+
             if let information = entry.information {
+
+                let isStale = entry.date.timeIntervalSince(information.recordDate) > Self.stalenessThreshold
 
                 VStack {
                     HStack {
                         Text("Actual on:").font(.system(size: 6)).bold().underline()
-                        
+
                         Spacer()
-                        
-                        Text(information.recordDate, style: .date).font(.system(size: 6))
-                        Text(information.recordDate, style: .time).font(.system(size: 6))
+
+                        if isStale {
+                            // Relative age (e.g. "2h ago") so a multi-hour-old
+                            // snapshot is not mistaken for current data.
+                            Text(information.recordDate, style: .relative).font(.system(size: 6))
+                        } else {
+                            Text(information.recordDate, style: .date).font(.system(size: 6))
+                            Text(information.recordDate, style: .time).font(.system(size: 6))
+                        }
                     }
-                    
+
                     Spacer()
-                    
+
                     if (entry.configuration?.showGPS ?? true) {
-                        
+
                         HStack(alignment: .top) {
                             Text("GPS:").font(.system(size: 6)).bold().underline()
-                            
+
                             Spacer()
-                            
+
                             VStack(alignment: .trailing) {
                                 Text(verbatim: "\(String(format: "%.0f", information.gpsAltitude)) m")
                                     .font(.system(size: 8))
@@ -177,10 +190,14 @@ struct WidgetEntryView : View {
                                     .font(.system(size: 8))
                             }
                         }
-                        
+                        // The GPS line is carried forward from the last fix
+                        // while the barometer self-refreshes each tick, so it
+                        // can be arbitrarily old. Dim it once stale.
+                        .opacity(isStale ? 0.4 : 1.0)
+
                         Spacer()
                             .frame(height: 10)
-                        
+
                     }
                     
                     if entry.configuration?.showBarometer ?? true {

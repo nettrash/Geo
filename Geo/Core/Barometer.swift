@@ -51,6 +51,16 @@ class Barometer {
     /// launch.
     private var hasAbsoluteFix: Bool = false
 
+    /// Calibration state of `height`, surfaced in the UI (Improvement #2)
+    /// so the user can tell whether the altitude is Apple's calibrated MSL
+    /// value or the weather-biased ±100–500 m pressure estimate.
+    enum CalibrationState { case calibrated, calibrating, uncalibrated }
+    var calibrationState: CalibrationState {
+        if absoluteAvailable && hasAbsoluteFix { return .calibrated }
+        if absoluteAvailable { return .calibrating }
+        return .uncalibrated
+    }
+
     init() {
         barometerManager = CMAltimeter()
         pressure = 0
@@ -120,7 +130,10 @@ class Barometer {
 
     func Handler(_ data: CMAltitudeData?, _ error: Error?) {
         guard let data = data else { return }
-        self.pressure = data.pressure.doubleValue
+        // Clamp the live pressure sample to a sane window (Improvement
+        // #11: 300–1100 hPa = 30–110 kPa) so a single bad sensor reading
+        // can't produce NaN or wildly out-of-range derived values.
+        self.pressure = min(max(data.pressure.doubleValue, 30.0), 110.0)
         self.delta = data.relativeAltitude.doubleValue
 
         // Fall back to the pressure-derived formula only when the
@@ -132,17 +145,14 @@ class Barometer {
         // so we let the absolute reading overwrite it as soon as one
         // arrives.
         if !absoluteAvailable || !hasAbsoluteFix {
-            //Ph = P0 * exp(-0.00012 * h)
-            //exp(-0.00012 * h) = Ph / P0
-            //-0.00012 * h = ln( Ph / P0 )
-            //ln( P0 / Ph ) = 0.00012 * h
-            // h = ln ( P0 / Ph ) / 0.00012
-            // P0 = 101.325
-            let P0: Double = 101.325
-            let Ph: Double = data.pressure.doubleValue
-            let h: Double = log(P0 / Ph) / 0.00012
+            // Lapse-rate (international barometric) altitude from the
+            // raw pressure sample, assuming standard sea-level pressure
+            // (Improvements #10/#11). The reading is already clamped to
+            // a sane window above; `Atmosphere.altitude` clamps again
+            // for safety.
+            let h: Double = Atmosphere.altitude(pressureKPa: self.pressure)
             self.height = h
-            self.everest = h / 8848
+            self.everest = h / Atmosphere.everestHeightM
         }
 
         self.dataUpdated?()
@@ -156,7 +166,7 @@ class Barometer {
     func AbsoluteHandler(_ data: CMAbsoluteAltitudeData?, _ error: Error?) {
         guard let data = data else { return }
         self.height = data.altitude
-        self.everest = data.altitude / 8848
+        self.everest = data.altitude / Atmosphere.everestHeightM
         self.heightAccuracy = data.accuracy
         self.hasAbsoluteFix = true
         // No `dataUpdated?()` here on purpose — the relative stream

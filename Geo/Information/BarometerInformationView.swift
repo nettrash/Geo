@@ -43,10 +43,16 @@ struct BarometerInformationView: View {
                     Spacer()
                     VStack {
                         Text(verbatim: "\(String(format: "%.0f", barometer?.height ?? 0.0)) m")
+                        if let state = barometer?.calibrationState, state != .calibrated {
+                            Text(state == .calibrating ? "calibrating…" : "uncalibrated")
+                                .font(.caption2)
+                                .foregroundStyle(state == .calibrating ? Color.orange : Color.secondary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
                     }
                     .padding()
                 }
-                
+
                 HStack(alignment: .top) {
                     Text("% Everest")
                         .font(.subheadline)

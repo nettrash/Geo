@@ -274,6 +274,11 @@ struct GeoNatureView: View {
         .onDisappear {
             isOnScreen = false
             motionManager.stop()
+            // Stop the in-flight skyline pass so its thousands of
+            // Open-Elevation batches don't keep running once the user
+            // leaves the Nature tab. The calculator is reused, so a
+            // later location refresh can launch a fresh recompute.
+            skylineCalculator.cancel()
         }
         .onChange(of: cameraPermissionGranted) { _, granted in
             if granted {
@@ -382,8 +387,14 @@ struct GeoNatureView: View {
         // off the main actor and only mutates `samples` if it gets
         // back a non-empty result, so calling it here on every
         // location refresh is safe.
+        // `Barometer.height` is an absolute altitude that stays exactly
+        // 0 until the first altimeter sample lands (and permanently on
+        // devices without a barometer). Treat a non-positive value as
+        // absent so `SkylineCalculator` falls back to GPS altitude
+        // instead of computing the skyline at sea level. Mirrors the
+        // Android call site's `takeIf { it > 0 }`.
         skylineCalculator.computeIfNeeded(observer: newLoc,
-                                          barometerAltitude: app?.barometer?.height)
+                                          barometerAltitude: (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil })
     }
     
     private func searchForPeaks() {
@@ -466,13 +477,21 @@ struct GeoNatureView: View {
 
         var targets: [AROcclusionManager.OcclusionTarget] = []
 
+        // Anchor targets to the live camera world position, exactly as
+        // PeakOverlayView/HorizonOverlayView do when rendering, via the
+        // shared `sessionManager.worldPoint(east:up:north:)` projection.
+        // ARKit's world origin is the session-start pose, so the camera
+        // drifts away from it as the user moves; without this offset the
+        // occlusion test (camera-relative) would be off by the full
+        // camera translation and disagree with where the marker is drawn.
+
         // Build ENU world positions for peaks
         for peak in peakFinder.peaks {
             let (east, north, up) = Geometry.gpsToENU(
                 from: userLoc.coordinate, originAltitude: userLoc.altitude,
                 to: peak.coordinate, targetAltitude: peak.altitude
             )
-            targets.append(.init(id: peak.id, worldPosition: simd_float3(Float(east), Float(up), Float(-north))))
+            targets.append(.init(id: peak.id, worldPosition: sessionManager.worldPoint(east: east, up: up, north: north)))
         }
 
         // Build ENU world positions for history points
@@ -481,7 +500,7 @@ struct GeoNatureView: View {
                 from: userLoc.coordinate, originAltitude: userLoc.altitude,
                 to: point.coordinate, targetAltitude: point.gpsAltitude
             )
-            targets.append(.init(id: point.id, worldPosition: simd_float3(Float(east), Float(up), Float(-north))))
+            targets.append(.init(id: point.id, worldPosition: sessionManager.worldPoint(east: east, up: up, north: north)))
         }
 
         occlusionManager.checkOcclusion(targets: targets)

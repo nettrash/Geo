@@ -8,5 +8,8 @@
         <attribute name="gpsLongitude" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="gpsVelocity" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="recordDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <fetchIndex name="byRecordDate">
+            <fetchIndexElement property="recordDate" type="Binary" order="ascending"/>
+        </fetchIndex>
     </entity>
 </model>

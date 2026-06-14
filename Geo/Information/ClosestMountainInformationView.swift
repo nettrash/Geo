@@ -106,13 +106,13 @@ struct ClosestMountainInformationView: View {
     }
     
     func ClosestMountainLocationLatitude() -> String {
-        guard location?.closestMountain != nil else { return "? lt" }
-        return "\(String(format: "%.6f", location?.closestMountain?.coordinates?.latitude ?? 0.0)) lt"
+        guard location?.closestMountain != nil else { return "? \(String(localized: "unit_latitude"))" }
+        return "\(String(format: "%.6f", location?.closestMountain?.coordinates?.latitude ?? 0.0)) \(String(localized: "unit_latitude"))"
     }
-    
+
     func ClosestMountainLocationLongitude() -> String {
-        guard location?.closestMountain != nil else { return "? lg" }
-        return "\(String(format: "%.6f", location?.closestMountain?.coordinates?.longitude ?? 0.0)) lg"
+        guard location?.closestMountain != nil else { return "? \(String(localized: "unit_longitude"))" }
+        return "\(String(format: "%.6f", location?.closestMountain?.coordinates?.longitude ?? 0.0)) \(String(localized: "unit_longitude"))"
     }
     
     func OpenMapForClosestMountain() {

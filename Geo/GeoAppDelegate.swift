@@ -96,7 +96,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
            current.barPreassure > 0 {
             bar.pressure = current.barPreassure
             bar.height = current.barAltitude
-            bar.everest = current.barAltitude / 8848
+            bar.everest = current.barAltitude / Atmosphere.everestHeightM
         }
 
         // 2. Off-load the buffer drain. CloudKit's sync engine
