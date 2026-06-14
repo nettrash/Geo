@@ -10,6 +10,7 @@ import UIKit
 import CoreData
 import CoreLocation
 import WidgetKit
+import UserNotifications
 @preconcurrency import BackgroundTasks
 
 class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
@@ -54,6 +55,11 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         // samples into the data model.
         self.connectivity = PhoneConnectivityManager()
         self.connectivity?.app = self
+
+        // Ask once for permission to deliver the local storm-warning
+        // notification (M5a). Degrades silently if denied — the BGTask
+        // path checks authorization before posting.
+        requestNotificationAuthorizationIfNeeded()
 
         // Pull anything Widget / Watch recorded while we were suspended back into
         // the main app: rehydrate the in-memory barometer with the most recent
@@ -156,6 +162,19 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         }
     }
     
+    /// Request authorization for the local storm-warning notification.
+    /// Marked `nonisolated` so it's callable from any context; the
+    /// completion handler only logs, so it's thread-agnostic. Calling
+    /// this when the user has already decided is a harmless no-op — iOS
+    /// only surfaces the prompt while the status is `.notDetermined`.
+    nonisolated func requestNotificationAuthorizationIfNeeded() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, error in
+            if let error {
+                AppLog.app.error("Notification authorization error: \(String(describing: error))")
+            }
+        }
+    }
+
     /// Reload widget timelines at most every 30 seconds to avoid exceeding the system budget.
     func reloadWidgetIfNeeded() {
         guard lastWidgetReloadDate.addingTimeInterval(30) < Date() else { return }
@@ -310,10 +329,116 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         SharedSnapshotStore.write(info)
         barometer.Stop()
 
+        // Pressure-trend storm warning (M5a): classify the de-trended
+        // 3-hour tendency and, if it crosses the storm threshold, post a
+        // local notification. Best-effort and failure-tolerant — never
+        // blocks the sample write.
+        await evaluateStormWarning(latest: info)
+
         // WidgetKit already de-duplicates closely-spaced timeline
         // reloads internally, so we just request one and let the
         // system decide.
         WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
         AppLog.background.debug("background refresh done")
+    }
+
+    // MARK: - Storm warning (M5a)
+
+    /// App-group key holding the last time a storm notification fired,
+    /// used to enforce the cooldown across BGTask invocations / launches.
+    private static let stormLastNotifiedKey = "StormWarningLastNotifiedAt"
+
+    /// Assemble the trailing 3-hour sample set (recent CoreData history +
+    /// not-yet-drained buffered background snapshots + the just-captured
+    /// reading), run the shared `StormWarning` fit, and act on the result.
+    private static func evaluateStormWarning(latest: InformationToken) async {
+        let now = Date()
+        let windowStart = now.addingTimeInterval(-StormWarning.windowHours * 3600)
+
+        // CoreData — we're off the main thread here, so use a private
+        // background context. The fetch runs on the context's own queue
+        // and returns value-typed samples, so nothing actor-isolated
+        // crosses the `perform` boundary.
+        let context = PersistenceController.shared.container.newBackgroundContext()
+        let coreDataSamples: [PressureSample] = await context.perform {
+            let request: NSFetchRequest<HistoryItem> = HistoryItem.fetchRequest()
+            request.predicate = NSPredicate(
+                format: "recordDate >= %@ and barometerPressure > 0", windowStart as NSDate
+            )
+            request.sortDescriptors = [NSSortDescriptor(keyPath: \HistoryItem.recordDate, ascending: true)]
+            let rows = (try? context.fetch(request)) ?? []
+            return rows.compactMap { row -> PressureSample? in
+                guard let rd = row.recordDate else { return nil }
+                return PressureSample(date: rd, pressureKPa: row.barometerPressure, altitudeM: row.gpsAltitude)
+            }
+        }
+
+        // Merge: CoreData history + not-yet-drained buffered snapshots +
+        // the just-captured sample, deduped by whole-second recordDate so
+        // a buffered snapshot already mirrored into CoreData isn't counted
+        // twice.
+        var byTime: [TimeInterval: PressureSample] = [:]
+        func add(_ sample: PressureSample) {
+            guard sample.pressureKPa > 0, sample.date >= windowStart, sample.date <= now else { return }
+            byTime[sample.date.timeIntervalSince1970.rounded()] = sample
+        }
+        coreDataSamples.forEach(add)
+        for token in SharedSnapshotStore.readBuffer() {
+            add(PressureSample(date: token.recordDate, pressureKPa: token.barPreassure, altitudeM: token.gpsAltitude))
+        }
+        add(PressureSample(date: latest.recordDate, pressureKPa: latest.barPreassure, altitudeM: latest.gpsAltitude))
+
+        let trend = StormWarning.tendency(Array(byTime.values), now: now)
+        handleStormTrend(trend, now: now)
+    }
+
+    /// Turn a classified tendency into (at most) one cooldown-gated local
+    /// notification. Recovery to steady/rising resets the cooldown so a
+    /// genuinely new storm can alert promptly.
+    private static func handleStormTrend(_ trend: PressureTrend, now: Date) {
+        let defaults = UserDefaults(suiteName: SharedSnapshotStore.appGroupID)
+        switch trend.classification {
+        case .steady, .rising:
+            defaults?.removeObject(forKey: stormLastNotifiedKey)
+            return
+        case .unknown, .falling:
+            return
+        case .fallingFast:
+            break
+        }
+
+        let last = defaults?.object(forKey: stormLastNotifiedKey) as? Date ?? .distantPast
+        guard now.timeIntervalSince(last) >= StormWarning.notificationCooldownHours * 3600 else { return }
+
+        postStormNotification(dropHPa: abs(trend.changeHPaOver3h))
+        defaults?.set(now, forKey: stormLastNotifiedKey)
+    }
+
+    /// Deliver the storm-warning notification, gated on authorization so a
+    /// denied permission no-ops silently (no nag loop).
+    private static func postStormNotification(dropHPa: Double) {
+        // Re-fetch `current()` inside each closure rather than capturing a
+        // local, so no non-Sendable `UNUserNotificationCenter` crosses the
+        // `@Sendable` completion-handler boundary.
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized ||
+                  settings.authorizationStatus == .provisional else { return }
+
+            let content = UNMutableNotificationContent()
+            content.title = "Pressure falling fast"
+            content.body = String(
+                format: "Barometric pressure has dropped %.1f hPa in the last 3 hours — weather may be deteriorating.",
+                dropHPa
+            )
+            content.sound = .default
+
+            // A fixed identifier coalesces repeat advisories into one entry.
+            let request = UNNotificationRequest(identifier: "storm-warning", content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error {
+                    AppLog.background.error("Failed to post storm notification: \(String(describing: error))")
+                }
+            }
+        }
     }
 }

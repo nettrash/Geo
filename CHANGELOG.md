@@ -11,6 +11,14 @@ agrees across the phone, the home-screen widget, the Watch screen and the Watch
 complication, plus 39 verified bug fixes and 24 improvements.
 
 ### Added
+- **Storm warning** — the classic mountaineering/sailing barometer use: a single
+  advisory "pressure falling fast" local notification when the barometer drops
+  sharply (the leading above-tree-line storm indicator). The 3-hour tendency is a
+  least-squares fit over raw station pressure, **de-trended by GPS altitude** so a
+  climb — which also drops pressure — never false-fires; it alerts once per onset
+  (3-hour cooldown). A live 3-hour trend chip also appears on the Info barometer
+  card. Notification permission is requested at first launch and a denial degrades
+  silently; background timing is OS-throttled, so the alert is best-effort.
 - Persistent, LRU-bounded on-device elevation cache — the AR terrain skyline now
   appears instantly on cold start and on offline revisits.
 - "Calibrating… / uncalibrated" indicator on the barometer card, so you can tell

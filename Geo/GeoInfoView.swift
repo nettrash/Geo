@@ -17,7 +17,8 @@ struct GeoInfoView: View {
                 .aspectRatio(contentMode: .fit)
                 .opacity(0.02)
                 ScrollView {
-                    BarometerInformationView(barometer: app?.barometer)
+                    BarometerInformationView(barometer: app?.barometer, history: app?.history)
+                        .onAppear { app?.history.refreshIfNeeded() }
                     
                     SatelliteInformationView(location: app?.location)
                         .onAppear(perform: {

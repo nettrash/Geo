@@ -38,6 +38,12 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
     var trackingAltitudeDataSetMin: CGFloat = 0
     var trackingAltitudeDataSetMax: CGFloat = 0
 
+    /// Latest de-trended pressure tendency (M5a), recomputed on every
+    /// `Refresh()`. Drives the in-app barometer-card trend chip; the
+    /// authoritative storm alerting runs off the BGTask in
+    /// `GeoAppDelegate` over the freshest merged sample set.
+    var latestPressureTrend: PressureTrend = .unknown
+
     private let amountOfValuesToShow: Int = 30
     let pressureDataSetMinDefault: CGFloat = 0
     let pressureDataSetMaxDefault: CGFloat = 1000
@@ -125,6 +131,7 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
         self.pressureDataSetRefresh()
         self.barometerDataSetRefresh()
         self.gpsDataSetRefresh()
+        self.latestPressureTrend = self.pressureTrend(now: Date())
 
         // Successful refresh clears the dirty flag.
         self.isDirty = false
@@ -358,4 +365,127 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
 
+    // MARK: - Pressure-trend storm warning (M5a)
+
+    /// De-trended 3-hour barometric tendency built from this `History`'s
+    /// in-memory `historyItems` (foreground use). The alerting path runs
+    /// off the BGTask in `GeoAppDelegate`, which feeds the fit a merged
+    /// CoreData + buffered-snapshot sample set; this convenience exists
+    /// for any in-app readout that wants the same classification.
+    func pressureTrend(now: Date = Date()) -> PressureTrend {
+        let samples = self.historyItems.compactMap { item -> PressureSample? in
+            guard let rd = item.recordDate else { return nil }
+            return PressureSample(date: rd,
+                                  pressureKPa: item.barometerPressure,
+                                  altitudeM: item.gpsAltitude)
+        }
+        return StormWarning.tendency(samples, now: now)
+    }
+}
+
+// MARK: - Storm-warning model (shared with Android `StormWarning`)
+
+/// One barometric sample for the storm-warning tendency fit. Carries the
+/// RAW station pressure (kPa, already clamped 30–110 upstream) and the GPS
+/// altitude (m) so the fit can remove the altitude-driven pressure change
+/// before classifying the weather tendency.
+struct PressureSample: Sendable {
+    let date: Date
+    let pressureKPa: Double
+    let altitudeM: Double
+}
+
+/// Coarse classification of the de-trended 3-hour barometric tendency.
+enum PressureTrendClass {
+    case unknown      // not enough data to classify — never alerts
+    case rising
+    case steady
+    case falling      // a real but sub-threshold fall — no alert
+    case fallingFast  // crosses the storm threshold — alert-worthy
+}
+
+/// Result of a tendency fit: the class plus the signed de-trended change
+/// in hectopascals over the 3-hour window (negative = falling).
+struct PressureTrend: Equatable {
+    let classification: PressureTrendClass
+    let changeHPaOver3h: Double
+    var isAlert: Bool { classification == .fallingFast }
+    static let unknown = PressureTrend(classification: .unknown, changeHPaOver3h: 0)
+}
+
+/// Pure, dependency-free storm-warning math. Kept byte-identical to the
+/// Android `me.nettrash.geo.sensor.StormWarning` so both platforms
+/// classify a given history the same way (the cross-platform parity
+/// invariant). The fit lives here in `History` per the v1.1 plan; the
+/// BGTask path in `GeoAppDelegate` feeds it the merged CoreData +
+/// buffered samples and turns an alert into a local notification.
+enum StormWarning {
+    // ── Shared constants — MUST match Android StormWarning ──────────
+    static let windowHours = 3.0
+    static let minSamples = 4
+    static let minSpanHours = 1.5
+    static let steadyBandHPaOver3h = 1.0
+    static let alertDropHPaOver3h = 3.0
+    static let severeDropHPaOver3h = 6.0
+    static let notificationCooldownHours = 3.0
+    static let altClampLow = -500.0
+    static let altClampHigh = 9000.0
+    private static let barometricScale = 44330.0
+    private static let barometricExponent = 5.255
+
+    /// Standard-atmosphere pressure ratio P(alt)/P(0) at `altM`, with the
+    /// altitude clamped to the app's plausible domain so a noisy GPS
+    /// reading can't blow up the correction factor.
+    private static func pressureRatio(_ altM: Double) -> Double {
+        let a = min(max(altM, altClampLow), altClampHigh)
+        return pow(1.0 - a / barometricScale, barometricExponent)
+    }
+
+    /// De-trended 3-hour barometric tendency for `samples` evaluated at
+    /// `now`. Reads RAW station pressure and removes the GPS-altitude-
+    /// driven pressure component (correcting every sample to the most
+    /// recent sample's altitude) before a least-squares slope, so a climb
+    /// doesn't read as a falling barometer. Returns `.unknown` when the
+    /// window is too thin to classify.
+    static func tendency(_ samples: [PressureSample], now: Date) -> PressureTrend {
+        let windowStart = now.addingTimeInterval(-windowHours * 3600)
+        let win = samples
+            .filter { $0.date >= windowStart && $0.date <= now && $0.pressureKPa > 0 && $0.pressureKPa.isFinite }
+            .sorted { $0.date < $1.date }
+
+        guard win.count >= minSamples, let first = win.first, let last = win.last else {
+            return .unknown
+        }
+        let spanHours = last.date.timeIntervalSince(first.date) / 3600
+        guard spanHours >= minSpanHours else { return .unknown }
+
+        // Correct each raw station pressure to the most-recent sample's
+        // altitude so the fitted slope reflects weather, not climbing.
+        let refRatio = pressureRatio(last.altitudeM)
+        let n = Double(win.count)
+        let t0 = first.date
+        var sumT = 0.0, sumY = 0.0, sumTT = 0.0, sumTY = 0.0
+        for s in win {
+            let t = s.date.timeIntervalSince(t0) / 3600                       // hours
+            let y = s.pressureKPa * 10.0 * (refRatio / pressureRatio(s.altitudeM)) // hPa
+            sumT += t; sumY += y; sumTT += t * t; sumTY += t * y
+        }
+        let meanT = sumT / n, meanY = sumY / n
+        let den = sumTT - n * meanT * meanT
+        guard den > 0 else { return .unknown }
+        let slope = (sumTY - n * meanT * meanY) / den                         // hPa per hour
+        let change3h = slope * 3.0                                            // signed hPa / 3 h
+
+        let cls: PressureTrendClass
+        if change3h <= -alertDropHPaOver3h {
+            cls = .fallingFast
+        } else if change3h <= -steadyBandHPaOver3h {
+            cls = .falling
+        } else if change3h >= steadyBandHPaOver3h {
+            cls = .rising
+        } else {
+            cls = .steady
+        }
+        return PressureTrend(classification: cls, changeHPaOver3h: change3h)
+    }
 }
