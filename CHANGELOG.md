@@ -7,6 +7,14 @@ All notable changes to Geo are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Summit log — auto-detect arrival at a known peak** — walk within ~500 m of a
+  Seven Summit / Snow Leopard / other known peak and Geo offers to log the ascent
+  (date, the peak's elevation, your measured barometric altitude, an optional note)
+  — proximity-triggered with a manual confirm, never auto. A "Summits" trophy case
+  on the Stat tab lists your logged ascents; each opens a detail with an editable
+  note, Directions, Delete, and a **shareable summit card**. 100 % on-device,
+  CloudKit-synced (new `SummitLog` Core Data entity, additive lightweight
+  migration); only the peak's public location is stored or shared, never yours.
 - **Tap-to-identify AR markers + freeze-frame share** — the Nature (AR) view is now
   explorable: tap any peak or history marker to open a detail card (name, altitude,
   distance, bearing, coordinates, plus a Directions button), via a screen-space

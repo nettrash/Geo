@@ -654,6 +654,69 @@ extension History {
         context.delete(trip)
         try? context.save()
     }
+
+    // MARK: - Summit log (auto-detect arrival at a known peak)
+
+    /// Persist a logged ascent. Peak fields are denormalised (public
+    /// bundled-list data) so the trophy entry survives list changes; the
+    /// user's own `measuredAltitude` is the on-device barometric reading at
+    /// log time. CloudKit-synced like `Trip`.
+    @discardableResult
+    func saveSummit(peakName: String, peakIdentifier: String, peakSet: String,
+                    peakHeight: Double, latitude: Double, longitude: Double,
+                    measuredAltitude: Double, note: String, date: Date = Date()) -> SummitLog? {
+        let context = PersistenceController.shared.container.viewContext
+        let log = SummitLog(context: context)
+        log.id = UUID()
+        log.peakName = peakName
+        log.peakIdentifier = peakIdentifier
+        log.peakSet = peakSet
+        log.peakHeight = peakHeight
+        log.peakLatitude = latitude
+        log.peakLongitude = longitude
+        log.measuredAltitude = measuredAltitude
+        log.note = note
+        log.loggedDate = date
+        do {
+            try context.save()
+            return log
+        } catch {
+            AppLog.history.error("Failed to save summit log: \(String(describing: error))")
+            context.rollback()
+            return nil
+        }
+    }
+
+    func fetchSummits() -> [SummitLog] {
+        let context = PersistenceController.shared.container.viewContext
+        let request: NSFetchRequest<SummitLog> = SummitLog.fetchRequest()
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \SummitLog.loggedDate, ascending: false)]
+        return (try? context.fetch(request)) ?? []
+    }
+
+    func deleteSummit(_ log: SummitLog) {
+        let context = PersistenceController.shared.container.viewContext
+        context.delete(log)
+        try? context.save()
+    }
+
+    func updateSummitNote(_ log: SummitLog, note: String) {
+        let context = PersistenceController.shared.container.viewContext
+        log.note = note
+        try? context.save()
+    }
+
+    /// Whether `peakIdentifier` was logged within the last `hours` — used to
+    /// suppress re-prompting while the user lingers on a summit.
+    func hasRecentSummit(peakIdentifier: String, withinHours hours: Double) -> Bool {
+        let context = PersistenceController.shared.container.viewContext
+        let request: NSFetchRequest<SummitLog> = SummitLog.fetchRequest()
+        let cutoff = Date().addingTimeInterval(-hours * 3600)
+        request.predicate = NSPredicate(format: "peakIdentifier == %@ AND loggedDate >= %@",
+                                        peakIdentifier, cutoff as NSDate)
+        request.fetchLimit = 1
+        return ((try? context.count(for: request)) ?? 0) > 0
+    }
 }
 
 // `Trip` already conforms to `Identifiable` via Core Data codegen (it has

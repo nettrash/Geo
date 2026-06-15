@@ -55,6 +55,11 @@ struct GeoStatView: View {
                         .onAppear { recorder.reload() }
                 }
 
+                if let summitStore = app?.summitLog {
+                    SummitsSectionView(store: summitStore)
+                        .onAppear { summitStore.reload() }
+                }
+
                 Button {
                     self.showClearHistoryConfirmation = true
                 } label: {
