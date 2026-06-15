@@ -21,6 +21,16 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     var closestMountainDistance: Double? = nil
     var highestMountain: MountainInfo? = nil
     var highestMountainDistance: Double? = nil
+    /// The closest peak while the user is within `summitProximityRadius` of it
+    /// — drives the "log this ascent?" summit-log prompt. `nil` when no peak is
+    /// close. Set continuously in `refreshCloserMountain`.
+    var nearbySummitCandidate: MountainInfo? = nil
+    /// Which set (`highest`/`sevenPeaks`/`snowLeopardOfRussia`) the candidate
+    /// belongs to, captured for the trophy-case grouping.
+    var nearbySummitSet: String? = nil
+    /// Horizontal radius (m) within which we offer to log a summit. Manual
+    /// confirm only — barometric altitude bias means we never auto-log.
+    private let summitProximityRadius: Double = 500
     var lastVisit: CLVisit? = nil
     var allowTracking: Bool = true
 
@@ -233,9 +243,20 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         self.lastTrackingDate = Date()
     }
     
+    /// Which curated set a peak belongs to. Seven Summits / Snow Leopard take
+    /// precedence over "highest" so any peak that appears in more than one set
+    /// is grouped by the more specific trophy.
+    private func summitSet(for mountain: MountainInfo) -> String {
+        if mountainsData?.sevenPeaks?.mountains?.contains(where: { $0.id == mountain.id }) == true { return "sevenPeaks" }
+        if mountainsData?.snowLeopardOfRussia?.mountains?.contains(where: { $0.id == mountain.id }) == true { return "snowLeopardOfRussia" }
+        return "highest"
+    }
+
     func refreshCloserMountain() {
         guard let loc = self.location else {
             self.closestMountain = nil
+            self.nearbySummitCandidate = nil
+            self.nearbySummitSet = nil
             return
         }
         var m: [MountainInfo] = []
@@ -253,6 +274,14 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             self.closestMountain = v
             let distance = loc.distance(from: CLLocation(latitude: v.coordinates?.latitude ?? 0, longitude: v.coordinates?.longitude ?? 0))
             self.closestMountainDistance = distance
+            // Offer to log the ascent only when genuinely near the summit.
+            if distance < summitProximityRadius {
+                self.nearbySummitCandidate = v
+                self.nearbySummitSet = summitSet(for: v)
+            } else {
+                self.nearbySummitCandidate = nil
+                self.nearbySummitSet = nil
+            }
             if let hm = self.highestMountain, let c = hm.coordinates,
                let hLat = c.latitude, let hLon = c.longitude {
                 let distanceH = loc.distance(from: CLLocation(latitude: hLat, longitude: hLon))
@@ -264,9 +293,11 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             }
         } else {
             self.closestMountain = nil
+            self.nearbySummitCandidate = nil
+            self.nearbySummitSet = nil
         }
     }
-    
+
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         if status == .notDetermined { return }
         

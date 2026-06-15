@@ -46,6 +46,30 @@
 "Barometer information" = "Barometer information";
 "Satellite information" = "Satellite information";
 
+// MARK: - Summit log (auto-detect arrival at a known peak)
+"SUMMITS" = "SUMMITS";
+"No summits logged yet — when you reach a known peak, Geo offers to log it here." = "No summits logged yet — when you reach a known peak, Geo offers to log it here.";
+"Log ascent" = "Log ascent";
+"Collection" = "Collection";
+"Elevation" = "Elevation";
+"Your altitude" = "Your altitude";
+"Date" = "Date";
+"Your altitude is the barometric reading — approximate unless calibrated. Only the peak's public location is stored, not yours." = "Your altitude is the barometric reading — approximate unless calibrated. Only the peak's public location is stored, not yours.";
+"Note" = "Note";
+"How was it? (optional)" = "How was it? (optional)";
+"Not now" = "Not now";
+"Log" = "Log";
+"Logged" = "Logged";
+"Add a note" = "Add a note";
+"Share" = "Share";
+"Delete" = "Delete";
+"Delete this summit?" = "Delete this summit?";
+"Summit" = "Summit";
+"Seven Summits" = "Seven Summits";
+"Snow Leopard" = "Snow Leopard";
+"Highest peaks" = "Highest peaks";
+"Peak" = "Peak";
+
 // MARK: - AR tap-to-identify + freeze-frame share
 "History point" = "History point";
 "Recorded" = "Recorded";
