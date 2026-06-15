@@ -4,6 +4,18 @@ All notable changes to Geo are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). Versions are
 `MARKETING_VERSION`; the build number auto-increments per build.
 
+## [Unreleased]
+
+### Added
+- **Tap-to-identify AR markers + freeze-frame share** — the Nature (AR) view is now
+  explorable: tap any peak or history marker to open a detail card (name, altitude,
+  distance, bearing, coordinates, plus a Directions button), via a screen-space
+  nearest-marker hit-test against the same live projection that places the markers.
+  A shutter button captures a **frozen, annotated panorama** — the live camera frame
+  with the markers and skyline composited on top and a small "Geo" footer — and hands
+  it to the system share sheet. 100 % on-device (`ARSCNView` snapshot + SwiftUI
+  `ImageRenderer`); nothing is uploaded.
+
 ## [1.1] — 2026-06-14
 
 A correctness, accuracy and reliability release: the calibrated altitude now
