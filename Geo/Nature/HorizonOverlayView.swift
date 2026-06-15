@@ -303,7 +303,12 @@ struct HorizonLabel: Identifiable, Equatable {
 
 /// A named peak welded to the skyline silhouette at its ridge position.
 struct PeakHorizonLabel: Identifiable, Equatable {
-    let id = UUID()
+    /// Identity IS the peak — `weldedPeakLabels` mints a fresh struct every
+    /// frame, so a per-instance `UUID()` would give SwiftUI a new identity each
+    /// frame, resetting `WeldedPeakPill`'s `@State` (its measured size) and
+    /// making pills flicker / re-measure. Keying on the stable peak id keeps each
+    /// pill's view identity (and its measurement) put across frames.
+    var id: UUID { peakID }
     /// The `NearbyPeak` this label identifies — lets the tap hit-test map a
     /// drawn pill back to its peak without re-deriving the selection.
     let peakID: UUID
