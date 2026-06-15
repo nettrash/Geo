@@ -69,7 +69,7 @@ struct SharePanoramaView: View {
             if markerCount > 0 {
                 Text(verbatim: "·")
                     .foregroundStyle(.white.opacity(0.5))
-                Text(verbatim: "\(markerCount) marked")
+                Text(verbatim: markerCount == 1 ? "1 marker" : "\(markerCount) markers")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.85))
             }

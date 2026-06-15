@@ -46,6 +46,16 @@
 "Barometer information" = "Barometer information";
 "Satellite information" = "Satellite information";
 
+// MARK: - AR tap-to-identify + freeze-frame share
+"History point" = "History point";
+"Recorded" = "Recorded";
+"GPS altitude" = "GPS altitude";
+"Barometric altitude" = "Barometric altitude";
+"Speed" = "Speed";
+"Bearing" = "Bearing";
+"Capture panorama" = "Capture panorama";
+"Done" = "Done";
+
 // MARK: - AR Nature view
 "Scanning" = "Scanning";
 "About the Nature view" = "About the Nature view";

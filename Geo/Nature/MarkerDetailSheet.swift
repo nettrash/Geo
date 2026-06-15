@@ -106,8 +106,17 @@ struct MarkerDetailSheet: View {
     }
 
     private func openInMaps(_ coordinate: CLLocationCoordinate2D, name: String) {
-        let q = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Destination"
-        if let url = URL(string: "https://maps.apple.com/?daddr=\(coordinate.latitude),\(coordinate.longitude)&q=\(q)") {
+        // Build via URLComponents so the name is fully percent-encoded — the
+        // `.urlQueryAllowed` set leaves `&` and `=` intact, which a name like
+        // "A & B" would otherwise inject into the query.
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "maps.apple.com"
+        components.queryItems = [
+            URLQueryItem(name: "daddr", value: "\(coordinate.latitude),\(coordinate.longitude)"),
+            URLQueryItem(name: "q", value: name)
+        ]
+        if let url = components.url {
             UIApplication.shared.open(url)
         }
     }

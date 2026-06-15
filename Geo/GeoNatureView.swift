@@ -621,37 +621,43 @@ struct GeoNatureView: View {
     /// the `ImageRenderer` pass run back-to-back on the main actor, so the AR
     /// matrices are frozen for both — the markers line up with the still frame.
     private func captureShare() {
-        guard !isCapturing, sessionManager.isTracking,
-              let cameraImage = sessionManager.snapshot() else { return }
-        let size = sessionManager.viewportSize
-        guard size.width > 0, size.height > 0 else { return }
-
+        guard !isCapturing, sessionManager.isTracking else { return }
         isCapturing = true
+        // Hop to the next main-actor turn so SwiftUI can render the shutter's
+        // busy state before the snapshot + ImageRenderer pass (both main-actor-
+        // bound) block. The snapshot and render still run back-to-back in this
+        // task, so the frozen camera frame and the projected markers stay
+        // consistent with each other.
+        Task { @MainActor in
+            defer { isCapturing = false }
+            guard let cameraImage = sessionManager.snapshot() else { return }
+            let size = sessionManager.viewportSize
+            guard size.width > 0, size.height > 0 else { return }
 
-        let visibleMarkers =
-            peakFinder.peaks.filter { markerVisible(id: $0.id, distance: $0.distance) }.count
-            + historyPoints.filter { markerVisible(id: $0.id, distance: $0.distance) }.count
+            let visibleMarkers =
+                peakFinder.peaks.filter { markerVisible(id: $0.id, distance: $0.distance) }.count
+                + historyPoints.filter { markerVisible(id: $0.id, distance: $0.distance) }.count
 
-        let panorama = SharePanoramaView(
-            cameraImage: cameraImage,
-            size: size,
-            peaks: peakFinder.peaks,
-            historyPoints: historyPoints,
-            userLocation: overlayLocation,
-            barometerAltitude: (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil },
-            skylineSamples: skylineCalculator.samples,
-            sessionManager: sessionManager,
-            occlusionManager: occlusionManager,
-            markerCount: visibleMarkers
-        )
+            let panorama = SharePanoramaView(
+                cameraImage: cameraImage,
+                size: size,
+                peaks: peakFinder.peaks,
+                historyPoints: historyPoints,
+                userLocation: overlayLocation,
+                barometerAltitude: (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil },
+                skylineSamples: skylineCalculator.samples,
+                sessionManager: sessionManager,
+                occlusionManager: occlusionManager,
+                markerCount: visibleMarkers
+            )
 
-        let renderer = ImageRenderer(content: panorama)
-        renderer.scale = displayScale
-        renderer.proposedSize = ProposedViewSize(size)
-        if let image = renderer.uiImage {
-            shareImage = ShareImage(image: image)
+            let renderer = ImageRenderer(content: panorama)
+            renderer.scale = displayScale
+            renderer.proposedSize = ProposedViewSize(size)
+            if let image = renderer.uiImage {
+                shareImage = ShareImage(image: image)
+            }
         }
-        isCapturing = false
     }
 
 }
