@@ -24,6 +24,16 @@ struct SharePanoramaView: View {
     @ObservedObject var occlusionManager: AROcclusionManager
     let markerCount: Int
 
+    /// Peaks welded to the ridge (camera-independent) — their AR markers are
+    /// suppressed below so the share matches the live view (pill XOR marker).
+    private var weldedPeakIDs: Set<UUID> {
+        guard let loc = userLocation, !skylineSamples.isEmpty else { return [] }
+        let obsAlt = barometerAltitude.flatMap { $0 > 0 ? $0 : nil } ?? loc.altitude
+        return Set(peaks
+            .filter { peakOnSilhouette($0, skyline: skylineSamples, observerAltitude: obsAlt) }
+            .map { $0.id })
+    }
+
     var body: some View {
         ZStack {
             // Frozen camera frame.
@@ -44,7 +54,11 @@ struct SharePanoramaView: View {
             )
 
             PeakOverlayView(
-                peaks: peaks,
+                // Peaks welded to the ridge are labelled by HorizonOverlayView
+                // above, so suppress their AR markers here too — otherwise the
+                // exported image double-draws them (pill + marker), which the
+                // live view never does.
+                peaks: peaks.filter { !weldedPeakIDs.contains($0.id) },
                 historyPoints: historyPoints,
                 userLocation: userLocation,
                 sessionManager: sessionManager,
