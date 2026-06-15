@@ -298,3 +298,32 @@ final class TripStatsTests: XCTestCase {
         XCTAssertEqual(s.distance, 0, accuracy: 1e-9)
     }
 }
+
+/// Manual-calibration math tests (M5b). Mirrored by Android
+/// `AtmosphereCalibrationTest`.
+final class AtmosphereCalibrationTests: XCTestCase {
+
+    /// TM5b.1 acceptance: the solved reference pressure fed back into the
+    /// forward helper reproduces the entered altitude (<0.5 m). The live
+    /// pressure is derived from the altitude + a plausible QNH so the pair
+    /// is realistic (and stays inside the 30–110 kPa clamp window).
+    func testSolveReferencePressureRoundTrip() {
+        for known in [-200.0, 0, 500, 1500, 3000, 5500, 8000] {
+            for qnhTrue in [98.0, 101.325, 103.0] {
+                let p = qnhTrue * pow(1 - known / 44330, 5.255)   // station pressure at `known`
+                let solved = Atmosphere.solveReferencePressure(knownAltitudeM: known, livePressureKPa: p)
+                let back = Atmosphere.altitude(pressureKPa: p, referenceKPa: solved)
+                XCTAssertEqual(back, known, accuracy: 0.5)
+            }
+        }
+    }
+
+    func testCalibrationWeightDecaysLinearly() {
+        let full = Atmosphere.calibrationDecayHours * 3600
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: 0), 1.0, accuracy: 1e-9)
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: full / 2), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: full), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: full * 2), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: -10), 1.0, accuracy: 1e-9)   // future-dated → fresh
+    }
+}
