@@ -29,7 +29,9 @@ final class SummitLogStore {
     func log(peak: MountainInfo, set: String, measuredAltitude: Double, note: String) -> SummitLog? {
         let coord = peak.coordinates
         let log = history.saveSummit(
-            peakName: peak.name ?? "",
+            // Never persist an empty name — the UI's `?? "Summit"` fallback only
+            // catches nil, so a blank would render as an empty title.
+            peakName: peak.name?.isEmpty == false ? peak.name! : "Summit",
             peakIdentifier: peak.id,
             peakSet: set,
             peakHeight: Double(peak.height ?? 0),

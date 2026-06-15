@@ -244,8 +244,8 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     }
     
     /// Which curated set a peak belongs to. Seven Summits / Snow Leopard take
-    /// precedence over "highest" so a peak in both (e.g. Everest) is grouped by
-    /// the more specific trophy.
+    /// precedence over "highest" so any peak that appears in more than one set
+    /// is grouped by the more specific trophy.
     private func summitSet(for mountain: MountainInfo) -> String {
         if mountainsData?.sevenPeaks?.mountains?.contains(where: { $0.id == mountain.id }) == true { return "sevenPeaks" }
         if mountainsData?.snowLeopardOfRussia?.mountains?.contains(where: { $0.id == mountain.id }) == true { return "snowLeopardOfRussia" }

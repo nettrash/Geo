@@ -76,8 +76,15 @@ struct MainView: View {
                 onClose: { summitToLog = nil }
             )
             // Mark the peak handled on ANY dismissal (buttons AND swipe-down), so
-            // it isn't re-prompted while the user lingers; cleared on walk-away.
-            .onDisappear { dismissedSummitID = peak.id }
+            // it isn't re-prompted while the user lingers — but ONLY if still in
+            // range. If they already walked away (candidate cleared) and then
+            // closed a stale sheet, leave the walk-away reset intact so a genuine
+            // re-approach can prompt again.
+            .onDisappear {
+                if app?.location?.nearbySummitCandidate?.id == peak.id {
+                    dismissedSummitID = peak.id
+                }
+            }
         }
     }
 
