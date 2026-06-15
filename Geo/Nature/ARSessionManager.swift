@@ -42,6 +42,17 @@ class ARSessionManager: ObservableObject {
     
     /// Whether the AR session has started delivering frames.
     @Published var isTracking: Bool = false
+
+    /// The backing `ARSCNView`, set by `ARCameraView`'s coordinator. Held
+    /// weakly so the session manager never keeps the camera view alive past
+    /// the Nature tab. Used to grab the freeze-frame for sharing.
+    weak var sceneView: ARSCNView?
+
+    /// Snapshot the live camera + rendered scene as a `UIImage`. This is the
+    /// camera feed only — the SwiftUI marker/skyline overlays are composited
+    /// on top separately by `SharePanoramaView`. Main-actor (SceneKit
+    /// `snapshot()` must run on the main thread).
+    func snapshot() -> UIImage? { sceneView?.snapshot() }
     
     /// Depth (meters) at the center of the viewport from LiDAR depth buffer.
     /// `nil` on non-LiDAR devices.

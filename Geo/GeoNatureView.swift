@@ -31,6 +31,15 @@ struct GeoNatureView: View {
     @State private var cameraAuthStatus: AVAuthorizationStatus = .notDetermined
     @State private var historyPoints: [ARHistoryPoint] = []
 
+    /// Tap-to-identify: the marker the user tapped (drives the detail sheet).
+    @State private var selectedMarker: ARMarkerSelection?
+    /// Freeze-frame share: the rendered annotated panorama (drives the share sheet).
+    @State private var shareImage: ShareImage?
+    /// Guards the shutter so a second tap can't start a second capture mid-render.
+    @State private var isCapturing = false
+    /// Render scale for the off-screen `ImageRenderer` capture.
+    @Environment(\.displayScale) private var displayScale
+
     /// Tracks whether this view is the user's currently visible tab AND
     /// the app is in the foreground. Drives `ARCameraView.isActive` and
     /// gates the AR-related work loops so we don't burn battery while
@@ -117,7 +126,20 @@ struct GeoNatureView: View {
                 )
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
-                
+
+                // Transparent tap-catch layer: a tap runs a screen-space
+                // nearest-marker hit-test against the projected peak/history
+                // positions and opens the detail sheet. Sits above the
+                // (non-interactive) markers but below the shutter button.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture(coordinateSpace: .local) { location in
+                        if let marker = nearestMarker(to: location) {
+                            selectedMarker = marker
+                        }
+                    }
+
                 // Center crosshair + wall distance
                 VStack(spacing: 6) {
                     Spacer()
@@ -148,7 +170,8 @@ struct GeoNatureView: View {
                     
                     Spacer()
                 }
-                
+                .allowsHitTesting(false)
+
                 // Top info bar
                 VStack {
                     HStack {
@@ -216,8 +239,38 @@ struct GeoNatureView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(.black.opacity(0.5))
-                    
+
                     Spacer()
+                }
+                .allowsHitTesting(false)
+
+                // Shutter — capture a frozen, annotated panorama to share.
+                VStack {
+                    Spacer()
+                    Button {
+                        captureShare()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .stroke(.white.opacity(0.9), lineWidth: 4)
+                                .frame(width: 68, height: 68)
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 54, height: 54)
+                            if isCapturing {
+                                ProgressView()
+                                    .tint(.black)
+                            } else {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundStyle(.black)
+                            }
+                        }
+                    }
+                    .disabled(!sessionManager.isTracking || isCapturing)
+                    .opacity(sessionManager.isTracking ? 1 : 0.4)
+                    .padding(.bottom, 28)
+                    .accessibilityLabel("Capture panorama")
                 }
             } else {
                 // Camera permission not granted. We split this into two
@@ -308,6 +361,12 @@ struct GeoNatureView: View {
         .onReceive(occlusionTimer) { _ in
             guard isARActive else { return }
             runOcclusionCheck()
+        }
+        .sheet(item: $selectedMarker) { marker in
+            MarkerDetailSheet(selection: marker)
+        }
+        .sheet(item: $shareImage) { share in
+            ActivityView(items: [share.image])
         }
     }
     
@@ -505,7 +564,102 @@ struct GeoNatureView: View {
 
         occlusionManager.checkOcclusion(targets: targets)
     }
-    
+
+    // MARK: - Tap-to-identify + freeze-frame capture
+
+    /// Project a GPS marker to screen points using the SAME path as
+    /// `PeakOverlayView` (Geometry.gpsToENU → sessionManager.worldPoint →
+    /// projectToScreen), so the hit-test agrees with what's drawn.
+    private func projectMarker(coordinate: CLLocationCoordinate2D, altitude: Double) -> CGPoint? {
+        guard let userLoc = overlayLocation, sessionManager.isTracking else { return nil }
+        let enu = Geometry.gpsToENU(
+            from: userLoc.coordinate, originAltitude: userLoc.altitude,
+            to: coordinate, targetAltitude: altitude
+        )
+        let world = sessionManager.worldPoint(east: enu.east, up: enu.up, north: enu.north)
+        guard let screen = sessionManager.projectToScreen(world) else { return nil }
+        // Apply the same on-screen margin cull `PeakOverlayView` uses, so the
+        // hit-test can never select a marker that isn't actually drawn.
+        let vp = sessionManager.viewportSize
+        let margin: CGFloat = 50
+        guard screen.x > -margin, screen.x < vp.width + margin,
+              screen.y > -margin, screen.y < vp.height + margin else { return nil }
+        return screen
+    }
+
+    /// Whether a marker is currently visible — the same gate `PeakOverlayView`
+    /// applies (not occluded, and either far enough or the mesh is ready) — so
+    /// the user can't tap (or capture) an invisible marker.
+    private func markerVisible(id: UUID, distance: Double) -> Bool {
+        let nearbyThreshold = 100.0
+        guard !occlusionManager.occludedIDs.contains(id) else { return false }
+        return distance >= nearbyThreshold || occlusionManager.isSceneReady
+    }
+
+    /// Nearest visible marker within the hit radius of `point`. Peaks (drawn on
+    /// top) win near-ties, so a history point must be strictly closer to be picked.
+    private func nearestMarker(to point: CGPoint) -> ARMarkerSelection? {
+        guard sessionManager.isTracking else { return nil }
+        let hitRadius: CGFloat = 60
+        var best: (selection: ARMarkerSelection, dist: CGFloat)?
+
+        for peak in peakFinder.peaks where markerVisible(id: peak.id, distance: peak.distance) {
+            guard let screen = projectMarker(coordinate: peak.coordinate, altitude: peak.altitude) else { continue }
+            let d = hypot(screen.x - point.x, screen.y - point.y)
+            if d <= hitRadius, best == nil || d < best!.dist { best = (.peak(peak), d) }
+        }
+        for hp in historyPoints where markerVisible(id: hp.id, distance: hp.distance) {
+            guard let screen = projectMarker(coordinate: hp.coordinate, altitude: hp.gpsAltitude) else { continue }
+            let d = hypot(screen.x - point.x, screen.y - point.y)
+            if d <= hitRadius, best == nil || d < best!.dist { best = (.history(hp), d) }
+        }
+        return best?.selection
+    }
+
+    /// Capture the live camera frame + overlays into one annotated panorama and
+    /// present the system share sheet. Fully on-device. The camera snapshot and
+    /// the `ImageRenderer` pass run back-to-back on the main actor, so the AR
+    /// matrices are frozen for both — the markers line up with the still frame.
+    private func captureShare() {
+        guard !isCapturing, sessionManager.isTracking else { return }
+        isCapturing = true
+        // Hop to the next main-actor turn so SwiftUI can render the shutter's
+        // busy state before the snapshot + ImageRenderer pass (both main-actor-
+        // bound) block. The snapshot and render still run back-to-back in this
+        // task, so the frozen camera frame and the projected markers stay
+        // consistent with each other.
+        Task { @MainActor in
+            defer { isCapturing = false }
+            guard let cameraImage = sessionManager.snapshot() else { return }
+            let size = sessionManager.viewportSize
+            guard size.width > 0, size.height > 0 else { return }
+
+            let visibleMarkers =
+                peakFinder.peaks.filter { markerVisible(id: $0.id, distance: $0.distance) }.count
+                + historyPoints.filter { markerVisible(id: $0.id, distance: $0.distance) }.count
+
+            let panorama = SharePanoramaView(
+                cameraImage: cameraImage,
+                size: size,
+                peaks: peakFinder.peaks,
+                historyPoints: historyPoints,
+                userLocation: overlayLocation,
+                barometerAltitude: (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil },
+                skylineSamples: skylineCalculator.samples,
+                sessionManager: sessionManager,
+                occlusionManager: occlusionManager,
+                markerCount: visibleMarkers
+            )
+
+            let renderer = ImageRenderer(content: panorama)
+            renderer.scale = displayScale
+            renderer.proposedSize = ProposedViewSize(size)
+            if let image = renderer.uiImage {
+                shareImage = ShareImage(image: image)
+            }
+        }
+    }
+
 }
 
 #Preview {
