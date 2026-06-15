@@ -32,13 +32,24 @@ class DeviceMotionManager: NSObject, ObservableObject, CLLocationManagerDelegate
         headingManager.delegate = self
     }
     
-    func start() {
+    /// Begin delivering heading (and, when `includeAttitude` is true, pitch/roll).
+    ///
+    /// - Parameter includeAttitude: pass `false` to start ONLY the cheap,
+    ///   event-driven compass-heading stream and skip the 30 Hz device-motion
+    ///   attitude stream. The Info-tab peak-bearing arrow consumes only
+    ///   `heading`, so it opts out — otherwise a 30 Hz `CMDeviceMotion` stream
+    ///   (and the sensor fusion behind it) runs the whole time the Info tab is
+    ///   on screen just to compute pitch/roll nothing reads. The AR Nature view
+    ///   needs attitude and keeps the default `true`.
+    func start(includeAttitude: Bool = true) {
         // Start compass heading updates
         if CLLocationManager.headingAvailable() {
             headingManager.headingFilter = 1 // update every 1 degree change
             headingManager.startUpdatingHeading()
         }
-        
+
+        guard includeAttitude else { return }
+
         // Start device motion for pitch/roll
         if motionManager.isDeviceMotionAvailable {
             motionManager.deviceMotionUpdateInterval = 1.0 / 30.0 // 30 Hz

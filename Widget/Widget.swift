@@ -36,16 +36,23 @@ struct Provider: AppIntentTimelineProvider {
 
         guard let pressure = ps else { return nil }
 
-        let altitude: Double
+        let rawAltitude: Double
         if let abs = abs {
-            altitude = abs
+            rawAltitude = abs
         } else {
             // Bootstrap fallback: lapse-rate pressure-only formula.
             // Used only when the calibrated absolute stream is
             // unavailable (older OS / hardware, or location
             // authorisation not granted to the host app).
-            altitude = Atmosphere.altitude(pressureKPa: pressure)
+            rawAltitude = Atmosphere.altitude(pressureKPa: pressure)
         }
+
+        // Apply the same decaying manual "I am at X m" offset the main app
+        // shows, so the widget altitude matches the in-app readout (and the
+        // snapshot the main app rehydrates on cold start is already
+        // calibrated). Zero when no calibration is set or it has decayed out.
+        let altitude = rawAltitude
+            + Atmosphere.persistedCalibrationOffset(suiteName: SharedSnapshotStore.appGroupID)
 
         // Preserve last known GPS data (including coordinates so
         // the main app can backfill complete history items).

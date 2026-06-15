@@ -41,7 +41,9 @@ struct GeoInfoView: View {
                 // scene-phase change — mirroring GeoNatureView's AR gating.
                 .onAppear {
                     isOnScreen = true
-                    if scenePhase == .active { app?.deviceMotion?.start() }
+                    // Heading-only: the bearing arrow needs `heading`, not the
+                    // 30 Hz pitch/roll attitude stream (AR-only).
+                    if scenePhase == .active { app?.deviceMotion?.start(includeAttitude: false) }
                 }
                 .onDisappear {
                     isOnScreen = false
@@ -49,7 +51,7 @@ struct GeoInfoView: View {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     guard isOnScreen else { return }
-                    if newPhase == .active { app?.deviceMotion?.start() }
+                    if newPhase == .active { app?.deviceMotion?.start(includeAttitude: false) }
                     else { app?.deviceMotion?.stop() }
                 }
         })

@@ -11,6 +11,14 @@ agrees across the phone, the home-screen widget, the Watch screen and the Watch
 complication, plus 39 verified bug fixes and 24 improvements.
 
 ### Added
+- **Known-elevation manual calibration** — pin the altimeter to a trailhead or
+  summit marker ("I am at X m") from the Info barometer card for instant,
+  weather-proof, offline accuracy. Inverts the barometric formula to back-solve
+  the sea-level reference pressure; since `CMAltimeter` has no altitude setter the
+  correction is stored as a decaying delta on the reading (in the app group, so the
+  widget agrees). The pin decays over ~6 h as weather drifts and then reverts to the
+  system value, so a stale calibration can't silently re-bias the altitude. A green
+  "calibrated" badge shows while it's active. 100 % on-device.
 - **Trip Recorder** — one tap on the Stat tab wraps the always-on sample stream
   into a named outing. Each trip shows total ascent/descent (with sub-3 m noise
   smoothed so the number doesn't inflate), max/min altitude, distance, moving time,
