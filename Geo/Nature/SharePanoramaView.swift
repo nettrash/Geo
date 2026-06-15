@@ -39,6 +39,7 @@ struct SharePanoramaView: View {
                 userLocation: userLocation,
                 barometerAltitude: barometerAltitude,
                 skylineSamples: skylineSamples,
+                peaks: peaks,
                 sessionManager: sessionManager
             )
 

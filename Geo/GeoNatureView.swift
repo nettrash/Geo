@@ -95,7 +95,19 @@ struct GeoNatureView: View {
             return point.distance >= nearbyThreshold || occlusionManager.isSceneReady
         }
     }
-    
+
+    /// Peaks whose name is welded to the skyline ridge (HorizonOverlayView).
+    /// Their AR markers are suppressed so each peak shows EITHER a ridge label
+    /// OR a marker, never a duplicated pair. Camera-independent, so it agrees
+    /// with what the horizon overlay welds.
+    private var weldedPeakIDs: Set<UUID> {
+        guard let loc = overlayLocation, !skylineCalculator.samples.isEmpty else { return [] }
+        let obsAlt = (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil } ?? loc.altitude
+        return Set(peakFinder.peaks
+            .filter { peakOnSilhouette($0, skyline: skylineCalculator.samples, observerAltitude: obsAlt) }
+            .map { $0.id })
+    }
+
     var body: some View {
         ZStack {
             if cameraPermissionGranted {
@@ -111,6 +123,7 @@ struct GeoNatureView: View {
                     userLocation: overlayLocation,
                     barometerAltitude: app?.barometer?.height,
                     skylineSamples: skylineCalculator.samples,
+                    peaks: peakFinder.peaks,
                     sessionManager: sessionManager
                 )
                 .ignoresSafeArea()
@@ -118,7 +131,9 @@ struct GeoNatureView: View {
 
                 // Peak & history point markers positioned via GPS→ENU→ARKit projection
                 PeakOverlayView(
-                    peaks: peakFinder.peaks,
+                    // Peaks welded to the skyline ridge are labelled there
+                    // instead of getting a duplicate AR marker.
+                    peaks: peakFinder.peaks.filter { !weldedPeakIDs.contains($0.id) },
                     historyPoints: historyPoints,
                     userLocation: overlayLocation,
                     sessionManager: sessionManager,

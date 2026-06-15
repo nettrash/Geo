@@ -35,7 +35,17 @@ struct HorizonOverlayView: View {
     /// Real-terrain skyline samples sorted by bearing. Empty array
     /// triggers the geometric-horizon fallback.
     let skylineSamples: [SkylineSample]
+    /// Named peaks for the area (from `PeakFinder`). Any peak whose tip sits on
+    /// the computed skyline silhouette gets its name + altitude welded to the
+    /// ridge line. Empty when peaks haven't loaded yet.
+    let peaks: [NearbyPeak]
     @ObservedObject var sessionManager: ARSessionManager
+
+    /// Minimum horizontal spacing (points) between kept peak labels — wide
+    /// enough that adjacent pills (long peak names) don't visually overlap.
+    private let minPeakLabelSpacing: CGFloat = 104
+    /// Cap on simultaneously shown peak labels (keeps the panorama legible).
+    private let maxPeakLabels: Int = 10
 
     /// Earth radius (mean) in metres.
     private let earthRadius: Double = 6_371_000
@@ -66,6 +76,7 @@ struct HorizonOverlayView: View {
                 HorizonPathView(segments: layout.segments,
                                 isSkyline: !skylineSamples.isEmpty)
                 HorizonLabelsView(labels: layout.labels)
+                PeakHorizonLabelsView(labels: layout.peakLabels)
             }
             .allowsHitTesting(false)
         }
@@ -76,11 +87,12 @@ struct HorizonOverlayView: View {
     private struct HorizonLayout {
         var segments: [[CGPoint]]
         var labels: [HorizonLabel]
+        var peakLabels: [PeakHorizonLabel]
     }
 
     private func horizonLayout(in size: CGSize) -> HorizonLayout {
         guard let userLoc = userLocation, sessionManager.isTracking else {
-            return HorizonLayout(segments: [], labels: [])
+            return HorizonLayout(segments: [], labels: [], peakLabels: [])
         }
 
         // Effective observer height above sea level in metres. The
@@ -208,7 +220,58 @@ struct HorizonOverlayView: View {
             labels.append(HorizonLabel(text: cd.label, position: screen))
         }
 
-        return HorizonLayout(segments: segments, labels: labels)
+        // Peak labels welded to the silhouette — only when we have a real
+        // skyline to match against (the geometric fallback has no terrain).
+        let peakLabels = useSkyline
+            ? weldPeakLabels(observerAltitude: observerAltitude,
+                             headingDeg: headingDeg, skyline: skyline, size: size)
+            : []
+
+        return HorizonLayout(segments: segments, labels: labels, peakLabels: peakLabels)
+    }
+
+    /// Match each named peak to the skyline silhouette at its bearing and, when
+    /// the peak sits on/above that silhouette (i.e. it's the visible ridge
+    /// feature, not occluded behind nearer terrain), float its label on the
+    /// ridge. Nearer peaks win when labels would overlap.
+    private func weldPeakLabels(observerAltitude: Double, headingDeg: Double,
+                                skyline: [SkylineSample], size: CGSize) -> [PeakHorizonLabel] {
+        struct Candidate { let label: PeakHorizonLabel; let x: CGFloat; let distance: Double }
+        var candidates: [Candidate] = []
+
+        // `peakOnSilhouette` (camera-independent) decides which peaks are on the
+        // ridge; the same predicate suppresses their duplicate AR markers in
+        // GeoNatureView, so a peak shows EITHER a ridge label OR a marker.
+        for peak in peaks where peakOnSilhouette(peak, skyline: skyline, observerAltitude: observerAltitude) {
+            guard abs(angleDelta(peak.bearing, headingDeg)) <= headingHalfWindowDeg else { continue }
+
+            let sky = interpolateSkyline(at: wrap(peak.bearing), samples: skyline)
+            // Position the label on the ridge silhouette at the peak's bearing.
+            let theta = peak.bearing * .pi / 180.0
+            let east = sky.distance * sin(theta)
+            let north = sky.distance * cos(theta)
+            let up = (sky.altitude - observerAltitude) - (sky.distance * sky.distance) / (2 * earthRadius)
+            let world = sessionManager.worldPoint(east: east, up: up, north: north)
+            guard let screen = sessionManager.projectToScreen(world),
+                  screen.x.isFinite, screen.y.isFinite,
+                  isWithinExtendedBounds(screen, size: size) else { continue }
+
+            candidates.append(Candidate(
+                label: PeakHorizonLabel(name: peak.name, altitude: peak.altitude, position: screen),
+                x: screen.x, distance: peak.distance))
+        }
+
+        // Nearer (more prominent) peaks first; keep those at least
+        // `minPeakLabelSpacing` apart horizontally, up to `maxPeakLabels`.
+        candidates.sort { $0.distance < $1.distance }
+        var kept: [PeakHorizonLabel] = []
+        for c in candidates {
+            if kept.allSatisfy({ abs($0.position.x - c.x) >= minPeakLabelSpacing }) {
+                kept.append(c.label)
+                if kept.count >= maxPeakLabels { break }
+            }
+        }
+        return kept
     }
 
     /// Linear-interpolate the skyline `(distance, altitude)` at an
@@ -287,6 +350,59 @@ struct HorizonLabel: Identifiable, Equatable {
     }
 }
 
+/// A named peak welded to the skyline silhouette at its ridge position.
+struct PeakHorizonLabel: Identifiable, Equatable {
+    let id = UUID()
+    let name: String
+    let altitude: Double
+    let position: CGPoint
+
+    static func == (lhs: PeakHorizonLabel, rhs: PeakHorizonLabel) -> Bool {
+        lhs.name == rhs.name && lhs.position == rhs.position
+    }
+}
+
+/// Camera-INDEPENDENT test: does this named peak form the visible skyline
+/// silhouette — its tip on/above the ridge, not occluded behind nearer, higher
+/// terrain? Drives both the welded ridge label (HorizonOverlayView) and the
+/// suppression of the peak's duplicate AR marker (GeoNatureView), so a peak is
+/// shown EITHER as a ridge label OR as a marker, never both. Mirrors the
+/// Android `peakOnSilhouette`.
+func peakOnSilhouette(_ peak: NearbyPeak, skyline: [SkylineSample],
+                      observerAltitude: Double) -> Bool {
+    guard !peak.name.isEmpty, peak.distance >= 1_000, !skyline.isEmpty else { return false }
+    let earthRadius = 6_371_000.0
+    func angle(_ d: Double, _ alt: Double) -> Double {
+        atan2((alt - observerAltitude) - (d * d) / (2 * earthRadius), max(d, 1))
+    }
+    let sky = horizonSkylineValue(at: peak.bearing, samples: skyline)
+    let tol = 1.5 * Double.pi / 180.0
+    return angle(peak.distance, peak.altitude) >= angle(sky.distance, sky.altitude) - tol
+}
+
+/// Free skyline interpolation `(distance, altitude)` at a bearing — same math as
+/// `HorizonOverlayView.interpolateSkyline`, usable outside the view (e.g. by the
+/// marker-suppression filter). Samples are pre-sorted by bearing.
+func horizonSkylineValue(at bearing: Double, samples: [SkylineSample])
+    -> (distance: Double, altitude: Double) {
+    guard !samples.isEmpty else { return (0, 0) }
+    if samples.count == 1 { return (samples[0].distance, samples[0].altitude) }
+    func wrap(_ deg: Double) -> Double {
+        let d = deg.truncatingRemainder(dividingBy: 360); return d < 0 ? d + 360 : d
+    }
+    let b = wrap(bearing)
+    var hiIdx = samples.firstIndex(where: { $0.bearing > b }) ?? samples.count
+    var loIdx: Int
+    if hiIdx == 0 { loIdx = samples.count - 1; hiIdx = 0 }
+    else if hiIdx == samples.count { loIdx = samples.count - 1; hiIdx = 0 }
+    else { loIdx = hiIdx - 1 }
+    let lo = samples[loIdx], hi = samples[hiIdx]
+    let span = wrap(hi.bearing - lo.bearing), pos = wrap(b - lo.bearing)
+    let t = span == 0 ? 0 : min(max(pos / span, 0), 1)
+    return (lo.distance + (hi.distance - lo.distance) * t,
+            lo.altitude + (hi.altitude - lo.altitude) * t)
+}
+
 /// Pure rendering view: takes pre-computed screen-space line segments
 /// and draws them. Splitting this out keeps the AR-session reads on
 /// the main actor (in `HorizonOverlayView.body`) and the drawing code
@@ -334,6 +450,38 @@ private struct HorizonLabelsView: View {
                 .padding(.vertical, 2)
                 .background(.black.opacity(0.55), in: Capsule())
                 .position(label.position)
+        }
+    }
+}
+
+/// Named-peak labels floated just above their ridge silhouette position —
+/// turns the abstract green line into an identified panorama.
+private struct PeakHorizonLabelsView: View {
+    let labels: [PeakHorizonLabel]
+
+    var body: some View {
+        ForEach(labels) { label in
+            HStack(spacing: 3) {
+                Image(systemName: "triangle.fill")
+                    .font(.system(size: 7))
+                    .foregroundStyle(.orange)
+                Text(label.name)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                if label.altitude > 0 {
+                    Text("\(Int(label.altitude)) m")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.6), in: Capsule())
+            .overlay(Capsule().strokeBorder(.orange.opacity(0.7), lineWidth: 0.75))
+            .fixedSize()
+            // Float just above the ridge so the pill doesn't sit on the line.
+            .position(x: label.position.x, y: label.position.y - 20)
         }
     }
 }
