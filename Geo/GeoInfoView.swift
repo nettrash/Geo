@@ -34,6 +34,8 @@ struct GeoInfoView: View {
                     ClosestMountainInformationView(location: app?.location, motion: app?.deviceMotion)
 
                     HighestMountainInformationView(location: app?.location, motion: app?.deviceMotion)
+
+                    OfflinePackCard(manager: app?.offlinePack, location: app?.location)
                 }
                 // Run the compass only while the Info tab is visible AND the
                 // scene is active (low-power, AR-free peak direction finder).

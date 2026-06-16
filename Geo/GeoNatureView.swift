@@ -452,7 +452,8 @@ struct GeoNatureView: View {
     private func searchForPeaks() {
         guard let location = app?.location?.location else { return }
         Task {
-            await peakFinder.searchPeaks(near: location, mountainsData: app?.mountainsData)
+            await peakFinder.searchPeaks(near: location, mountainsData: app?.mountainsData,
+                                         offlinePeaks: app?.offlinePack?.combinedPeaks ?? [])
         }
     }
     

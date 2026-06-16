@@ -39,6 +39,11 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     // Summit log — logged ascents (auto-detect arrival at a known peak).
     var summitLog: SummitLogStore?
 
+    // Offline expedition pack — pre-cached area (OSM peaks + terrain DEM)
+    // so the AR peaks/skyline keep working on a no-signal summit. Seeds the
+    // live peak + elevation caches from the saved packs at launch.
+    var offlinePack: OfflinePackManager?
+
     /// WatchConnectivity bridge — `nil` on devices that don't support it.
     var connectivity: PhoneConnectivityManager?
 
@@ -65,6 +70,12 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
 
         self.tripRecorder = TripRecorder(history: self.history)
         self.summitLog = SummitLogStore(history: self.history)
+
+        // Offline expedition pack — loads saved packs and seeds the live
+        // peak/elevation caches so a no-signal launch over a cached area
+        // still draws the AR skyline. `location` feeds "download current area".
+        self.offlinePack = OfflinePackManager()
+        self.offlinePack?.location = self.location
 
         // Spin up WatchConnectivity. The manager is non-isolated and
         // safe to construct from any thread; we set our own delegate

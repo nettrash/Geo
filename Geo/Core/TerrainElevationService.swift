@@ -33,6 +33,13 @@ actor TerrainElevationService {
     /// entries once we exceed `cacheCap`.
     private var lruOrder: [String] = []
 
+    /// Cells from downloaded **offline expedition packs**, keyed exactly
+    /// like `cache`. Consulted on every cache miss and *never* LRU-evicted,
+    /// so a prefetched area's terrain skyline keeps resolving from cache
+    /// with no signal. Rebuilt wholesale from the saved packs by
+    /// `OfflinePackManager` at launch and whenever a pack is added/removed.
+    private var pinned: [String: Double] = [:]
+
     /// The persisted cache is loaded lazily on the first query — an actor's
     /// `init` is nonisolated and cannot touch isolated state under Swift 6.
     private var didLoad = false
@@ -90,10 +97,13 @@ actor TerrainElevationService {
         var pending: [(index: Int, coord: CLLocationCoordinate2D)] = []
 
         for (i, p) in points.enumerated() {
-            let k = Self.key(p)
+            let k = Self.gridKey(p)
             if let cached = cache[k] {
                 touchLRU(k)
                 results[i] = cached
+            } else if let pin = pinned[k] {
+                // Offline-pack cell — durable, never LRU-evicted.
+                results[i] = pin
             } else {
                 pending.append((i, p))
             }
@@ -115,7 +125,7 @@ actor TerrainElevationService {
             // Stitch results back in original order; populate cache.
             for (req, elevation) in zip(chunk, elevations) {
                 if let elev = elevation {
-                    let k = Self.key(req.coord)
+                    let k = Self.gridKey(req.coord)
                     if cache[k] == nil { anyInsert = true }
                     cache[k] = elev
                     touchLRU(k)
@@ -144,6 +154,14 @@ actor TerrainElevationService {
         if let url = cacheURL {
             try? FileManager.default.removeItem(at: url)
         }
+    }
+
+    /// Replace the set of *pinned* cells (grid-cell → elevation) from the
+    /// downloaded offline packs. Pinned cells are consulted on every cache
+    /// miss and never evicted. Rebuilt wholesale by `OfflinePackManager`,
+    /// so passing the union of all packs' cells is the whole contract.
+    func setPinned(_ cells: [String: Double]) {
+        pinned = cells
     }
 
     // MARK: - HTTP
@@ -335,7 +353,10 @@ actor TerrainElevationService {
         )
     }
 
-    private static func key(_ p: CLLocationCoordinate2D) -> String {
+    /// Canonical cache/pinned key for a coordinate: the ~110 m quantised
+    /// "lat,lon" string. Exposed so `OfflinePackManager` builds pack-cell
+    /// keys that line up byte-for-byte with the live lookups.
+    static func gridKey(_ p: CLLocationCoordinate2D) -> String {
         let q = quantise(p)
         return "\(q.latitude),\(q.longitude)"
     }

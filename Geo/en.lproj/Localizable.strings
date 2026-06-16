@@ -98,3 +98,24 @@
 "Tap to enable Location and Motion in Settings." = "Tap to enable Location and Motion in Settings.";
 "Tap to enable Location in Settings — needed for nearby peaks and the map." = "Tap to enable Location in Settings — needed for nearby peaks and the map.";
 "Tap to enable Motion in Settings — needed for barometer altitude." = "Tap to enable Motion in Settings — needed for barometer altitude.";
+
+// MARK: - Offline expedition pack (mirror Android strings.xml offline_* keys)
+"Expedition pack" = "Expedition pack";
+"Manage offline areas" = "Manage offline areas";
+"Offline packs" = "Offline packs";
+"Download current area" = "Download current area";
+"Waiting for a GPS fix…" = "Waiting for a GPS fix…";
+"Name (optional)" = "Name (optional)";
+"Radius" = "Radius";
+"Download this area" = "Download this area";
+"Saved packs" = "Saved packs";
+"None yet" = "None yet";
+"Caches the area's named peaks and the terrain skyline so the AR Nature view works with no signal. Map tiles aren't included (provider licensing)." = "Caches the area's named peaks and the terrain skyline so the AR Nature view works with no signal. Map tiles aren't included (provider licensing).";
+"Download a region" = "Download a region";
+"Download here" = "Download here";
+"Delete offline area?" = "Delete offline area?";
+"Rename" = "Rename";
+"Name this area" = "Name this area";
+"Rename area" = "Rename area";
+"Save" = "Save";
+"Name" = "Name";

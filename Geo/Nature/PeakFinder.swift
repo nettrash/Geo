@@ -41,7 +41,8 @@ class PeakFinder: ObservableObject {
     
     /// Search for peaks near the given location. Network source (OSM)
     /// is awaited first, then merged with the local bundled list.
-    func searchPeaks(near location: CLLocation, mountainsData: MountainData?) async {
+    func searchPeaks(near location: CLLocation, mountainsData: MountainData?,
+                     offlinePeaks: [NearbyPeak] = []) async {
         // Don't re-search if we haven't moved much. We still age out
         // stale peaks though: prune the existing set by TTL + drop-radius
         // against the current location so a stationary user's stale peaks
@@ -57,17 +58,16 @@ class PeakFinder: ObservableObject {
         lastSearchLocation = location
 
         // OSM is now the only network-backed source; bundled
-        // `MountainData` is local. Apple Maps was removed — see the
-        // class-level comment for why.
+        // `MountainData` and `offlinePeaks` are local. Apple Maps was
+        // removed — see the class-level comment for why.
         //
-        // `searchOpenStreetMap` is `nonisolated`: the fetch, JSON
-        // decode and per-peak geometry/elevation recompute run off the
-        // main actor so they can't drop AR frames during the ~5 s live
-        // refresh. Only the @Published `peaks` assignment below hops
-        // back onto the main actor. `searchRadius` is passed in (rather
-        // than read through `self`) to keep the call free of any
-        // main-actor isolation.
-        let osmResults = await searchOpenStreetMap(near: location, searchRadius: searchRadius)
+        // `fetchOSMPeaks` is `nonisolated static`: the fetch, JSON decode
+        // and per-peak geometry/elevation recompute run off the main actor
+        // so they can't drop AR frames during the ~5 s live refresh. Only
+        // the @Published `peaks` assignment below hops back onto the main
+        // actor.
+        let osmResults = await Self.fetchOSMPeaks(center: location.coordinate,
+                                                  radiusMeters: searchRadius)
         let knownPeaks = findKnownMountains(near: location, mountainsData: mountainsData)
 
         // 1. Start with the OSM-curated peaks.
@@ -79,6 +79,17 @@ class PeakFinder: ObservableObject {
             if !isDuplicate(knownPeak, in: foundPeaks) {
                 foundPeaks.append(knownPeak)
             }
+        }
+
+        // 3. Merge peaks from downloaded offline packs so the area's named
+        //    peaks show even with NO signal (and complement the live 5 km
+        //    query when online). Stamp them fresh so the TTL prune in
+        //    `pruneAndRecompute` doesn't drop them the instant they merge;
+        //    the drop-radius hysteresis still removes any too far to see.
+        let now = Date()
+        for var offline in offlinePeaks where !isDuplicate(offline, in: foundPeaks) {
+            offline.lastSeenAt = now
+            foundPeaks.append(offline)
         }
 
         // Merge with the previous result set so a transient empty / partial
@@ -139,43 +150,32 @@ class PeakFinder: ObservableObject {
         }
     }
     
-    /// Search OpenStreetMap via Overpass API for peaks (natural=peak)
-    /// Free, no API key required, excellent worldwide peak coverage.
-    /// Privacy: lat/lon are rounded to ~3 decimals (~110 m at the equator)
-    /// before being sent so the precise location of the device isn't
-    /// disclosed to a third-party API; the search radius (5 km) is far
-    /// larger than that quantisation error.
+    /// Fetch OpenStreetMap `natural=peak` nodes within `radiusMeters` of
+    /// `center` via the Overpass API. Free, no API key, excellent worldwide
+    /// coverage. Privacy: lat/lon are rounded to ~3 decimals (~110 m) before
+    /// being sent; the radius dwarfs that quantisation error.
     ///
-    /// Peaks whose OSM record carries an `ele` tag use that value
-    /// directly. The rest get their altitude resolved via
-    /// `TerrainElevationService` (the same DEM source the skyline
-    /// uses), in a single batched call. Peaks for which neither source
-    /// can supply an altitude are dropped — rendering them at a
-    /// placeholder value would just put another fake-looking marker on
-    /// the AR horizon, which was the whole reason Apple Maps got
-    /// removed.
+    /// Peaks whose OSM record carries an `ele` tag use it directly; the rest
+    /// get their altitude resolved via `TerrainElevationService` (the same
+    /// DEM the skyline uses) in one batched call. Peaks neither source can
+    /// supply an altitude for are dropped — a placeholder height would just
+    /// put a fake-looking marker on the AR horizon.
     ///
-    /// `nonisolated` so the network fetch, JSON decode and per-peak
-    /// geometry/elevation recompute all run off the main actor (mirrors
-    /// the Android port doing this work on `Dispatchers.IO`). It touches
-    /// no main-actor state — `searchRadius` is passed in, `Geometry` is
-    /// a stateless enum of statics, and `TerrainElevationService` is an
-    /// actor — and returns plain `Sendable` value types, so the result
-    /// crosses back to the caller's actor safely under Swift 6.
-    nonisolated private func searchOpenStreetMap(near location: CLLocation,
-                                                 searchRadius: CLLocationDistance) async -> [NearbyPeak] {
-        // Same ~110 m (3-decimal) grid the elevation cache uses — one
-        // shared quantiser keeps the Overpass query and the DEM lookups
-        // rounding identically (mirrors the Android port, where
-        // PeakFinder calls TerrainElevationService.quantise).
-        let qLat = TerrainElevationService.quantise(location.coordinate.latitude)
-        let qLon = TerrainElevationService.quantise(location.coordinate.longitude)
-        let radiusMeters = Int(searchRadius)
+    /// `nonisolated static` so it runs entirely off the main actor and is
+    /// reusable by both the live 5 km refresh and the offline-pack prefetch
+    /// (which passes a much larger radius). Touches no main-actor state and
+    /// returns `Sendable` values, so it's safe to await from any actor.
+    nonisolated static func fetchOSMPeaks(center: CLLocationCoordinate2D,
+                                          radiusMeters: Double) async -> [NearbyPeak] {
+        // Same ~110 m (3-decimal) grid the elevation cache uses, so the
+        // Overpass query and the DEM lookups round identically.
+        let qLat = TerrainElevationService.quantise(center.latitude)
+        let qLon = TerrainElevationService.quantise(center.longitude)
+        let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
 
-        // Overpass QL query: find all nodes tagged as natural=peak within radius
         let query = """
         [out:json][timeout:10];
-        node["natural"="peak"](around:\(radiusMeters),\(qLat),\(qLon));
+        node["natural"="peak"](around:\(Int(radiusMeters)),\(qLat),\(qLon));
         out body;
         """
 
@@ -184,16 +184,14 @@ class PeakFinder: ObservableObject {
             return []
         }
 
-        // Identify ourselves to the Overpass operators (their usage
-        // policy asks for a meaningful, app-identifying User-Agent) and
-        // cap the client-side transport wait at 10 s — matching the
-        // in-query `[out:json][timeout:10]` server budget — instead of
-        // inheriting URLSession's 60 s default.
+        // Identify ourselves per the Overpass usage policy and cap the
+        // client-side transport wait at 10 s (matching the in-query budget)
+        // rather than URLSession's 60 s default.
         var req = URLRequest(url: url, timeoutInterval: 10)
         req.setValue("me.nettrash.Geo/1.0 (+https://nettrash.me)", forHTTPHeaderField: "User-Agent")
 
         do {
-            let (data, response) = try await Self.sendWithRetry(req)
+            let (data, response) = try await sendWithRetry(req)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
@@ -216,10 +214,10 @@ class PeakFinder: ObservableObject {
 
                 let peakCoord = CLLocationCoordinate2D(latitude: element.lat, longitude: element.lon)
                 let peakLocation = CLLocation(latitude: element.lat, longitude: element.lon)
-                let distance = location.distance(from: peakLocation)
-                guard distance <= searchRadius else { return nil }
+                let distance = centerLoc.distance(from: peakLocation)
+                guard distance <= radiusMeters else { return nil }
 
-                let bearing = Geometry.bearing(from: location.coordinate, to: peakCoord)
+                let bearing = Geometry.bearing(from: center, to: peakCoord)
                 let altitude: Double? = element.tags?.ele.flatMap { Double($0) }
                 return PartialPeak(name: name,
                                    coordinate: peakCoord,
@@ -247,11 +245,7 @@ class PeakFinder: ObservableObject {
             }
 
             // Drop peaks whose altitude we couldn't resolve from either
-            // OSM tags or the DEM service. We deliberately do *not*
-            // fall back to "user altitude + 100m" any more — that
-            // placeholder was the second half of the Apple-Maps fake-
-            // peak problem, putting markers at arbitrary heights on
-            // the AR horizon.
+            // OSM tags or the DEM service (no fake placeholder heights).
             return partials.compactMap { p in
                 guard let alt = p.altitude else { return nil }
                 return NearbyPeak(
