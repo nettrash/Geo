@@ -142,6 +142,17 @@ final class OfflinePackManager: ObservableObject {
         await reseedConsumers()
     }
 
+    /// Rename a saved pack. The name lives only in the index (not the DEM/peak
+    /// payload), so this just rewrites the index — no cache reseed needed. An
+    /// all-whitespace name is ignored (keeps the current name).
+    func rename(_ pack: OfflinePack, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let i = packs.firstIndex(where: { $0.id == pack.id }) else { return }
+        packs[i].name = trimmed
+        store.saveIndex(packs)
+    }
+
     /// Delete a saved pack and re-seed the live caches without it.
     func delete(_ pack: OfflinePack) {
         store.deleteData(pack.id)

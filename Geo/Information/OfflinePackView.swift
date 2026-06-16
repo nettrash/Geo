@@ -92,6 +92,9 @@ struct OfflinePackManagerView: View {
     @State private var radiusKm: Double = 10
     private let radii: [Double] = [5, 10, 50, 100]
 
+    @State private var renamingPack: OfflinePack?
+    @State private var renameText = ""
+
     var body: some View {
         NavigationStack {
             Form {
@@ -145,10 +148,23 @@ struct OfflinePackManagerView: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
-                        }
-                        .onDelete { offsets in
-                            let toDelete = offsets.map { manager.packs[$0] }
-                            for pack in toDelete { manager.delete(pack) }
+                            // Swipe right = rename, swipe left = delete.
+                            .swipeActions(edge: .leading) {
+                                Button {
+                                    renameText = pack.name
+                                    renamingPack = pack
+                                } label: {
+                                    Label("Rename", systemImage: "pencil")
+                                }
+                                .tint(.blue)
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    manager.delete(pack)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }
@@ -165,6 +181,17 @@ struct OfflinePackManagerView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .alert("Rename area", isPresented: Binding(
+                get: { renamingPack != nil },
+                set: { if !$0 { renamingPack = nil } }
+            )) {
+                TextField("Name", text: $renameText)
+                Button("Save") {
+                    if let pack = renamingPack { manager.rename(pack, to: renameText) }
+                    renamingPack = nil
+                }
+                Button("Cancel", role: .cancel) { renamingPack = nil }
             }
         }
     }
