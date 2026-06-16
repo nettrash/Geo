@@ -90,8 +90,15 @@ struct OfflinePackStore {
     }
 
     func saveIndex(_ packs: [OfflinePack]) {
-        guard let url = indexURL, let data = try? JSONEncoder.iso.encode(packs) else { return }
-        try? data.write(to: url, options: .atomic)
+        guard let url = indexURL else { return }
+        do {
+            let data = try JSONEncoder.iso.encode(packs)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            // Surface write failures (disk full / permissions) instead of
+            // silently dropping them — matches the Android store's logging.
+            AppLog.app.error("Offline pack index save failed: \(String(describing: error))")
+        }
     }
 
     func loadData(_ id: UUID) -> OfflinePackData? {
@@ -100,9 +107,20 @@ struct OfflinePackStore {
         return try? JSONDecoder.iso.decode(OfflinePackData.self, from: data)
     }
 
-    func saveData(_ id: UUID, _ data: OfflinePackData) {
-        guard let url = dataURL(id), let encoded = try? JSONEncoder.iso.encode(data) else { return }
-        try? encoded.write(to: url, options: .atomic)
+    /// Returns whether the pack's data file actually persisted, so the
+    /// caller can avoid recording a metadata entry whose payload is missing
+    /// (which would show as a phantom pack that can never be re-seeded).
+    @discardableResult
+    func saveData(_ id: UUID, _ data: OfflinePackData) -> Bool {
+        guard let url = dataURL(id) else { return false }
+        do {
+            let encoded = try JSONEncoder.iso.encode(data)
+            try encoded.write(to: url, options: .atomic)
+            return true
+        } catch {
+            AppLog.app.error("Offline pack data save failed: \(String(describing: error))")
+            return false
+        }
     }
 
     func deleteData(_ id: UUID) {

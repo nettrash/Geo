@@ -53,7 +53,9 @@ final class OfflinePackManager: ObservableObject {
     private let store = OfflinePackStore()
 
     init() {
-        packs = store.loadIndex().sorted { $0.createdAt > $1.createdAt }
+        // No synchronous disk I/O in init: the index load + JSON decode + cache
+        // seeding all run off the main actor inside the launch Task (see
+        // `reseedConsumers`), which publishes `packs` back on the main actor.
         Task { await reseedConsumers() }
     }
 
@@ -82,7 +84,10 @@ final class OfflinePackManager: ObservableObject {
         // 1. Peaks across the whole radius (one throttled Overpass query).
         let osmPeaks = await PeakFinder.fetchOSMPeaks(center: center,
                                                       radiusMeters: radiusKm * 1000)
-        let peaks = Array(osmPeaks.prefix(maxPackPeaks))
+        // Keep the CLOSEST peaks when capping — Overpass returns nodes in
+        // arrival order, not by distance, so a naive prefix could drop nearby
+        // peaks while keeping far ones. Mirrors the live PeakFinder path.
+        let peaks = Array(osmPeaks.sorted { $0.distance < $1.distance }.prefix(maxPackPeaks))
 
         if Task.isCancelled { return }
 
@@ -90,7 +95,9 @@ final class OfflinePackManager: ObservableObject {
         //    fetched in chunks so we can show progress; each chunk goes
         //    through the elevation service's own 200 ms throttle + retry.
         statusText = "Caching terrain…"
-        let coords = SkylineCalculator.skylineGridCoordinates(observer: center)
+        // Build the 3 600-point polar grid off the main actor — it's pure trig
+        // and would otherwise run on the main thread during the download.
+        let coords = await Task.detached { SkylineCalculator.skylineGridCoordinates(observer: center) }.value
         var cells: [String: Double] = [:]
         let chunkSize = 300
         var processed = 0
@@ -121,7 +128,10 @@ final class OfflinePackManager: ObservableObject {
             },
             cells: cells
         )
-        store.saveData(id, data)
+        // Don't register a pack whose data file didn't persist (disk full /
+        // permission error) — that would leave a phantom entry in the list that
+        // can never be re-seeded. The `defer` above still resets download state.
+        guard store.saveData(id, data) else { return }
 
         let meta = OfflinePack(id: id, name: packName,
                                centerLat: center.latitude, centerLon: center.longitude,
@@ -145,11 +155,37 @@ final class OfflinePackManager: ObservableObject {
     /// Rebuild `combinedPeaks` and the elevation service's pinned cells
     /// from every saved pack. Called at launch and after any pack change.
     private func reseedConsumers() async {
+        // All disk reads + JSON decoding happen OFF the main actor (the store is
+        // a non-isolated struct); only the published-state assignments and the
+        // actor-isolated `setPinned` run back on the main actor.
+        let store = self.store
+        let loaded = await Task.detached { OfflinePackManager.loadAll(store: store) }.value
+        await TerrainElevationService.shared.setPinned(loaded.cells)
+        packs = loaded.metas
+        combinedPeaks = loaded.peaks
+    }
+
+    /// Read the index + every pack's payload from disk and assemble the union
+    /// of pinned cells + deduped peaks. `nonisolated` so it runs off the main
+    /// actor when invoked from a detached task.
+    nonisolated static func loadAll(store: OfflinePackStore)
+        -> (metas: [OfflinePack], cells: [String: Double], peaks: [NearbyPeak]) {
+        let metas = store.loadIndex().sorted { $0.createdAt > $1.createdAt }
+        let datas = metas.compactMap { store.loadData($0.id) }
+        let seed = assembleSeed(from: datas)
+        return (metas, seed.cells, seed.peaks)
+    }
+
+    /// Pure assembly of the live-cache seed from loaded pack payloads: union the
+    /// DEM cells (later packs win on key collision) and dedupe peaks by their
+    /// coordinate-derived id. Pure + `nonisolated` so it's unit-testable
+    /// without disk or the shared elevation-service singleton.
+    nonisolated static func assembleSeed(from datas: [OfflinePackData])
+        -> (cells: [String: Double], peaks: [NearbyPeak]) {
         var cells: [String: Double] = [:]
         var peaks: [NearbyPeak] = []
         var seen = Set<UUID>()
-        for pack in packs {
-            guard let data = store.loadData(pack.id) else { continue }
+        for data in datas {
             for (k, v) in data.cells { cells[k] = v }
             for p in data.peaks {
                 let peak = NearbyPeak(
@@ -162,8 +198,7 @@ final class OfflinePackManager: ObservableObject {
                 if seen.insert(peak.id).inserted { peaks.append(peak) }
             }
         }
-        await TerrainElevationService.shared.setPinned(cells)
-        combinedPeaks = peaks
+        return (cells, peaks)
     }
 
     // MARK: - Helpers

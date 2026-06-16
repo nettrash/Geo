@@ -115,6 +115,7 @@
 		FACE000000000000000FB003 /* OfflinePackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE000000000000000FA003 /* OfflinePackView.swift */; };
 		F4F4F4052D4299650038B14D /* SkylineCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F4F4022D4299550038B14D /* SkylineCalculator.swift */; };
 		F4F4F4082D4299650038B14D /* SkylineGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4F4F4032D4299550038B14D /* SkylineGeometryTests.swift */; };
+		FACE000000000000000FB004 /* OfflinePackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE000000000000000FA004 /* OfflinePackTests.swift */; };
 		F5F5F5012D4299650038B14D /* InformationToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E592D5842D4299550038B14D /* InformationToken.swift */; };
 		F6F6F6032D4299650038B14D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F6F6F6012D4299550038B14D /* PrivacyInfo.xcprivacy */; };
 		F6F6F6042D4299650038B14D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F6F6F6022D4299550038B14D /* PrivacyInfo.xcprivacy */; };
@@ -311,6 +312,7 @@
 		FACE000000000000000FA003 /* OfflinePackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflinePackView.swift; sourceTree = "<group>"; };
 		F4F4F4022D4299550038B14D /* SkylineCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkylineCalculator.swift; sourceTree = "<group>"; };
 		F4F4F4032D4299550038B14D /* SkylineGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkylineGeometryTests.swift; sourceTree = "<group>"; };
+		FACE000000000000000FA004 /* OfflinePackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflinePackTests.swift; sourceTree = "<group>"; };
 		F6F6F6012D4299550038B14D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F6F6F6022D4299550038B14D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F7F7F7012D4299550038B14D /* PermissionsMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsMonitor.swift; sourceTree = "<group>"; };
@@ -599,6 +601,7 @@
 				F3F3F3F72D4299550038B14D /* InformationTokenTests.swift */,
 				F3F3F3F92D4299550038B14D /* NearbyPeakTests.swift */,
 				F4F4F4032D4299550038B14D /* SkylineGeometryTests.swift */,
+				FACE000000000000000FA004 /* OfflinePackTests.swift */,
 			);
 			path = GeoTests;
 			sourceTree = "<group>";
@@ -1064,6 +1067,7 @@
 				F3F3F3F82D4299650038B14D /* InformationTokenTests.swift in Sources */,
 				F3F3F3FA2D4299650038B14D /* NearbyPeakTests.swift in Sources */,
 				F4F4F4082D4299650038B14D /* SkylineGeometryTests.swift in Sources */,
+				FACE000000000000000FB004 /* OfflinePackTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1144,7 +1148,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch App/Geo Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo Watch App/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1180,7 +1184,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch App/Geo Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo Watch App/Preview Content\"";
 				ENABLE_PREVIEWS = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1212,7 +1216,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1234,7 +1238,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1254,7 +1258,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1275,7 +1279,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
@@ -1298,7 +1302,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = Widget/WidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
@@ -1329,7 +1333,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = Widget/WidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Widget/Info.plist;
@@ -1358,7 +1362,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Geo Watch Widget/Info.plist";
@@ -1391,7 +1395,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Geo Watch Widget/Geo Watch WidgetExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Geo Watch Widget/Info.plist";
@@ -1550,7 +1554,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Geo/Geo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
@@ -1596,7 +1600,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Geo/Geo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				DEVELOPMENT_ASSET_PATHS = "\"Geo/Preview Content\"";
 				DEVELOPMENT_TEAM = V4WM2SJ8Q9;
 				ENABLE_PREVIEWS = YES;
@@ -1639,7 +1643,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.1;
@@ -1657,7 +1661,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.1;
@@ -1674,7 +1678,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.1;
@@ -1691,7 +1695,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 7026;
+				CURRENT_PROJECT_VERSION = 7029;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.1;
