@@ -53,12 +53,12 @@ final class SkylineCalculator: ObservableObject {
     /// Maximum sky-line range. ~200 km matches what's actually visible
     /// from a high mountaintop on a clear day, and is well within the
     /// geometric horizon for any observer above ~3 km.
-    private let maxRangeMeters: Double = 200_000
+    nonisolated static let skylineMaxRangeMeters: Double = 200_000
 
     /// Bearings sampled — 2° spacing → 180 samples around the full circle.
     /// Finer than 6° so narrow cliff edges are captured rather than
     /// smoothed away by interpolation.
-    private let bearingStepDeg: Double = 2
+    nonisolated static let skylineBearingStepDeg: Double = 2
 
     /// Distance samples per bearing.
     ///
@@ -76,12 +76,19 @@ final class SkylineCalculator: ObservableObject {
     /// `TerrainElevationService` amortises that to nearly zero on
     /// subsequent recomputes since the user has to move ≥500 m
     /// before we re-run.
-    private let distancesMeters: [Double] = [
+    nonisolated static let skylineDistancesMeters: [Double] = [
         100, 200, 400, 600, 800, 1_000,
         1_500, 2_000, 3_000, 5_000, 7_000, 10_000,
         15_000, 22_000, 32_000, 48_000,
         70_000, 100_000, 140_000, 200_000
     ]
+
+    // Instance aliases so the existing `compute` call sites read unchanged
+    // while the offline-pack prefetch shares the exact same schedule (a
+    // divergent prefetch grid would leave offline skyline holes).
+    private let maxRangeMeters = SkylineCalculator.skylineMaxRangeMeters
+    private let bearingStepDeg = SkylineCalculator.skylineBearingStepDeg
+    private let distancesMeters = SkylineCalculator.skylineDistancesMeters
 
     private var lastObserver: CLLocation?
     private var fetchTask: Task<Void, Never>?
@@ -152,6 +159,26 @@ final class SkylineCalculator: ObservableObject {
         fetchTask?.cancel()
         fetchTask = nil
         isComputing = false
+    }
+
+    // MARK: - Grid
+
+    /// The full skyline sample grid (every bearing × distance) as plain
+    /// coordinates around `observer`. The live `computeSkyline` builds the
+    /// same grid inline; the offline-pack prefetch uses this to cache
+    /// exactly the cells a future offline skyline will look up. Order is
+    /// not significant to callers.
+    nonisolated static func skylineGridCoordinates(observer: CLLocationCoordinate2D) -> [CLLocationCoordinate2D] {
+        var coords: [CLLocationCoordinate2D] = []
+        coords.reserveCapacity(Int(360 / skylineBearingStepDeg) * skylineDistancesMeters.count)
+        var bearing = 0.0
+        while bearing < 360 {
+            for d in skylineDistancesMeters where d <= skylineMaxRangeMeters {
+                coords.append(Geometry.project(from: observer, bearing: bearing, distance: d))
+            }
+            bearing += skylineBearingStepDeg
+        }
+        return coords
     }
 
     // MARK: - Pure computation
