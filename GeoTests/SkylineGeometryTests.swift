@@ -66,17 +66,21 @@ final class SkylineGeometryTests: XCTestCase {
         XCTAssertEqual(a * 180 / .pi, 26.57, accuracy: 0.1)
     }
 
-    func testApparentAngleAtGeometricHorizonIsZero() {
-        // For an observer at altitude h, the geometric horizon (a
-        // sea-level point) sits at distance d = sqrt(2Rh) and the
-        // apparent rise (target − observer − curvatureDrop) cancels
-        // out exactly to zero.
+    func testApparentAngleAtGeometricHorizonIsTheDip() {
+        // For an observer at altitude h, the geometric horizon (a sea-level
+        // point at distance sqrt(2Rh)) does NOT sit at eye level — it appears
+        // BELOW horizontal by the classic "dip of the horizon", ≈ −sqrt(2h/R).
+        // You always look slightly DOWN to the sea horizon from any height.
+        // (A previous version of this test asserted exactly 0; that dropped the
+        // observer-height term and was geometrically wrong.)
         let h: Double = 100
+        let R = Geometry.earthRadius
         let d = Geometry.horizonDistance(observerAltitude: h)
         let a = Geometry.apparentAltitudeAngle(observerAltitude: h,
                                                targetAltitude: 0,
                                                distance: d)
-        XCTAssertEqual(a, 0, accuracy: 1e-3)
+        XCTAssertEqual(a, -(2 * h / R).squareRoot(), accuracy: 1e-4)
+        XCTAssertLessThan(a, 0)
     }
 
     func testApparentAngleBeyondHorizonIsNegative() {
@@ -129,16 +133,23 @@ final class SkylineGeometryTests: XCTestCase {
     }
 
     func testSkylinePicksGeometricHorizonOnFlatPlain() throws {
-        // Every sample is at sea level → all apparent angles ≤ 0.
-        // The closest one wins because it has the smallest
-        // (least negative) curvature drop.
+        // On a flat sea-level plain the silhouette IS the geometric horizon:
+        // among sea-level samples, the one nearest the horizon distance has the
+        // largest (least-negative, = the dip) apparent angle and wins. Closer
+        // samples look steeply down (the −h/d term dominates); samples past the
+        // horizon are hidden by the Earth's bulge and look lower again.
+        // (A previous version expected the *closest* sample to win — backwards:
+        // it ignored the observer-height term that makes near sea-level points
+        // appear far below eye level.)
+        let h: Double = 100
+        let horizon = Geometry.horizonDistance(observerAltitude: h)
         let samples: [(Double, Double)] = [
             (1_000, 0),
-            (10_000, 0),
-            (100_000, 0)
+            (horizon, 0),
+            (200_000, 0)
         ]
-        let pick = try XCTUnwrap(pickSkyline(samples: samples, observerAltitude: 100))
-        XCTAssertEqual(pick.distance, 1_000, accuracy: 1)
+        let pick = try XCTUnwrap(pickSkyline(samples: samples, observerAltitude: h))
+        XCTAssertEqual(pick.distance, horizon, accuracy: 1)
     }
 
     func testSkylineIgnoresSubmergedSamples() throws {

@@ -4,13 +4,13 @@ All notable changes to Geo are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). Versions are
 `MARKETING_VERSION`; the build number auto-increments per build.
 
-## [Unreleased]
+## [1.1] — 2026-06-17
 
-### Changed
-- **History points are no longer shown in the AR (Nature) scene** — they cluttered
-  the camera view, so the AR overlay now shows only peaks and the skyline. Your
-  recorded history is unchanged and still appears on the Map and Stat tabs. (Also
-  drops their AR markers, tap targets, occlusion work and the on-screen counter.)
+A correctness, accuracy and reliability release with a major Nature/AR upgrade.
+The calibrated altitude now agrees across the phone, the home-screen widget, the
+Watch screen and the Watch complication; the Nature (AR) view gains offline
+expedition packs, peak names welded to the terrain skyline, a summit log and
+tap-to-identify; plus dozens of verified bug fixes and improvements.
 
 ### Added
 - **Offline expedition pack** — pre-cache an area before you lose signal so the
@@ -23,7 +23,7 @@ All notable changes to Geo are documented here. Format loosely follows
   the cached terrain — no live calls. Saved packs list their peak/cell counts and
   date and can be deleted. The bounding-box prefetch reuses the app's existing
   request throttling + retry so it stays polite to the free Overpass /
-  Open-Elevation APIs, and everything stays on device (DEM cells are *pinned* so
+  Open-Meteo APIs, and everything stays on device (DEM cells are *pinned* so
   they outlive the normal cache eviction). **Offline data & AR only** — map tiles
   aren't cached (MapKit licensing). On the **Map tab**, saved areas are shown as
   circles and you can **download a new area by framing it on the map** (a "Download
@@ -51,21 +51,13 @@ All notable changes to Geo are documented here. Format loosely follows
   CloudKit-synced (new `SummitLog` Core Data entity, additive lightweight
   migration); only the peak's public location is stored or shared, never yours.
 - **Tap-to-identify AR markers + freeze-frame share** — the Nature (AR) view is now
-  explorable: tap any peak or history marker to open a detail card (name, altitude,
-  distance, bearing, coordinates, plus a Directions button), via a screen-space
-  nearest-marker hit-test against the same live projection that places the markers.
-  A shutter button captures a **frozen, annotated panorama** — the live camera frame
-  with the markers and skyline composited on top and a small "Geo" footer — and hands
-  it to the system share sheet. 100 % on-device (`ARSCNView` snapshot + SwiftUI
-  `ImageRenderer`); nothing is uploaded.
-
-## [1.1] — 2026-06-14
-
-A correctness, accuracy and reliability release: the calibrated altitude now
-agrees across the phone, the home-screen widget, the Watch screen and the Watch
-complication, plus 39 verified bug fixes and 24 improvements.
-
-### Added
+  explorable: tap any peak to open a detail card (name, altitude, distance, bearing,
+  coordinates, plus a Directions button), via a screen-space nearest-marker hit-test
+  against the same live projection that places the markers. A shutter button captures
+  a **frozen, annotated panorama** — the live camera frame with the markers and
+  skyline composited on top and a small "Geo" footer — and hands it to the system
+  share sheet. 100 % on-device (`ARSCNView` snapshot + SwiftUI `ImageRenderer`);
+  nothing is uploaded.
 - **Known-elevation manual calibration** — pin the altimeter to a trailhead or
   summit marker ("I am at X m") from the Info barometer card for instant,
   weather-proof, offline accuracy. Inverts the barometric formula to back-solve
@@ -106,8 +98,18 @@ complication, plus 39 verified bug fixes and 24 improvements.
   **Clear history** action on the Stat tab.
 - One jittered retry/backoff and request spacing on the public elevation/peak
   services (respecting `Retry-After`).
+- In-app **data-source attribution** (OpenStreetMap, Open-Meteo, Apple) on the
+  Info tab.
 
 ### Changed
+- **History points are no longer shown in the AR (Nature) scene** — they cluttered
+  the camera view, so the AR overlay now shows only peaks and the skyline. Your
+  recorded history is unchanged and still appears on the Map and Stat tabs. (Also
+  drops their AR markers, tap targets, occlusion work and the on-screen counter.)
+- **Terrain elevation now comes from Open-Meteo** instead of the public
+  Open-Elevation endpoint, which was frequently down/timing out and left the AR
+  skyline (and its welded peak labels) blank. The cold skyline fetch now also runs
+  its batches concurrently, cutting the first load from ~7–15 s to ~1–2 s.
 - Altitude is derived with the international lapse-rate formula (materially more
   accurate at altitude) via a single shared helper, and one precise Everest
   constant (8848.86 m) is used everywhere.
@@ -120,6 +122,26 @@ complication, plus 39 verified bug fixes and 24 improvements.
 - The app is **English-only**.
 
 ### Fixed
+- **AR terrain skyline now loads reliably** — the elevation data behind the green
+  terrain skyline (and the peak names welded to it) came from a public API
+  (Open-Elevation) that was frequently down / timing out, which left the skyline
+  blank and every peak shown as a plain flat marker instead of a welded ridge
+  pill. Switched to the **Open-Meteo** elevation API — fast, reliable, no key.
+- **Offline skyline now works anywhere in a downloaded area** — the offline
+  expedition pack used to cache terrain only along a fan from the area's exact
+  centre, so the AR skyline (and the peaks welded to it) went blank once you
+  moved away from that centre point with no signal. Packs now cache a regular
+  terrain grid over the whole area, so the skyline resolves offline from any
+  point inside it (capped per pack to keep the download and storage bounded).
+- **LiDAR depth + wall occlusion now actually run** — the AR session never
+  requested scene-depth frames or vertical-plane detection, so the precise
+  LiDAR distance readout and the "hide markers behind walls" occlusion were
+  silently dead on every device. Both are now enabled where supported.
+- **More reliable storm warning** — barometric samples captured without a GPS
+  fix used to record a fake 0 m altitude, which threw off the pressure-tendency
+  de-trend (it corrects each sample for its altitude) and could trip a false
+  alert or mask a real one. Such samples now carry the last known altitude
+  forward; a genuine sea-level reading is unaffected.
 - Watch screen showed an **uncalibrated** altitude that contradicted its own
   complication — now uses the calibrated value handed to the callback.
 - AR terrain skyline was computed at sea level until the first barometer sample
@@ -136,7 +158,7 @@ complication, plus 39 verified bug fixes and 24 improvements.
 - Stale/low-quality first GPS fixes and phantom `(0,0)` points are no longer
   recorded; coordinate-less peaks are skipped in the nearest-search.
 - Networking etiquette: descriptive `User-Agent` and a client-side timeout on the
-  Overpass request; Open-Elevation responses are validated (implausible
+  Overpass request; elevation responses are validated (implausible
   `≤ -430 m` / `0.0` rejected).
 - …and the rest of the 39 verified fixes (dead-code removal, nil-guards,
   background sensor pausing, tracking/throttle-clock split, and more).

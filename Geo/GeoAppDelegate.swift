@@ -98,14 +98,22 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     /// Pushes the latest combined data to the widget.
     /// Delegates to Location which owns the unified data write path.
     func pushDataToWidget() {
+        // Carry the last known GPS altitude / coords forward when there's no
+        // live fix, instead of writing a 0 m / null-island sentinel. A
+        // fabricated 0 m altitude mixed into the storm-tendency de-trend (which
+        // corrects each sample to its altitude) injects a large artificial
+        // pressure step; a genuine 0 m reading is fine because a real fix
+        // populates `loc?.altitude` (so we only substitute when there's NO fix).
+        let previous = SharedSnapshotStore.readCurrent()
+        let loc = self.location?.location
         let info = InformationToken(
             recordDate: Date(),
-            gpsAltitude: self.location?.location?.altitude ?? 0.0,
-            gpsSpeed: max(self.location?.location?.speed ?? 0.0, 0.0),
+            gpsAltitude: loc?.altitude ?? previous?.gpsAltitude ?? 0.0,
+            gpsSpeed: max(loc?.speed ?? previous?.gpsSpeed ?? 0.0, 0.0),
             barPreassure: self.barometer?.pressure ?? 0.0,
             barAltitude: self.barometer?.height ?? 0.0,
-            gpsLatitude: self.location?.location?.coordinate.latitude ?? 0.0,
-            gpsLongitude: self.location?.location?.coordinate.longitude ?? 0.0
+            gpsLatitude: loc?.coordinate.latitude ?? previous?.gpsLatitude ?? 0.0,
+            gpsLongitude: loc?.coordinate.longitude ?? previous?.gpsLongitude ?? 0.0
         )
         SharedSnapshotStore.write(info)
         connectivity?.sendCurrentSnapshot(info)

@@ -36,6 +36,8 @@ struct GeoInfoView: View {
                     HighestMountainInformationView(location: app?.location, motion: app?.deviceMotion)
 
                     OfflinePackCard(manager: app?.offlinePack, location: app?.location)
+
+                    DataSourcesCredit()
                 }
                 // Run the compass only while the Info tab is visible AND the
                 // scene is active (low-power, AR-free peak direction finder).
@@ -57,6 +59,27 @@ struct GeoInfoView: View {
                     else { app?.deviceMotion?.stop() }
                 }
         })
+    }
+}
+
+/// Data-source attribution footer for the Info tab. Credits the public data
+/// providers the app depends on (fair-use / attribution courtesy for
+/// Open-Meteo and OpenStreetMap, plus Apple's frameworks).
+private struct DataSourcesCredit: View {
+    var body: some View {
+        VStack(spacing: 3) {
+            Text("Data sources")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text("Peaks © OpenStreetMap contributors (Overpass)")
+            Text("Elevation by Open-Meteo")
+            Text("Maps by Apple · AR by ARKit")
+        }
+        .font(.system(size: 11, design: .rounded))
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
     }
 }
 

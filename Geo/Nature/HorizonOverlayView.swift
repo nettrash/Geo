@@ -238,14 +238,13 @@ struct HorizonOverlayView: View {
             return (samples[0].distance, samples[0].altitude)
         }
 
-        // Find the first sample with bearing > query.
-        var hiIdx = samples.firstIndex(where: { $0.bearing > bearing })
-            ?? samples.count
-        var loIdx: Int
-        if hiIdx == 0 {
-            loIdx = samples.count - 1
-            hiIdx = 0
-        } else if hiIdx == samples.count {
+        // Find the first sample with bearing > query (O(log n) binary search).
+        // Both the "before the first sample" (hiIdx == 0) and "after the last
+        // sample" (hiIdx == count) cases wrap around to interpolate between the
+        // last and first samples.
+        var hiIdx = firstBearingAbove(bearing, in: samples)
+        let loIdx: Int
+        if hiIdx == 0 || hiIdx == samples.count {
             loIdx = samples.count - 1
             hiIdx = 0
         } else {
@@ -339,6 +338,21 @@ func peakOnSilhouette(_ peak: NearbyPeak, skyline: [SkylineSample],
     return angle(peak.distance, peak.altitude) >= angle(sky.distance, sky.altitude) - tol
 }
 
+/// Binary search over a bearing-sorted skyline: the first index whose `bearing`
+/// is strictly greater than `query`, or `samples.count` if none — identical to
+/// `samples.firstIndex(where: { $0.bearing > query }) ?? samples.count`, but
+/// O(log n) instead of O(n). The per-frame horizon layout does hundreds of these
+/// lookups (every rendered bearing + every peak), so the constant matters.
+/// `samples` MUST be sorted ascending by bearing.
+func firstBearingAbove(_ query: Double, in samples: [SkylineSample]) -> Int {
+    var lo = 0, hi = samples.count
+    while lo < hi {
+        let mid = (lo + hi) / 2
+        if samples[mid].bearing > query { hi = mid } else { lo = mid + 1 }
+    }
+    return lo
+}
+
 /// Free skyline interpolation `(distance, altitude)` at a bearing — same math as
 /// `HorizonOverlayView.interpolateSkyline`, usable outside the view (e.g. by the
 /// marker-suppression filter). Samples are pre-sorted by bearing.
@@ -350,10 +364,9 @@ func horizonSkylineValue(at bearing: Double, samples: [SkylineSample])
         let d = deg.truncatingRemainder(dividingBy: 360); return d < 0 ? d + 360 : d
     }
     let b = wrap(bearing)
-    var hiIdx = samples.firstIndex(where: { $0.bearing > b }) ?? samples.count
-    var loIdx: Int
-    if hiIdx == 0 { loIdx = samples.count - 1; hiIdx = 0 }
-    else if hiIdx == samples.count { loIdx = samples.count - 1; hiIdx = 0 }
+    var hiIdx = firstBearingAbove(b, in: samples)
+    let loIdx: Int
+    if hiIdx == 0 || hiIdx == samples.count { loIdx = samples.count - 1; hiIdx = 0 }
     else { loIdx = hiIdx - 1 }
     let lo = samples[loIdx], hi = samples[hiIdx]
     let span = wrap(hi.bearing - lo.bearing), pos = wrap(b - lo.bearing)

@@ -83,9 +83,7 @@ final class SkylineCalculator: ObservableObject {
         70_000, 100_000, 140_000, 200_000
     ]
 
-    // Instance aliases so the existing `compute` call sites read unchanged
-    // while the offline-pack prefetch shares the exact same schedule (a
-    // divergent prefetch grid would leave offline skyline holes).
+    // Instance aliases so the existing `compute` call sites read unchanged.
     private let maxRangeMeters = SkylineCalculator.skylineMaxRangeMeters
     private let bearingStepDeg = SkylineCalculator.skylineBearingStepDeg
     private let distancesMeters = SkylineCalculator.skylineDistancesMeters
@@ -161,22 +159,74 @@ final class SkylineCalculator: ObservableObject {
         isComputing = false
     }
 
-    // MARK: - Grid
+    // MARK: - Offline prefetch grid
 
-    /// The full skyline sample grid (every bearing × distance) as plain
-    /// coordinates around `observer`. The live `computeSkyline` builds the
-    /// same grid inline; the offline-pack prefetch uses this to cache
-    /// exactly the cells a future offline skyline will look up. Order is
-    /// not significant to callers.
-    nonisolated static func skylineGridCoordinates(observer: CLLocationCoordinate2D) -> [CLLocationCoordinate2D] {
+    /// Grid cell step in degrees — must equal the elevation cache's ~110 m
+    /// quantisation (3 decimals, see `TerrainElevationService.gridKey`) so
+    /// every prefetched node is a distinct cache cell and a live skyline
+    /// lookup from ANY observer in the area hits a cached cell.
+    nonisolated static let offlineCellStepDeg = 0.001
+
+    /// Maximum DEM cells cached per offline pack. A full-resolution
+    /// (~110 m) area grid over a large radius would be millions of cells
+    /// (a 100 km pack ≈ 3.3 M), so this bounds the download size, the
+    /// on-disk pack and the pinned-cell memory. When the requested radius
+    /// would exceed it, the cached *square* shrinks (keeping full 110 m
+    /// resolution within it) so any observer inside the cached core gets a
+    /// hole-free skyline and the far edges of a very large pack degrade
+    /// gracefully to the geometric horizon. ~40 k cells ≈ a ±11 km
+    /// full-resolution core and an ~80 s prefetch.
+    nonisolated static let offlineMaxDEMCells = 40_000
+
+    /// All DEM cells to prefetch for an offline pack: a regular ~110 m
+    /// lat/lon grid covering the pack's bounding box (centre ± `radiusKm`),
+    /// snapped to the cache's milli-degree lattice and capped to
+    /// `offlineMaxDEMCells`.
+    ///
+    /// This replaces the old single-observer *fan*, which only lined up
+    /// with the live lookups when the observer stood exactly at the pack
+    /// centre — off-centre observers' fans projected to different cells, so
+    /// every offline lookup missed and the skyline went empty. An area grid
+    /// covers the cells any observer in the area will look up. Order is not
+    /// significant to callers.
+    nonisolated static func offlinePrefetchCoordinates(center: CLLocationCoordinate2D,
+                                                       radiusKm: Double) -> [CLLocationCoordinate2D] {
+        let step = offlineCellStepDeg
+        let metersPerDegLat = 111_320.0
+        let cosLat = max(0.01, cos(center.latitude * .pi / 180))
+        var halfLatDeg = (radiusKm * 1000) / metersPerDegLat
+        var halfLonDeg = (radiusKm * 1000) / (metersPerDegLat * cosLat)
+
+        // Shrink the covered square (NOT the resolution) if a full-res grid
+        // would blow the cell budget, so a live lookup never lands in a gap.
+        let latNodes = Int((2 * halfLatDeg) / step) + 1
+        let lonNodes = Int((2 * halfLonDeg) / step) + 1
+        let total = latNodes * lonNodes
+        if total > offlineMaxDEMCells {
+            let scale = (Double(offlineMaxDEMCells) / Double(total)).squareRoot()
+            halfLatDeg *= scale
+            halfLonDeg *= scale
+        }
+
+        // Snap the centre to the milli-degree lattice and step exactly one
+        // cell at a time so every node maps to its own distinct cache cell
+        // (no phase drift, no gaps, no duplicates vs the live lookups).
+        let cLat = (center.latitude * 1000).rounded() / 1000
+        let cLon = (center.longitude * 1000).rounded() / 1000
+        let latSteps = Int(halfLatDeg / step)
+        let lonSteps = Int(halfLonDeg / step)
+
         var coords: [CLLocationCoordinate2D] = []
-        coords.reserveCapacity(Int(360 / skylineBearingStepDeg) * skylineDistancesMeters.count)
-        var bearing = 0.0
-        while bearing < 360 {
-            for d in skylineDistancesMeters where d <= skylineMaxRangeMeters {
-                coords.append(Geometry.project(from: observer, bearing: bearing, distance: d))
+        coords.reserveCapacity((2 * latSteps + 1) * (2 * lonSteps + 1))
+        var i = -latSteps
+        while i <= latSteps {
+            let lat = cLat + Double(i) * step
+            var j = -lonSteps
+            while j <= lonSteps {
+                coords.append(CLLocationCoordinate2D(latitude: lat, longitude: cLon + Double(j) * step))
+                j += 1
             }
-            bearing += skylineBearingStepDeg
+            i += 1
         }
         return coords
     }

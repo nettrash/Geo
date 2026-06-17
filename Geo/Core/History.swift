@@ -426,7 +426,6 @@ enum StormWarning {
     static let minSpanHours = 1.5
     static let steadyBandHPaOver3h = 1.0
     static let alertDropHPaOver3h = 3.0
-    static let severeDropHPaOver3h = 6.0
     static let notificationCooldownHours = 3.0
     static let altClampLow = -500.0
     static let altClampHigh = 9000.0

@@ -91,13 +91,18 @@ final class OfflinePackManager: ObservableObject {
 
         if Task.isCancelled { return }
 
-        // 2. DEM: the centre's full skyline panorama (180×20 polar grid),
-        //    fetched in chunks so we can show progress; each chunk goes
-        //    through the elevation service's own 200 ms throttle + retry.
+        // 2. DEM: a regular ~110 m area grid over the whole pack bounding box
+        //    (centre ± radius), fetched in chunks so we can show progress;
+        //    each chunk goes through the elevation service's own 200 ms
+        //    throttle + retry. An area grid (not a single-observer fan) is
+        //    what lets the offline skyline resolve from *any* point in the
+        //    area, not only when standing at the pack centre.
         statusText = "Caching terrain…"
-        // Build the 3 600-point polar grid off the main actor — it's pure trig
-        // and would otherwise run on the main thread during the download.
-        let coords = await Task.detached { SkylineCalculator.skylineGridCoordinates(observer: center) }.value
+        // Build the area grid off the main actor — it's pure arithmetic and
+        // would otherwise run on the main thread during the download.
+        let coords = await Task.detached {
+            SkylineCalculator.offlinePrefetchCoordinates(center: center, radiusKm: radiusKm)
+        }.value
         var cells: [String: Double] = [:]
         let chunkSize = 300
         var processed = 0

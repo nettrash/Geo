@@ -9,16 +9,15 @@ import SwiftUI
 import CoreLocation
 import simd
 
-/// Overlay view that positions peak markers and history points on screen
-/// using ARKit's camera view-projection matrix for pixel-perfect alignment
-/// with the camera feed. Points are locked to their real-world GPS positions.
+/// Overlay view that positions peak markers on screen using ARKit's camera
+/// view-projection matrix for pixel-perfect alignment with the camera feed.
+/// Markers are locked to their real-world GPS positions.
 ///
-/// Points whose IDs appear in `occludedIDs` are hidden (behind real-world geometry).
-/// Nearby points (<100m) are also hidden until `isSceneReady` to prevent briefly
-/// showing points that should be occluded before ARKit has scanned the environment.
+/// Peaks whose IDs appear in `occludedIDs` are hidden (behind real-world geometry).
+/// Nearby peaks (<100m) are also hidden until `isSceneReady` to prevent briefly
+/// showing peaks that should be occluded before ARKit has scanned the environment.
 struct PeakOverlayView: View {
     let peaks: [NearbyPeak]
-    let historyPoints: [ARHistoryPoint]
     let userLocation: CLLocation?
     @ObservedObject var sessionManager: ARSessionManager
     @ObservedObject var occlusionManager: AROcclusionManager
@@ -40,27 +39,7 @@ struct PeakOverlayView: View {
         return GeometryReader { geometry in
             let screenWidth = geometry.size.width
             let screenHeight = geometry.size.height
-            
-            // History points (rendered first, behind peaks)
-            ForEach(historyPoints) { point in
-                if !occludedIDs.contains(point.id)
-                    && (point.distance >= nearbyThreshold || occlusionManager.isSceneReady) {
-                    if let screenPos = projectGPSPoint(
-                        coordinate: point.coordinate,
-                        altitude: point.gpsAltitude,
-                        screenWidth: screenWidth,
-                        screenHeight: screenHeight
-                    ) {
-                        HistoryPointMarkerView(point: point)
-                            .position(x: screenPos.x, y: screenPos.y)
-                            .animation(.linear(duration: 1.0 / 30.0), value: screenPos)
-                            .opacity(opacityForDistance(point.distance, maxDistance: 50000) * 0.85)
-                            .scaleEffect(scaleForDistance(point.distance, maxDistance: 50000))
-                    }
-                }
-            }
-            
-            // Peaks (rendered on top)
+
             ForEach(peaks) { peak in
                 if !occludedIDs.contains(peak.id)
                     && (peak.distance >= nearbyThreshold || occlusionManager.isSceneReady) {

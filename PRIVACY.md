@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** 28 April 2026
+**Effective date:** 17 June 2026
 **Applies to:** Geo — the iOS app (with Apple Watch companion) published by nettrash on the App Store. This policy is versioned alongside the app's source code; the most recent commit on `main` is authoritative.
 
 ## TL;DR
@@ -13,7 +13,7 @@ Geo doesn't collect any personal information about you, doesn't create accounts,
 
 1. Show your current position on the in-app map.
 2. Compute distances and bearings to known peaks for the AR view and the "Nearby" list.
-3. Build the Overpass API query described below.
+3. Build the Overpass / elevation queries described below.
 
 The app uses *when-in-use* only — it does not request "Always" / background location.
 
@@ -28,6 +28,8 @@ The Apple Watch companion app and Watch widget request only **Motion & Fitness**
 **OpenStreetMap Overpass API** (`https://overpass-api.de/api/interpreter`). When you open the Nature tab, the app sends an HTTPS request containing your approximate latitude/longitude and a search radius (typically 25–50 km) to fetch the list of nodes tagged `natural=peak` near you. The request body contains *only* those coordinates and the radius — no device identifiers, no IDFA, no account information. The Overpass API is a free, public service hosted by OpenStreetMap volunteers and governed by the [OpenStreetMap Foundation Privacy Policy](https://osmfoundation.org/wiki/Privacy_Policy).
 
 **Apple MapKit.** The Map view uses MapKit to render map tiles and your-location pin. Apple is the data controller for those requests; data flow and Apple's use of it are governed by the [Apple Privacy Policy](https://www.apple.com/legal/privacy/) and the on-device privacy preferences you control in *Settings → Privacy & Security → Location Services → Maps*. MapKit on iOS doesn't require an API key and routes all requests through Apple's privacy-preserving infrastructure — Apple does not share your queries with third parties for advertising.
+
+**Open-Meteo API** (`https://api.open-meteo.com`). The Nature/AR view fetches terrain elevation to draw the horizon skyline. Each request sends only approximate latitude/longitude (rounded to a ~110 m grid) — no device identifiers, no IDFA, no account information. Open-Meteo is a free, open API; its handling is governed by the [Open-Meteo Terms](https://open-meteo.com/en/terms).
 
 That's the entire list. There are no other servers contacted. There is no telemetry, no crash reporter, no advertising network, no attribution provider, no remote analytics.
 
@@ -47,6 +49,7 @@ Geo does not "track" you in the sense Apple's *App Tracking Transparency* framew
 |---|---|---|
 | Apple MapKit | Coarse position + viewport requests for tile rendering | Apple's |
 | OpenStreetMap Overpass API | Approximate coordinates + search radius | OpenStreetMap Foundation's |
+| Open-Meteo API | Approximate coordinates (~110 m grid) for terrain elevation | Open-Meteo's |
 | Apple ARKit | Camera frames + IMU data, **on-device only** | Apple's |
 
 Specifically NOT used: any third-party analytics SDK (Firebase, Mixpanel, Sentry, etc.), any advertising SDK (AdMob, Meta, AppLovin, etc.), any attribution / install-tracking SDK, any social-media SDK, any IDFA-consuming network.

@@ -2,8 +2,8 @@
 //  MarkerDetailSheet.swift
 //  Geo
 //
-//  Tap-to-identify detail sheet for AR peak / history markers, plus the
-//  share-sheet plumbing used by the freeze-frame panorama capture.
+//  Tap-to-identify detail sheet for AR peak markers, plus the share-sheet
+//  plumbing used by the freeze-frame panorama capture.
 //
 
 import SwiftUI
@@ -11,14 +11,13 @@ import CoreLocation
 import UIKit
 
 /// A marker the user tapped in the AR view. Drives the detail sheet.
+/// (Only peaks are tappable — history points aren't shown in the AR scene.)
 enum ARMarkerSelection: Identifiable {
     case peak(NearbyPeak)
-    case history(ARHistoryPoint)
 
     var id: UUID {
         switch self {
         case .peak(let p): return p.id
-        case .history(let h): return h.id
         }
     }
 }
@@ -41,7 +40,6 @@ struct MarkerDetailSheet: View {
             List {
                 switch selection {
                 case .peak(let peak): peakRows(peak)
-                case .history(let point): historyRows(point)
                 }
             }
             .navigationTitle(title)
@@ -59,7 +57,6 @@ struct MarkerDetailSheet: View {
     private var title: String {
         switch selection {
         case .peak(let p): return p.name
-        case .history: return "History point"
         }
     }
 
@@ -74,31 +71,6 @@ struct MarkerDetailSheet: View {
         Section {
             Button {
                 openInMaps(peak.coordinate, name: peak.name)
-            } label: {
-                Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func historyRows(_ point: ARHistoryPoint) -> some View {
-        Section {
-            LabeledContent("Recorded", value: Self.dateTime(point.date))
-            LabeledContent("GPS altitude", value: Self.altitude(point.gpsAltitude))
-            if point.barometerAltitude > 0 {
-                LabeledContent("Barometric altitude", value: Self.altitude(point.barometerAltitude))
-            }
-            if point.pressure > 0 {
-                LabeledContent("Pressure", value: String(format: "%.1f kPa", point.pressure))
-            }
-            LabeledContent("Speed", value: String(format: "%.1f m/s", max(0, point.speed)))
-            LabeledContent("Distance", value: Self.distance(point.distance))
-            LabeledContent("Bearing", value: Self.bearing(point.bearing))
-            LabeledContent("Coordinates", value: Self.coordinate(point.coordinate))
-        }
-        Section {
-            Button {
-                openInMaps(point.coordinate, name: "History point")
             } label: {
                 Label("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
             }
@@ -134,9 +106,6 @@ struct MarkerDetailSheet: View {
     }
     static func coordinate(_ c: CLLocationCoordinate2D) -> String {
         String(format: "%.5f, %.5f", c.latitude, c.longitude)
-    }
-    static func dateTime(_ date: Date) -> String {
-        date.formatted(date: .abbreviated, time: .shortened)
     }
 }
 

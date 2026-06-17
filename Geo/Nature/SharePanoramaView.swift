@@ -3,9 +3,9 @@
 //  Geo
 //
 //  The frozen, annotated panorama rendered to a shareable image: the captured
-//  camera frame with the same peak/history markers + skyline the user sees,
-//  plus a small branding footer. Reuses the live overlay views so the share
-//  image can't drift from the on-screen rendering. Rendered off-screen via
+//  camera frame with the same peak markers + skyline the user sees, plus a
+//  small branding footer. Reuses the live overlay views so the share image
+//  can't drift from the on-screen rendering. Rendered off-screen via
 //  `ImageRenderer`, so it self-sizes (no `.ignoresSafeArea`).
 //
 
@@ -16,7 +16,6 @@ struct SharePanoramaView: View {
     let cameraImage: UIImage
     let size: CGSize
     let peaks: [NearbyPeak]
-    let historyPoints: [ARHistoryPoint]
     let userLocation: CLLocation?
     let barometerAltitude: Double?
     let skylineSamples: [SkylineSample]
@@ -24,8 +23,9 @@ struct SharePanoramaView: View {
     @ObservedObject var occlusionManager: AROcclusionManager
     let markerCount: Int
 
-    /// Peaks welded to the ridge (camera-independent) — their AR markers are
-    /// suppressed below so the share matches the live view (pill XOR marker).
+    /// Peaks welded to the ridge (camera-independent `peakOnSilhouette`) — their
+    /// AR markers are suppressed below so the share matches the live view: a
+    /// silhouette peak is a ridge pill or nothing, never a flat marker.
     private var weldedPeakIDs: Set<UUID> {
         guard let loc = userLocation, !skylineSamples.isEmpty else { return [] }
         let obsAlt = barometerAltitude.flatMap { $0 > 0 ? $0 : nil } ?? loc.altitude
@@ -59,7 +59,6 @@ struct SharePanoramaView: View {
                 // exported image double-draws them (pill + marker), which the
                 // live view never does.
                 peaks: peaks.filter { !weldedPeakIDs.contains($0.id) },
-                historyPoints: historyPoints,
                 userLocation: userLocation,
                 sessionManager: sessionManager,
                 occlusionManager: occlusionManager
