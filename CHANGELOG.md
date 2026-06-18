@@ -4,7 +4,7 @@ All notable changes to Geo are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). Versions are
 `MARKETING_VERSION`; the build number auto-increments per build.
 
-## [1.1] — 2026-06-17
+## [1.1] — 2026-06-18
 
 A correctness, accuracy and reliability release with a major Nature/AR upgrade.
 The calibrated altitude now agrees across the phone, the home-screen widget, the
