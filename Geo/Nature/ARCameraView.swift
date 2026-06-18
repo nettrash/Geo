@@ -8,6 +8,7 @@
 import SwiftUI
 import ARKit
 import CoreLocation
+import os
 
 /// UIViewRepresentable wrapper for ARSCNView to show the camera feed.
 /// When a LiDAR sensor is available, enables scene reconstruction so the
@@ -39,6 +40,8 @@ struct ARCameraView: UIViewRepresentable {
 
         // Store the ARSCNView in the coordinator so we can read its bounds
         context.coordinator.arView = arView
+        // Expose it to the session manager for the freeze-frame snapshot.
+        sessionManager?.sceneView = arView
 
         return arView
     }
@@ -46,6 +49,7 @@ struct ARCameraView: UIViewRepresentable {
     func updateUIView(_ uiView: ARSCNView, context: Context) {
         context.coordinator.occlusionManager = occlusionManager
         context.coordinator.sessionManager = sessionManager
+        sessionManager?.sceneView = uiView
 
         // Resume / pause to match the parent's intent. ARKit handles
         // these calls cheaply when the state already matches.
@@ -65,9 +69,23 @@ struct ARCameraView: UIViewRepresentable {
     private static func makeConfig() -> ARWorldTrackingConfiguration {
         let config = ARWorldTrackingConfiguration()
         config.worldAlignment = .gravityAndHeading
-        config.planeDetection = [.horizontal]
+        // Detect BOTH plane alignments: the occlusion manager hides markers
+        // behind detected vertical planes (walls) indoors and uses horizontal
+        // planes for floor/ceiling distance. Horizontal-only left the
+        // vertical-plane occlusion path permanently unreachable.
+        config.planeDetection = [.horizontal, .vertical]
         if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
             config.sceneReconstruction = .mesh
+        }
+        // Request scene depth so the LiDAR centre-depth readout and the
+        // depth-based wall distance actually populate — ARKit only delivers
+        // ARFrame.sceneDepth / smoothedSceneDepth when the matching frame
+        // semantic is requested. Gated on device support; non-LiDAR devices
+        // skip it and fall back to the raycast distance.
+        if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
+            config.frameSemantics.insert(.smoothedSceneDepth)
+        } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+            config.frameSemantics.insert(.sceneDepth)
         }
         return config
     }
@@ -89,6 +107,15 @@ struct ARCameraView: UIViewRepresentable {
         /// recently than `session.pause()`. Lets `updateUIView` make
         /// idempotent state-change decisions without querying ARKit.
         var isRunning: Bool = false
+        /// Coalesces the per-frame overlay update so at most ONE `ARFrame` is
+        /// ever retained at a time. `session(_:didUpdate:)` fires on ARKit's
+        /// queue; capturing each frame into a `@MainActor` Task would, under
+        /// main-thread contention, queue up several frames — and Apple warns
+        /// that holding ARFrames pins pixel buffers from a small pool and can
+        /// stall capture. While an update is still draining, newer frames are
+        /// skipped (the overlay just refreshes a frame later). Sendable +
+        /// `let`, so the nonisolated delegate can touch it.
+        nonisolated let framePending = OSAllocatedUnfairLock(initialState: false)
         
         init(occlusionManager: AROcclusionManager?, sessionManager: ARSessionManager?) {
             self.occlusionManager = occlusionManager
@@ -153,8 +180,19 @@ struct ARCameraView: UIViewRepresentable {
                                           result.worldTransform.columns.3.z)
                 return simd_distance(camPos, hitPos)
             }
-            
-            Task { @MainActor [weak self] in
+
+            // Skip this frame's overlay update if the previous one is still
+            // draining on the main actor — otherwise we'd capture (retain)
+            // another ARFrame behind it. Bounds in-flight frames to one.
+            let alreadyPending = framePending.withLock { pending -> Bool in
+                if pending { return true }
+                pending = true
+                return false
+            }
+            if alreadyPending { return }
+
+            Task { @MainActor [weak self, framePending] in
+                defer { framePending.withLock { $0 = false } }
                 self?.occlusionManager?.updateCameraTransform(transform)
                 self?.sessionManager?.raycastDistance = rayDist
                 

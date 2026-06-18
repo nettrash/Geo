@@ -29,7 +29,15 @@ struct GeoNatureView: View {
     /// the fix is to use "Continue" for `.notDetermined` and to deep-link
     /// straight to Settings for `.denied` / `.restricted`.
     @State private var cameraAuthStatus: AVAuthorizationStatus = .notDetermined
-    @State private var historyPoints: [ARHistoryPoint] = []
+
+    /// Tap-to-identify: the marker the user tapped (drives the detail sheet).
+    @State private var selectedMarker: ARMarkerSelection?
+    /// Freeze-frame share: the rendered annotated panorama (drives the share sheet).
+    @State private var shareImage: ShareImage?
+    /// Guards the shutter so a second tap can't start a second capture mid-render.
+    @State private var isCapturing = false
+    /// Render scale for the off-screen `ImageRenderer` capture.
+    @Environment(\.displayScale) private var displayScale
 
     /// Tracks whether this view is the user's currently visible tab AND
     /// the app is in the foreground. Drives `ARCameraView.isActive` and
@@ -67,26 +75,22 @@ struct GeoNatureView: View {
         return nil
     }
 
-    /// History points that have actually passed every filter the AR
-    /// scene applies before drawing them — i.e. time + area
-    /// (`loadHistoryPoints`) plus the per-frame visibility rules that
-    /// `PeakOverlayView` uses (`!occluded` and either far enough or
-    /// the scene-reconstruction mesh is ready). Drives the top-bar
-    /// counter so it reflects what the user can actually see, not the
-    /// 10-item cap on the candidate set.
-    ///
-    /// Mirrors the threshold constant `nearbyThreshold = 100` defined
-    /// in `PeakOverlayView`; kept in sync manually because that is a
-    /// private constant in the view.
-    private var visibleHistoryPoints: [ARHistoryPoint] {
-        let occluded = occlusionManager.occludedIDs
-        let nearbyThreshold: Double = 100
-        return historyPoints.filter { point in
-            guard !occluded.contains(point.id) else { return false }
-            return point.distance >= nearbyThreshold || occlusionManager.isSceneReady
-        }
+    /// Peaks whose name is welded to the skyline ridge (HorizonOverlayView).
+    /// Their AR markers are suppressed so a silhouette peak shows EITHER a ridge
+    /// pill OR nothing — never a flat AR marker. Camera-INDEPENDENT
+    /// (`peakOnSilhouette`), so it's a stable superset of what the horizon
+    /// overlay actually welds: every drawn pill is suppressed here, and a peak
+    /// dropped from the welded labels (de-collision / heading window / cap) is
+    /// hidden rather than falling back to a flat, unrotated, leaderless marker
+    /// that would clutter the ridge and not match the welded pills.
+    private var weldedPeakIDs: Set<UUID> {
+        guard let loc = overlayLocation, !skylineCalculator.samples.isEmpty else { return [] }
+        let obsAlt = (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil } ?? loc.altitude
+        return Set(peakFinder.peaks
+            .filter { peakOnSilhouette($0, skyline: skylineCalculator.samples, observerAltitude: obsAlt) }
+            .map { $0.id })
     }
-    
+
     var body: some View {
         ZStack {
             if cameraPermissionGranted {
@@ -102,22 +106,39 @@ struct GeoNatureView: View {
                     userLocation: overlayLocation,
                     barometerAltitude: app?.barometer?.height,
                     skylineSamples: skylineCalculator.samples,
+                    peaks: peakFinder.peaks,
                     sessionManager: sessionManager
                 )
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
 
-                // Peak & history point markers positioned via GPS→ENU→ARKit projection
+                // Peak markers positioned via GPS→ENU→ARKit projection. History
+                // points are intentionally NOT shown in the AR scene (they
+                // cluttered the view); they remain on the Map and Stat tabs.
                 PeakOverlayView(
-                    peaks: peakFinder.peaks,
-                    historyPoints: historyPoints,
+                    // Peaks welded to the skyline ridge are labelled there
+                    // instead of getting a duplicate AR marker.
+                    peaks: peakFinder.peaks.filter { !weldedPeakIDs.contains($0.id) },
                     userLocation: overlayLocation,
                     sessionManager: sessionManager,
                     occlusionManager: occlusionManager
                 )
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
-                
+
+                // Transparent tap-catch layer: a tap runs a screen-space
+                // nearest-marker hit-test against the projected peak/history
+                // positions and opens the detail sheet. Sits above the
+                // (non-interactive) markers but below the shutter button.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture(coordinateSpace: .local) { location in
+                        if let marker = nearestMarker(to: location) {
+                            selectedMarker = marker
+                        }
+                    }
+
                 // Center crosshair + wall distance
                 VStack(spacing: 6) {
                     Spacer()
@@ -148,7 +169,8 @@ struct GeoNatureView: View {
                     
                     Spacer()
                 }
-                
+                .allowsHitTesting(false)
+
                 // Top info bar
                 VStack {
                     HStack {
@@ -157,13 +179,9 @@ struct GeoNatureView: View {
                         Text(verbatim: "\(peakFinder.peaks.count)")
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.white)
-                        
-                        Image(systemName: "mappin.circle.fill")
-                            .foregroundStyle(.cyan)
-                        Text(verbatim: "\(visibleHistoryPoints.count)")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white)
-                        
+
+                        // History points are no longer shown in the AR scene.
+
                         if occlusionManager.isSupported {
                             Image(systemName: "cube.transparent")
                                 .foregroundStyle(.green)
@@ -216,8 +234,38 @@ struct GeoNatureView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(.black.opacity(0.5))
-                    
+
                     Spacer()
+                }
+                .allowsHitTesting(false)
+
+                // Shutter — capture a frozen, annotated panorama to share.
+                VStack {
+                    Spacer()
+                    Button {
+                        captureShare()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .stroke(.white.opacity(0.9), lineWidth: 4)
+                                .frame(width: 68, height: 68)
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 54, height: 54)
+                            if isCapturing {
+                                ProgressView()
+                                    .tint(.black)
+                            } else {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundStyle(.black)
+                            }
+                        }
+                    }
+                    .disabled(!sessionManager.isTracking || isCapturing)
+                    .opacity(sessionManager.isTracking ? 1 : 0.4)
+                    .padding(.bottom, 28)
+                    .accessibilityLabel("Capture panorama")
                 }
             } else {
                 // Camera permission not granted. We split this into two
@@ -274,6 +322,11 @@ struct GeoNatureView: View {
         .onDisappear {
             isOnScreen = false
             motionManager.stop()
+            // Stop the in-flight skyline pass so its thousands of
+            // Open-Elevation batches don't keep running once the user
+            // leaves the Nature tab. The calculator is reused, so a
+            // later location refresh can launch a fresh recompute.
+            skylineCalculator.cancel()
         }
         .onChange(of: cameraPermissionGranted) { _, granted in
             if granted {
@@ -284,7 +337,10 @@ struct GeoNatureView: View {
             if phase != .active {
                 motionManager.stop()
             } else if isOnScreen && cameraPermissionGranted {
-                motionManager.start()
+                // Heading only — the AR view derives attitude from ARKit's
+                // camera transform and reads just `heading` for the top-bar
+                // compass, so skip the 30 Hz CMDeviceMotion attitude stream.
+                motionManager.start(includeAttitude: false)
             }
             // The user may have flipped the Geo camera switch in
             // Settings while we were inactive — re-read the
@@ -298,11 +354,16 @@ struct GeoNatureView: View {
             guard isARActive else { return }
             refreshOverlayLocationIfNeeded()
             searchForPeaks()
-            loadHistoryPoints()
         }
         .onReceive(occlusionTimer) { _ in
             guard isARActive else { return }
             runOcclusionCheck()
+        }
+        .sheet(item: $selectedMarker) { marker in
+            MarkerDetailSheet(selection: marker)
+        }
+        .sheet(item: $shareImage) { share in
+            ActivityView(items: [share.image])
         }
     }
     
@@ -363,10 +424,11 @@ struct GeoNatureView: View {
     }
     
     private func startAR() {
-        motionManager.start()
+        // Heading only — see the scenePhase handler; the AR view never reads
+        // pitch/roll, so the 30 Hz attitude stream would just drain battery.
+        motionManager.start(includeAttitude: false)
         refreshOverlayLocationIfNeeded()
         searchForPeaks()
-        loadHistoryPoints()
         occlusionManager.isSupported = ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
         occlusionManager.sessionDidStart()
     }
@@ -382,72 +444,22 @@ struct GeoNatureView: View {
         // off the main actor and only mutates `samples` if it gets
         // back a non-empty result, so calling it here on every
         // location refresh is safe.
+        // `Barometer.height` is an absolute altitude that stays exactly
+        // 0 until the first altimeter sample lands (and permanently on
+        // devices without a barometer). Treat a non-positive value as
+        // absent so `SkylineCalculator` falls back to GPS altitude
+        // instead of computing the skyline at sea level. Mirrors the
+        // Android call site's `takeIf { it > 0 }`.
         skylineCalculator.computeIfNeeded(observer: newLoc,
-                                          barometerAltitude: app?.barometer?.height)
+                                          barometerAltitude: (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil })
     }
     
     private func searchForPeaks() {
         guard let location = app?.location?.location else { return }
         Task {
-            await peakFinder.searchPeaks(near: location, mountainsData: app?.mountainsData)
+            await peakFinder.searchPeaks(near: location, mountainsData: app?.mountainsData,
+                                         offlinePeaks: app?.offlinePack?.combinedPeaks ?? [])
         }
-    }
-    
-    /// How many of the most recent history points to consider for the
-    /// AR scene. The time filter is applied first against
-    /// `history.historyItems`; the area filter then narrows that
-    /// candidate set to whatever's within view distance, so the
-    /// displayed count is bounded above by this value but can be
-    /// lower (down to zero) when the user is far from where the
-    /// freshest samples were recorded.
-    private let maxVisibleHistoryPoints = 10
-
-    private func loadHistoryPoints() {
-        guard let location = app?.location?.location,
-              let history = app?.history else { return }
-
-        // Only re-query CoreData if a new sample has been recorded since
-        // the last refresh — saves an expensive fetch on every tick.
-        history.refreshIfNeeded()
-
-        // Step 1 — time filter. `history.historyItems` is sorted
-        // ascending by `recordDate` after `History.Refresh()`, so
-        // `suffix(maxVisibleHistoryPoints)` yields the most recent
-        // samples. If the underlying fetch is briefly empty (e.g.
-        // a CoreData retry mid-save), leave the markers we're
-        // already showing in place rather than wipe the AR scene
-        // blank for one frame.
-        let recentItems = history.historyItems.suffix(maxVisibleHistoryPoints)
-        guard !recentItems.isEmpty else { return }
-
-        // Step 2 — area filter. From the time-selected candidates,
-        // keep only the ones whose recorded GPS coordinate sits
-        // within `maxDistance` of the user. Points that landed on
-        // top of the user (distance ≤ 1 m) are also dropped: they'd
-        // project to the camera origin and just clutter the scene.
-        let maxDistance: CLLocationDistance = 1000
-        let filtered: [ARHistoryPoint] = recentItems.compactMap { item in
-            let itemLocation = CLLocation(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
-            let distance = location.distance(from: itemLocation)
-            guard distance <= maxDistance, distance > 1 else { return nil }
-
-            let itemBearing = Geometry.bearing(
-                from: location.coordinate,
-                to: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude)
-            )
-            return ARHistoryPoint(
-                date: item.recordDate ?? Date(),
-                coordinate: CLLocationCoordinate2D(latitude: item.gpsLatitude, longitude: item.gpsLongitude),
-                gpsAltitude: item.gpsAltitude,
-                barometerAltitude: item.barometerAltitude,
-                pressure: item.barometerPressure,
-                speed: item.gpsVelocity,
-                distance: distance,
-                bearing: itemBearing
-            )
-        }
-
-        historyPoints = filtered.sorted { $0.date < $1.date }
     }
     
     private func runOcclusionCheck() {
@@ -466,27 +478,156 @@ struct GeoNatureView: View {
 
         var targets: [AROcclusionManager.OcclusionTarget] = []
 
+        // Anchor targets to the live camera world position, exactly as
+        // PeakOverlayView/HorizonOverlayView do when rendering, via the
+        // shared `sessionManager.worldPoint(east:up:north:)` projection.
+        // ARKit's world origin is the session-start pose, so the camera
+        // drifts away from it as the user moves; without this offset the
+        // occlusion test (camera-relative) would be off by the full
+        // camera translation and disagree with where the marker is drawn.
+
         // Build ENU world positions for peaks
         for peak in peakFinder.peaks {
             let (east, north, up) = Geometry.gpsToENU(
                 from: userLoc.coordinate, originAltitude: userLoc.altitude,
                 to: peak.coordinate, targetAltitude: peak.altitude
             )
-            targets.append(.init(id: peak.id, worldPosition: simd_float3(Float(east), Float(up), Float(-north))))
+            targets.append(.init(id: peak.id, worldPosition: sessionManager.worldPoint(east: east, up: up, north: north)))
         }
 
-        // Build ENU world positions for history points
-        for point in historyPoints {
-            let (east, north, up) = Geometry.gpsToENU(
-                from: userLoc.coordinate, originAltitude: userLoc.altitude,
-                to: point.coordinate, targetAltitude: point.gpsAltitude
-            )
-            targets.append(.init(id: point.id, worldPosition: simd_float3(Float(east), Float(up), Float(-north))))
-        }
+        // History points are not shown in the AR scene, so they need no
+        // occlusion targets.
 
         occlusionManager.checkOcclusion(targets: targets)
     }
-    
+
+    // MARK: - Tap-to-identify + freeze-frame capture
+
+    /// Project a GPS marker to screen points using the SAME path as
+    /// `PeakOverlayView` (Geometry.gpsToENU → sessionManager.worldPoint →
+    /// projectToScreen), so the hit-test agrees with what's drawn.
+    private func projectMarker(coordinate: CLLocationCoordinate2D, altitude: Double) -> CGPoint? {
+        guard let userLoc = overlayLocation, sessionManager.isTracking else { return nil }
+        let enu = Geometry.gpsToENU(
+            from: userLoc.coordinate, originAltitude: userLoc.altitude,
+            to: coordinate, targetAltitude: altitude
+        )
+        let world = sessionManager.worldPoint(east: enu.east, up: enu.up, north: enu.north)
+        guard let screen = sessionManager.projectToScreen(world),
+              isMarkerOnScreen(screen) else { return nil }
+        return screen
+    }
+
+    /// The same on-screen margin cull `PeakOverlayView` uses, so the hit-test can
+    /// never select a marker (or welded label) that isn't actually drawn.
+    private func isMarkerOnScreen(_ screen: CGPoint) -> Bool {
+        let vp = sessionManager.viewportSize
+        let margin: CGFloat = 50
+        return screen.x > -margin && screen.x < vp.width + margin
+            && screen.y > -margin && screen.y < vp.height + margin
+    }
+
+    /// Whether a marker is currently visible — the same gate `PeakOverlayView`
+    /// applies (not occluded, and either far enough or the mesh is ready) — so
+    /// the user can't tap (or capture) an invisible marker.
+    private func markerVisible(id: UUID, distance: Double) -> Bool {
+        let nearbyThreshold = 100.0
+        guard !occlusionManager.occludedIDs.contains(id) else { return false }
+        return distance >= nearbyThreshold || occlusionManager.isSceneReady
+    }
+
+    /// Camera heading (degrees, 0 = N) from the AR camera transform — the same
+    /// formula `HorizonOverlayView` uses, so the hit-test welds against the same
+    /// labels the overlay drew.
+    private var cameraHeadingDeg: Double {
+        let east = -sessionManager.cameraTransform.columns.2.x
+        let north = sessionManager.cameraTransform.columns.2.z
+        var deg = atan2(Double(east), Double(north)) * 180 / .pi
+        if deg < 0 { deg += 360 }
+        return deg
+    }
+
+    /// Nearest visible marker within the hit radius of `point`. Peaks (drawn on
+    /// top) win near-ties, so a history point must be strictly closer to be picked.
+    private func nearestMarker(to point: CGPoint) -> ARMarkerSelection? {
+        guard sessionManager.isTracking else { return nil }
+        let hitRadius: CGFloat = 60
+        var best: (selection: ARMarkerSelection, dist: CGFloat)?
+
+        let obsAlt = (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil }
+            ?? (overlayLocation?.altitude ?? 0)
+
+        // Welded peaks are drawn as floating ridge pills, not AR markers, so their
+        // tap target is the pill. Test ONLY the labels actually drawn (the same
+        // dedup'd/​capped selection the overlay renders) so a tap can't hit a
+        // suppressed-pill peak or resolve to a nearer/farther mix-up; target the
+        // pill centre (anchor lifted by `peakHorizonLabelLift`).
+        let welded = weldedPeakIDs
+        let drawnLabels = weldedPeakLabels(
+            peaks: peakFinder.peaks, skyline: skylineCalculator.samples,
+            observerAltitude: obsAlt, headingDeg: cameraHeadingDeg,
+            size: sessionManager.viewportSize, sessionManager: sessionManager)
+        for label in drawnLabels {
+            let target = CGPoint(x: label.position.x, y: label.position.y - peakHorizonLabelLift)
+            let d = hypot(target.x - point.x, target.y - point.y)
+            if d <= hitRadius, best == nil || d < best!.dist,
+               let peak = peakFinder.peaks.first(where: { $0.id == label.peakID }) {
+                best = (.peak(peak), d)
+            }
+        }
+        // Non-welded peaks keep their AR marker (welded ones are suppressed there).
+        for peak in peakFinder.peaks where !welded.contains(peak.id)
+            && markerVisible(id: peak.id, distance: peak.distance) {
+            guard let screen = projectMarker(coordinate: peak.coordinate, altitude: peak.altitude) else { continue }
+            let d = hypot(screen.x - point.x, screen.y - point.y)
+            if d <= hitRadius, best == nil || d < best!.dist { best = (.peak(peak), d) }
+        }
+        // History points are not shown in the AR scene, so they aren't tappable.
+        return best?.selection
+    }
+
+    /// Capture the live camera frame + overlays into one annotated panorama and
+    /// present the system share sheet. Fully on-device. The camera snapshot and
+    /// the `ImageRenderer` pass run back-to-back on the main actor, so the AR
+    /// matrices are frozen for both — the markers line up with the still frame.
+    private func captureShare() {
+        guard !isCapturing, sessionManager.isTracking else { return }
+        isCapturing = true
+        // Hop to the next main-actor turn so SwiftUI can render the shutter's
+        // busy state before the snapshot + ImageRenderer pass (both main-actor-
+        // bound) block. The snapshot and render still run back-to-back in this
+        // task, so the frozen camera frame and the projected markers stay
+        // consistent with each other.
+        Task { @MainActor in
+            defer { isCapturing = false }
+            guard let cameraImage = sessionManager.snapshot() else { return }
+            let size = sessionManager.viewportSize
+            guard size.width > 0, size.height > 0 else { return }
+
+            let visibleMarkers =
+                peakFinder.peaks.filter { markerVisible(id: $0.id, distance: $0.distance) }.count
+
+            let panorama = SharePanoramaView(
+                cameraImage: cameraImage,
+                size: size,
+                peaks: peakFinder.peaks,
+                userLocation: overlayLocation,
+                barometerAltitude: (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil },
+                skylineSamples: skylineCalculator.samples,
+                sessionManager: sessionManager,
+                occlusionManager: occlusionManager,
+                markerCount: visibleMarkers
+            )
+
+            let renderer = ImageRenderer(content: panorama)
+            renderer.scale = displayScale
+            renderer.proposedSize = ProposedViewSize(size)
+            if let image = renderer.uiImage {
+                shareImage = ShareImage(image: image)
+            }
+        }
+    }
+
 }
 
 #Preview {

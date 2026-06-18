@@ -109,4 +109,47 @@ final class GeometryTests: XCTestCase {
         // Should wrap into [0, 360) — i.e. 270, never -90.
         XCTAssertEqual(Geometry.bearing(from: from, to: to), 270, accuracy: 0.5)
     }
+
+    // MARK: - Cardinal direction (8-point compass)
+
+    func testCardinalDirectionBoundaries() {
+        XCTAssertEqual(Geometry.cardinalDirection(0), "N")
+        XCTAssertEqual(Geometry.cardinalDirection(45), "NE")
+        XCTAssertEqual(Geometry.cardinalDirection(90), "E")
+        XCTAssertEqual(Geometry.cardinalDirection(117), "SE")   // matches the spec example
+        XCTAssertEqual(Geometry.cardinalDirection(135), "SE")
+        XCTAssertEqual(Geometry.cardinalDirection(180), "S")
+        XCTAssertEqual(Geometry.cardinalDirection(225), "SW")
+        XCTAssertEqual(Geometry.cardinalDirection(270), "W")
+        XCTAssertEqual(Geometry.cardinalDirection(315), "NW")
+    }
+
+    func testCardinalDirectionWrapsAndSnaps() {
+        XCTAssertEqual(Geometry.cardinalDirection(360), "N")
+        XCTAssertEqual(Geometry.cardinalDirection(350), "N")   // 337.5–360 snaps to N
+        XCTAssertEqual(Geometry.cardinalDirection(-45), "NW")  // negative normalises
+        XCTAssertEqual(Geometry.cardinalDirection(405), "NE")  // >360 normalises (45°)
+    }
+
+    func testCardinalDirectionSectorBoundaries() {
+        // Each lower sector edge is inclusive; just below snaps to the
+        // previous sector. Locked in lockstep with Android `SolarTest`/
+        // `GeoCalculationsTest` so a half-sector drift fails on both.
+        XCTAssertEqual(Geometry.cardinalDirection(22.5), "NE")
+        XCTAssertEqual(Geometry.cardinalDirection(67.5), "E")
+        XCTAssertEqual(Geometry.cardinalDirection(112.5), "SE")
+        XCTAssertEqual(Geometry.cardinalDirection(157.5), "S")
+        XCTAssertEqual(Geometry.cardinalDirection(202.5), "SW")
+        XCTAssertEqual(Geometry.cardinalDirection(247.5), "W")
+        XCTAssertEqual(Geometry.cardinalDirection(292.5), "NW")
+        XCTAssertEqual(Geometry.cardinalDirection(337.5), "N")
+        XCTAssertEqual(Geometry.cardinalDirection(22.4999), "N")
+        XCTAssertEqual(Geometry.cardinalDirection(337.4999), "NW")
+    }
+
+    func testCardinalDirectionNonFiniteIsN() {
+        XCTAssertEqual(Geometry.cardinalDirection(.nan), "N")
+        XCTAssertEqual(Geometry.cardinalDirection(.infinity), "N")
+        XCTAssertEqual(Geometry.cardinalDirection(-.infinity), "N")
+    }
 }

@@ -200,7 +200,14 @@ struct GraphView: View {
     }
 
     func lineShift(line: GraphLine) -> CGFloat {
-        return (-8 + (230 / 2) - (230 / (max - min)) * (line.value - min))
+        let range = max - min
+        // Guard against divide-by-zero / NaN on flat or degenerate data
+        // (max == min). Mirrors the Android `lineRange > 0` short-circuit
+        // by returning a centered Y instead of dividing by zero.
+        guard range > 0 else {
+            return (-8 + (230 / 2))
+        }
+        return (-8 + (230 / 2) - (230 / range) * (line.value - min))
     }
     
     func ordinateLabelS() -> String {

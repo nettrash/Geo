@@ -37,10 +37,48 @@
 "first ascent is unknown" = "first ascent is unknown";
 "Loading..." = "Loading...";
 
+// MARK: - Coordinate unit abbreviations
+"unit_latitude" = "lat";
+"unit_longitude" = "lon";
+
 // MARK: - History details
 "History point details" = "History point details";
 "Barometer information" = "Barometer information";
 "Satellite information" = "Satellite information";
+
+// MARK: - Summit log (auto-detect arrival at a known peak)
+"SUMMITS" = "SUMMITS";
+"No summits logged yet — when you reach a known peak, Geo offers to log it here." = "No summits logged yet — when you reach a known peak, Geo offers to log it here.";
+"Log ascent" = "Log ascent";
+"Collection" = "Collection";
+"Elevation" = "Elevation";
+"Your altitude" = "Your altitude";
+"Date" = "Date";
+"Your altitude is the barometric reading — approximate unless calibrated. Only the peak's public location is stored, not yours." = "Your altitude is the barometric reading — approximate unless calibrated. Only the peak's public location is stored, not yours.";
+"Note" = "Note";
+"How was it? (optional)" = "How was it? (optional)";
+"Not now" = "Not now";
+"Log" = "Log";
+"Logged" = "Logged";
+"Add a note" = "Add a note";
+"Share" = "Share";
+"Delete" = "Delete";
+"Delete this summit?" = "Delete this summit?";
+"Summit" = "Summit";
+"Seven Summits" = "Seven Summits";
+"Snow Leopard" = "Snow Leopard";
+"Highest peaks" = "Highest peaks";
+"Peak" = "Peak";
+
+// MARK: - AR tap-to-identify + freeze-frame share
+"History point" = "History point";
+"Recorded" = "Recorded";
+"GPS altitude" = "GPS altitude";
+"Barometric altitude" = "Barometric altitude";
+"Speed" = "Speed";
+"Bearing" = "Bearing";
+"Capture panorama" = "Capture panorama";
+"Done" = "Done";
 
 // MARK: - AR Nature view
 "Scanning" = "Scanning";
@@ -60,3 +98,24 @@
 "Tap to enable Location and Motion in Settings." = "Tap to enable Location and Motion in Settings.";
 "Tap to enable Location in Settings — needed for nearby peaks and the map." = "Tap to enable Location in Settings — needed for nearby peaks and the map.";
 "Tap to enable Motion in Settings — needed for barometer altitude." = "Tap to enable Motion in Settings — needed for barometer altitude.";
+
+// MARK: - Offline expedition pack (mirror Android strings.xml offline_* keys)
+"Expedition pack" = "Expedition pack";
+"Manage offline areas" = "Manage offline areas";
+"Offline packs" = "Offline packs";
+"Download current area" = "Download current area";
+"Waiting for a GPS fix…" = "Waiting for a GPS fix…";
+"Name (optional)" = "Name (optional)";
+"Radius" = "Radius";
+"Download this area" = "Download this area";
+"Saved packs" = "Saved packs";
+"None yet" = "None yet";
+"Caches the area's named peaks and the terrain skyline so the AR Nature view works with no signal. Map tiles aren't included (provider licensing)." = "Caches the area's named peaks and the terrain skyline so the AR Nature view works with no signal. Map tiles aren't included (provider licensing).";
+"Download a region" = "Download a region";
+"Download here" = "Download here";
+"Delete offline area?" = "Delete offline area?";
+"Rename" = "Rename";
+"Name this area" = "Name this area";
+"Rename area" = "Rename area";
+"Save" = "Save";
+"Name" = "Name";

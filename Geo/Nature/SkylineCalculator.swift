@@ -53,12 +53,12 @@ final class SkylineCalculator: ObservableObject {
     /// Maximum sky-line range. ~200 km matches what's actually visible
     /// from a high mountaintop on a clear day, and is well within the
     /// geometric horizon for any observer above ~3 km.
-    private let maxRangeMeters: Double = 200_000
+    nonisolated static let skylineMaxRangeMeters: Double = 200_000
 
     /// Bearings sampled — 2° spacing → 180 samples around the full circle.
     /// Finer than 6° so narrow cliff edges are captured rather than
     /// smoothed away by interpolation.
-    private let bearingStepDeg: Double = 2
+    nonisolated static let skylineBearingStepDeg: Double = 2
 
     /// Distance samples per bearing.
     ///
@@ -76,15 +76,26 @@ final class SkylineCalculator: ObservableObject {
     /// `TerrainElevationService` amortises that to nearly zero on
     /// subsequent recomputes since the user has to move ≥500 m
     /// before we re-run.
-    private let distancesMeters: [Double] = [
+    nonisolated static let skylineDistancesMeters: [Double] = [
         100, 200, 400, 600, 800, 1_000,
         1_500, 2_000, 3_000, 5_000, 7_000, 10_000,
         15_000, 22_000, 32_000, 48_000,
         70_000, 100_000, 140_000, 200_000
     ]
 
+    // Instance aliases so the existing `compute` call sites read unchanged.
+    private let maxRangeMeters = SkylineCalculator.skylineMaxRangeMeters
+    private let bearingStepDeg = SkylineCalculator.skylineBearingStepDeg
+    private let distancesMeters = SkylineCalculator.skylineDistancesMeters
+
     private var lastObserver: CLLocation?
     private var fetchTask: Task<Void, Never>?
+
+    /// Monotonic generation tag for in-flight passes. Each `compute`
+    /// bumps it and captures the new value; a finishing pass only clears
+    /// `isComputing` if it is still the latest generation, so a cancelled
+    /// pass can't clear the flag for the pass that superseded it.
+    private var computeGeneration: Int = 0
 
     /// Trigger a recompute if the observer has moved far enough since
     /// the last one. Cheap to call from a Timer / onReceive.
@@ -103,10 +114,19 @@ final class SkylineCalculator: ObservableObject {
         lastObserver = observer
         let captured = observer
         let altOverride = barometerAltitude
+        computeGeneration &+= 1
+        let generation = computeGeneration
         fetchTask = Task { @MainActor [weak self] in
             guard let self else { return }
             self.isComputing = true
-            defer { self.isComputing = false }
+            // Only clear the flag if we're still the current pass. A
+            // newer `compute` may have cancelled us and started its own
+            // pass; clearing `isComputing` unconditionally here would
+            // hide that in-flight pass's spinner. (`computeGeneration`
+            // is only mutated on the main actor, so this is race-free.)
+            defer {
+                if self.computeGeneration == generation { self.isComputing = false }
+            }
             let new = await Self.computeSkyline(
                 observer: captured,
                 observerAltitudeOverride: altOverride,
@@ -125,6 +145,90 @@ final class SkylineCalculator: ObservableObject {
                 self.samples = new
             }
         }
+    }
+
+    /// Cancel any in-flight compute so the Open-Elevation batches stop.
+    /// Called from the Nature view's `onDisappear` so the thousands of
+    /// elevation queries a recompute spawns don't keep running once the
+    /// user leaves the AR tab. The calculator is reused across AR
+    /// teardown/rebuild, so a later `compute` can still launch a fresh
+    /// pass. Mirrors the Android port's `SkylineCalculator.cancel()`.
+    func cancel() {
+        fetchTask?.cancel()
+        fetchTask = nil
+        isComputing = false
+    }
+
+    // MARK: - Offline prefetch grid
+
+    /// Grid cell step in degrees — must equal the elevation cache's ~110 m
+    /// quantisation (3 decimals, see `TerrainElevationService.gridKey`) so
+    /// every prefetched node is a distinct cache cell and a live skyline
+    /// lookup from ANY observer in the area hits a cached cell.
+    nonisolated static let offlineCellStepDeg = 0.001
+
+    /// Maximum DEM cells cached per offline pack. A full-resolution
+    /// (~110 m) area grid over a large radius would be millions of cells
+    /// (a 100 km pack ≈ 3.3 M), so this bounds the download size, the
+    /// on-disk pack and the pinned-cell memory. When the requested radius
+    /// would exceed it, the cached *square* shrinks (keeping full 110 m
+    /// resolution within it) so any observer inside the cached core gets a
+    /// hole-free skyline and the far edges of a very large pack degrade
+    /// gracefully to the geometric horizon. ~40 k cells ≈ a ±11 km
+    /// full-resolution core and an ~80 s prefetch.
+    nonisolated static let offlineMaxDEMCells = 40_000
+
+    /// All DEM cells to prefetch for an offline pack: a regular ~110 m
+    /// lat/lon grid covering the pack's bounding box (centre ± `radiusKm`),
+    /// snapped to the cache's milli-degree lattice and capped to
+    /// `offlineMaxDEMCells`.
+    ///
+    /// This replaces the old single-observer *fan*, which only lined up
+    /// with the live lookups when the observer stood exactly at the pack
+    /// centre — off-centre observers' fans projected to different cells, so
+    /// every offline lookup missed and the skyline went empty. An area grid
+    /// covers the cells any observer in the area will look up. Order is not
+    /// significant to callers.
+    nonisolated static func offlinePrefetchCoordinates(center: CLLocationCoordinate2D,
+                                                       radiusKm: Double) -> [CLLocationCoordinate2D] {
+        let step = offlineCellStepDeg
+        let metersPerDegLat = 111_320.0
+        let cosLat = max(0.01, cos(center.latitude * .pi / 180))
+        var halfLatDeg = (radiusKm * 1000) / metersPerDegLat
+        var halfLonDeg = (radiusKm * 1000) / (metersPerDegLat * cosLat)
+
+        // Shrink the covered square (NOT the resolution) if a full-res grid
+        // would blow the cell budget, so a live lookup never lands in a gap.
+        let latNodes = Int((2 * halfLatDeg) / step) + 1
+        let lonNodes = Int((2 * halfLonDeg) / step) + 1
+        let total = latNodes * lonNodes
+        if total > offlineMaxDEMCells {
+            let scale = (Double(offlineMaxDEMCells) / Double(total)).squareRoot()
+            halfLatDeg *= scale
+            halfLonDeg *= scale
+        }
+
+        // Snap the centre to the milli-degree lattice and step exactly one
+        // cell at a time so every node maps to its own distinct cache cell
+        // (no phase drift, no gaps, no duplicates vs the live lookups).
+        let cLat = (center.latitude * 1000).rounded() / 1000
+        let cLon = (center.longitude * 1000).rounded() / 1000
+        let latSteps = Int(halfLatDeg / step)
+        let lonSteps = Int(halfLonDeg / step)
+
+        var coords: [CLLocationCoordinate2D] = []
+        coords.reserveCapacity((2 * latSteps + 1) * (2 * lonSteps + 1))
+        var i = -latSteps
+        while i <= latSteps {
+            let lat = cLat + Double(i) * step
+            var j = -lonSteps
+            while j <= lonSteps {
+                coords.append(CLLocationCoordinate2D(latitude: lat, longitude: cLon + Double(j) * step))
+                j += 1
+            }
+            i += 1
+        }
+        return coords
     }
 
     // MARK: - Pure computation
@@ -166,7 +270,11 @@ final class SkylineCalculator: ObservableObject {
 
         // 3. For each bearing, pick the sample with the maximum
         //    apparent-altitude angle. That's the skyline.
-        let observerAlt = observerAltitudeOverride ?? observer.altitude
+        // Defence in depth: a barometer override is an absolute altitude
+        // that is exactly 0 before its first sample (and on barometer-less
+        // devices), so ignore a non-positive override and fall back to GPS
+        // altitude rather than computing the skyline at sea level.
+        let observerAlt = (observerAltitudeOverride.flatMap { $0 > 0 ? $0 : nil }) ?? observer.altitude
         var bestPerBearing: [Double: (sample: SkylineSample, angle: Double)] = [:]
         for (i, gp) in grid.enumerated() {
             guard let elev = elevations[i] else { continue }

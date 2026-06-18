@@ -34,3 +34,296 @@ final class GeoTests: XCTestCase {
     }
 
 }
+
+/// Golden-history tests for the de-trended pressure-tendency fit (M5a).
+/// Mirrored by Android `StormWarningTest` — identical scenarios and
+/// thresholds, so a divergence in either platform's math shows up as a
+/// failing test on that side.
+final class StormWarningTests: XCTestCase {
+
+    /// Standard-atmosphere pressure ratio P(alt)/P(0); mirrors the
+    /// private helper inside `StormWarning` so the synthetic histories
+    /// are generated with the same physics the fit removes.
+    private func ratio(_ altM: Double) -> Double {
+        pow(1.0 - altM / 44330.0, 5.255)
+    }
+
+    /// Build 13 samples at 15-minute spacing ending at `now` (a 3-hour
+    /// window). `pressureKPa(idx)` / `altitudeM(idx)` drive each sample.
+    private func history(now: Date,
+                         pressureKPa: (Int) -> Double,
+                         altitudeM: (Int) -> Double) -> [PressureSample] {
+        (0...12).map { idx in
+            PressureSample(date: now.addingTimeInterval(Double(idx - 12) * 15 * 60),
+                           pressureKPa: pressureKPa(idx),
+                           altitudeM: altitudeM(idx))
+        }
+    }
+
+    func testConstantAltitudeFallFiresFallingFast() {
+        let now = Date()
+        // 1013 → 1007 hPa over 3 h at a fixed altitude: −6 hPa, alert.
+        let samples = history(now: now,
+                              pressureKPa: { 101.3 - Double($0) * (0.6 / 12.0) },
+                              altitudeM: { _ in 0 })
+        let trend = StormWarning.tendency(samples, now: now)
+        XCTAssertEqual(trend.classification, .fallingFast)
+        XCTAssertTrue(trend.isAlert)
+        XCTAssertEqual(trend.changeHPaOver3h, -6.0, accuracy: 0.2)
+    }
+
+    func testAltitudeExplainedFallIsSteady() {
+        let now = Date()
+        // Pressure drops only because the user climbs 0 → 500 m at a
+        // constant weather (1013 hPa sea-level): de-trend must cancel it.
+        let samples = history(now: now,
+                              pressureKPa: { 101.3 * self.ratio(Double($0) * (500.0 / 12.0)) },
+                              altitudeM: { Double($0) * (500.0 / 12.0) })
+        let trend = StormWarning.tendency(samples, now: now)
+        XCTAssertEqual(trend.classification, .steady)
+        XCTAssertFalse(trend.isAlert)
+        XCTAssertEqual(trend.changeHPaOver3h, 0.0, accuracy: 0.2)
+    }
+
+    func testRisingFiresNothing() {
+        let now = Date()
+        let samples = history(now: now,
+                              pressureKPa: { 101.3 + Double($0) * (0.6 / 12.0) },
+                              altitudeM: { _ in 0 })
+        let trend = StormWarning.tendency(samples, now: now)
+        XCTAssertEqual(trend.classification, .rising)
+        XCTAssertFalse(trend.isAlert)
+    }
+
+    func testInsufficientSamplesIsUnknown() {
+        let now = Date()
+        let samples = [
+            PressureSample(date: now.addingTimeInterval(-3600), pressureKPa: 101.3, altitudeM: 0),
+            PressureSample(date: now, pressureKPa: 100.7, altitudeM: 0)
+        ]
+        let trend = StormWarning.tendency(samples, now: now)
+        XCTAssertEqual(trend.classification, .unknown)
+        XCTAssertFalse(trend.isAlert)
+    }
+
+    func testShortSpanIsUnknown() {
+        let now = Date()
+        // Four samples but only a 30-minute span (< 1.5 h minimum).
+        let samples = (0...3).map { idx in
+            PressureSample(date: now.addingTimeInterval(Double(idx - 3) * 10 * 60),
+                           pressureKPa: 101.3 - Double(idx) * 0.2,
+                           altitudeM: 0)
+        }
+        let trend = StormWarning.tendency(samples, now: now)
+        XCTAssertEqual(trend.classification, .unknown)
+    }
+}
+
+/// Solar-event math tests (M-feature: golden-hour / sunrise-sunset panel).
+/// Mirrored by Android `SolarTest` — same golden cases and tolerances, so
+/// a divergence in either platform's NOAA implementation fails its tests.
+/// All asserted values are minutes past 00:00 UTC of the given date.
+final class SolarTests: XCTestCase {
+
+    // London, ~(51.4778, 0), midsummer 2023-06-21: sunrise ≈ 03:43 UTC,
+    // sunset ≈ 20:21 UTC (well-known published values).
+    func testLondonMidsummerAnchor() {
+        let sunrise = Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                            latitude: 51.4778, longitude: 0.0,
+                                            elevationDeg: Solar.sunriseElevation, rising: true)
+        let sunset = Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                           latitude: 51.4778, longitude: 0.0,
+                                           elevationDeg: Solar.sunriseElevation, rising: false)
+        XCTAssertEqual(try XCTUnwrap(sunrise), 223, accuracy: 15)   // 03:43 UTC
+        XCTAssertEqual(try XCTUnwrap(sunset), 1221, accuracy: 15)   // 20:21 UTC
+    }
+
+    // Equator, equinox-ish: day ≈ 12 h, solar noon ≈ 12:00 UTC at lon 0.
+    func testEquatorEquinoxDayLength() {
+        let sunrise = try? XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 3, day: 21,
+                                     latitude: 0, longitude: 0,
+                                     elevationDeg: Solar.sunriseElevation, rising: true))
+        let sunset = try? XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 3, day: 21,
+                                    latitude: 0, longitude: 0,
+                                    elevationDeg: Solar.sunriseElevation, rising: false))
+        let noon = Solar.solarNoonUTCMinutes(year: 2023, month: 3, day: 21, longitude: 0)
+        XCTAssertEqual(try XCTUnwrap(sunset! - sunrise!), 727, accuracy: 20)  // ~12 h 07 m
+        XCTAssertEqual(noon, 727, accuracy: 15)                               // ~12:07 UTC
+    }
+
+    // Sunrise / sunset are symmetric about solar noon.
+    func testSymmetryAboutNoon() throws {
+        let noon = Solar.solarNoonUTCMinutes(year: 2023, month: 6, day: 21, longitude: 8)
+        let sunrise = try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                    latitude: 46, longitude: 8,
+                                    elevationDeg: Solar.sunriseElevation, rising: true))
+        let sunset = try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                   latitude: 46, longitude: 8,
+                                   elevationDeg: Solar.sunriseElevation, rising: false))
+        XCTAssertEqual(noon - sunrise, sunset - noon, accuracy: 0.1)
+    }
+
+    // Altitude horizon-dip: from a summit the sun rises earlier and sets
+    // later than at sea level.
+    func testAltitudeMakesSunriseEarlierSunsetLater() throws {
+        func sunrise(_ alt: Double) throws -> Double {
+            try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                          latitude: 46, longitude: 8,
+                          elevationDeg: Solar.sunriseElevation - Solar.horizonDipDegrees(altitude: alt),
+                          rising: true))
+        }
+        func sunset(_ alt: Double) throws -> Double {
+            try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                          latitude: 46, longitude: 8,
+                          elevationDeg: Solar.sunriseElevation - Solar.horizonDipDegrees(altitude: alt),
+                          rising: false))
+        }
+        XCTAssertLessThan(try sunrise(3000), try sunrise(0))
+        XCTAssertGreaterThan(try sunset(3000), try sunset(0))
+        XCTAssertEqual(Solar.horizonDipDegrees(altitude: 0), 0, accuracy: 1e-9)
+    }
+
+    // Event ordering across the day.
+    func testEventOrdering() throws {
+        func ev(_ elev: Double, _ rising: Bool) throws -> Double {
+            try XCTUnwrap(Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                          latitude: 46, longitude: 8, elevationDeg: elev, rising: rising))
+        }
+        let dawn = try ev(Solar.civilElevation, true)
+        let sunrise = try ev(Solar.sunriseElevation, true)
+        let noon = Solar.solarNoonUTCMinutes(year: 2023, month: 6, day: 21, longitude: 8)
+        let sunset = try ev(Solar.sunriseElevation, false)
+        let dusk = try ev(Solar.civilElevation, false)
+        XCTAssertTrue(dawn < sunrise && sunrise < noon && noon < sunset && sunset < dusk)
+    }
+
+    // High Arctic midsummer: the sun never sets — sunrise/sunset undefined,
+    // and the aggregate reports polar day.
+    func testPolarDay() {
+        let sunrise = Solar.eventUTCMinutes(year: 2023, month: 6, day: 21,
+                                            latitude: 80, longitude: 0,
+                                            elevationDeg: Solar.sunriseElevation, rising: true)
+        XCTAssertNil(sunrise)
+
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let date = utc.date(from: DateComponents(year: 2023, month: 6, day: 21, hour: 12))!
+        let times = Solar.times(date: date, latitude: 80, longitude: 0, altitude: 0, calendar: utc)
+        XCTAssertTrue(times.isPolarDay)
+        XCTAssertNil(times.sunset)
+    }
+
+    // Date-line clock zone (UTC+13, e.g. Samoa, lon −171.8): the day's solar
+    // events must fall on the queried LOCAL day, not be shifted +1 day —
+    // and the countdown to today's sunrise must be minutes, not ~24 h.
+    func testFarEastClockZoneAnchorsToLocalDay() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 13 * 3600))
+        let query = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 6, day: 21,
+                                                                hour: 6, minute: 30)))
+        let times = Solar.times(date: query, latitude: -13.76, longitude: -171.8, altitude: 0, calendar: cal)
+        let sunrise = try XCTUnwrap(times.sunrise)
+        XCTAssertEqual(cal.dateComponents([.year, .month, .day], from: sunrise),
+                       cal.dateComponents([.year, .month, .day], from: query))
+        XCTAssertLessThan(sunrise.timeIntervalSince(query), 3 * 3600)  // ~19 min, not 24 h
+    }
+}
+
+/// Trip-summary stats tests (M5c). Mirrored by Android `TripStatsTest` —
+/// same golden inputs and expected values, so a divergence fails on the
+/// affected platform.
+final class TripStatsTests: XCTestCase {
+
+    private func sample(_ t: Int64, _ alt: Double,
+                        lat: Double = 45, lon: Double = 8, speed: Double = 1) -> TripSample {
+        TripSample(timeMs: t, altitude: alt, latitude: lat, longitude: lon, speed: speed)
+    }
+
+    func testEmptyAndSingle() {
+        XCTAssertEqual(TripStats.summary([]), TripSummary())
+        let s = TripStats.summary([sample(0, 123)])
+        XCTAssertEqual(s.totalAscent, 0)
+        XCTAssertEqual(s.totalDescent, 0)
+        XCTAssertEqual(s.maxAltitude, 123)
+        XCTAssertEqual(s.minAltitude, 123)
+    }
+
+    func testFlatWithJitterIsFiltered() {
+        let alts: [Double] = [100, 101, 100, 102, 99, 101, 100]
+        let s = TripStats.summary(alts.enumerated().map { sample(Int64($0.offset * 1000), $0.element) })
+        XCTAssertEqual(s.totalAscent, 0, accuracy: 1e-9)    // all deltas < 3 m
+        XCTAssertEqual(s.totalDescent, 0, accuracy: 1e-9)
+        XCTAssertEqual(s.maxAltitude, 102)
+        XCTAssertEqual(s.minAltitude, 99)
+    }
+
+    func testSlowClimbCapturedDespiteSmallSteps() {
+        let alts: [Double] = [100, 102, 104, 106, 108, 110]   // +2 m steps, +10 m total
+        let s = TripStats.summary(alts.enumerated().map { sample(Int64($0.offset * 1000), $0.element) })
+        XCTAssertEqual(s.totalAscent, 8, accuracy: 1e-9)      // two confirmed 4 m steps; 2 m residual dropped
+        XCTAssertEqual(s.totalDescent, 0, accuracy: 1e-9)
+    }
+
+    func testAscentDescent() {
+        let s = TripStats.summary([sample(0, 100), sample(1000, 200), sample(2000, 150)])
+        XCTAssertEqual(s.totalAscent, 100, accuracy: 1e-9)
+        XCTAssertEqual(s.totalDescent, 50, accuracy: 1e-9)
+        XCTAssertEqual(s.maxAltitude, 200)
+        XCTAssertEqual(s.minAltitude, 100)
+    }
+
+    func testDistanceHaversine() {
+        let s = TripStats.summary([sample(0, 100, lat: 45, lon: 8, speed: 2),
+                                   sample(1000, 100, lat: 45.001, lon: 8, speed: 2)])
+        XCTAssertEqual(s.distance, 111.2, accuracy: 1.5)   // ~0.001° lat ≈ 111 m
+        XCTAssertEqual(s.movingTime, 1, accuracy: 1e-9)
+    }
+
+    func testMovingTimeExcludesStops() {
+        let s = TripStats.summary([sample(0, 100, speed: 2),
+                                   sample(10_000, 100, speed: 2),     // moving 10 s
+                                   sample(20_000, 100, speed: 0.1),   // stopped 10 s
+                                   sample(30_000, 100, speed: 1)])    // moving 10 s
+        XCTAssertEqual(s.movingTime, 20, accuracy: 1e-9)
+    }
+
+    func testMovingTimeSegmentCap() {
+        let s = TripStats.summary([sample(0, 100, speed: 2), sample(120_000, 100, speed: 2)])
+        XCTAssertEqual(s.movingTime, 60, accuracy: 1e-9)   // 120 s gap capped to 60 s
+    }
+
+    func testInvalidGpsSkippedInDistance() {
+        let s = TripStats.summary([sample(0, 100, lat: 0, lon: 0, speed: 2),    // (0,0) invalid
+                                   sample(1000, 100, lat: 45.001, lon: 8, speed: 2)])
+        XCTAssertEqual(s.distance, 0, accuracy: 1e-9)
+    }
+}
+
+/// Manual-calibration math tests (M5b). Mirrored by Android
+/// `AtmosphereCalibrationTest`.
+final class AtmosphereCalibrationTests: XCTestCase {
+
+    /// TM5b.1 acceptance: the solved reference pressure fed back into the
+    /// forward helper reproduces the entered altitude (<0.5 m). The live
+    /// pressure is derived from the altitude + a plausible QNH so the pair
+    /// is realistic (and stays inside the 30–110 kPa clamp window).
+    func testSolveReferencePressureRoundTrip() {
+        for known in [-200.0, 0, 500, 1500, 3000, 5500, 8000] {
+            for qnhTrue in [98.0, 101.325, 103.0] {
+                let p = qnhTrue * pow(1 - known / 44330, 5.255)   // station pressure at `known`
+                let solved = Atmosphere.solveReferencePressure(knownAltitudeM: known, livePressureKPa: p)
+                let back = Atmosphere.altitude(pressureKPa: p, referenceKPa: solved)
+                XCTAssertEqual(back, known, accuracy: 0.5)
+            }
+        }
+    }
+
+    func testCalibrationWeightDecaysLinearly() {
+        let full = Atmosphere.calibrationDecayHours * 3600
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: 0), 1.0, accuracy: 1e-9)
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: full / 2), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: full), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: full * 2), 0.0, accuracy: 1e-9)
+        XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: -10), 1.0, accuracy: 1e-9)   // future-dated → fresh
+    }
+}

@@ -51,6 +51,110 @@ class Barometer {
     /// launch.
     private var hasAbsoluteFix: Bool = false
 
+    /// Calibration state of `height`, surfaced in the UI (Improvement #2)
+    /// so the user can tell whether the altitude is Apple's calibrated MSL
+    /// value or the weather-biased ±100–500 m pressure estimate.
+    enum CalibrationState { case calibrated, calibrating, uncalibrated }
+    var calibrationState: CalibrationState {
+        if absoluteAvailable && hasAbsoluteFix { return .calibrated }
+        if absoluteAvailable { return .calibrating }
+        return .uncalibrated
+    }
+
+    // MARK: - Manual "I am at X m" calibration (M5b)
+
+    /// Uncalibrated altitude — Apple's absolute value or the lapse fallback —
+    /// before the manual offset is applied. `height` is this plus the
+    /// decaying offset. Keeping it separate means the offset is always
+    /// computed against the raw value and never compounds.
+    private var rawHeight: Double = 0
+
+    /// Persisted manual-calibration delta (m) and the time it was set.
+    /// `CMAltimeter` has no setter, so the user's "I am at X m" pin is stored
+    /// as a delta on top of the system value and decayed over time.
+    private var calibrationOffset: Double = 0
+    private var calibratedAt: Date?
+
+    /// True once at least one real sensor sample has populated `rawHeight`.
+    /// Before this, `rawHeight` is still the placeholder `0`, so calibrating
+    /// would store `offset = known − 0 = known` and the first real tick would
+    /// then double-bias `height` to `rawHeight + known`. Set only from the
+    /// sensor handlers, so a rehydrated `height`/`pressure` (cold start /
+    /// foreground resume) can't be mistaken for a live raw reading.
+    private var hasRawAltitude = false
+
+    private static let calOffsetKey = Atmosphere.calibrationOffsetKey
+    private static let calAtKey = Atmosphere.calibrationAtKey
+
+    /// Offset actually applied right now: the stored delta scaled by its
+    /// age-based decay weight (zero once the calibration has expired).
+    var effectiveOffset: Double {
+        guard let calibratedAt else { return 0 }
+        let age = Date().timeIntervalSince(calibratedAt)
+        return calibrationOffset * Atmosphere.calibrationWeight(ageSeconds: age)
+    }
+
+    /// True while a manual calibration is set and not yet fully decayed.
+    var isManuallyCalibrated: Bool {
+        guard let calibratedAt else { return false }
+        return Atmosphere.calibrationWeight(ageSeconds: Date().timeIntervalSince(calibratedAt)) > 0
+    }
+
+    /// Whether a manual calibration can be applied right now. Requires a real
+    /// sensor sample to have populated `rawHeight` first — otherwise the
+    /// offset would be measured against the placeholder `0` and double-bias
+    /// the reading once the first tick lands. The Calibrate sheet disables
+    /// its "Set" action until this is true.
+    var canCalibrate: Bool { hasRawAltitude }
+
+    /// Pin the displayed altitude to `known` metres by storing the delta
+    /// against the current RAW (uncalibrated) altitude — so it agrees with
+    /// the live readout immediately and doesn't compound with a prior offset.
+    /// No-op until a real sensor sample has arrived (`canCalibrate`), so the
+    /// offset is never measured against the placeholder `rawHeight == 0`.
+    func calibrate(toAltitude known: Double) {
+        guard hasRawAltitude else { return }
+        calibrationOffset = known - rawHeight
+        calibratedAt = Date()
+        saveCalibration()
+        applyCalibration()
+        dataUpdated?()
+    }
+
+    func clearCalibration() {
+        calibrationOffset = 0
+        calibratedAt = nil
+        saveCalibration()
+        applyCalibration()
+        dataUpdated?()
+    }
+
+    /// Recompute the published `height` / `everest` from the raw value and
+    /// the (decayed) offset. Called on every sensor tick and on calibrate/clear.
+    private func applyCalibration() {
+        let h = rawHeight + effectiveOffset
+        height = h
+        everest = h / Atmosphere.everestHeightM
+    }
+
+    private func loadCalibration() {
+        guard let ud = UserDefaults(suiteName: SharedSnapshotStore.appGroupID),
+              let at = ud.object(forKey: Self.calAtKey) as? Date else { return }
+        calibratedAt = at
+        calibrationOffset = ud.double(forKey: Self.calOffsetKey)
+    }
+
+    private func saveCalibration() {
+        guard let ud = UserDefaults(suiteName: SharedSnapshotStore.appGroupID) else { return }
+        if let calibratedAt {
+            ud.set(calibrationOffset, forKey: Self.calOffsetKey)
+            ud.set(calibratedAt, forKey: Self.calAtKey)
+        } else {
+            ud.removeObject(forKey: Self.calOffsetKey)
+            ud.removeObject(forKey: Self.calAtKey)
+        }
+    }
+
     init() {
         barometerManager = CMAltimeter()
         pressure = 0
@@ -64,6 +168,7 @@ class Barometer {
         } else {
             absoluteAvailable = false
         }
+        loadCalibration()
     }
 
     init(autoStart: Bool) {
@@ -79,6 +184,7 @@ class Barometer {
         } else {
             absoluteAvailable = false
         }
+        loadCalibration()
         if autoStart {
             Start()
         }
@@ -97,6 +203,7 @@ class Barometer {
         } else {
             absoluteAvailable = false
         }
+        loadCalibration()
         dataUpdated = handler
     }
 
@@ -120,7 +227,10 @@ class Barometer {
 
     func Handler(_ data: CMAltitudeData?, _ error: Error?) {
         guard let data = data else { return }
-        self.pressure = data.pressure.doubleValue
+        // Clamp the live pressure sample to a sane window (Improvement
+        // #11: 300–1100 hPa = 30–110 kPa) so a single bad sensor reading
+        // can't produce NaN or wildly out-of-range derived values.
+        self.pressure = min(max(data.pressure.doubleValue, 30.0), 110.0)
         self.delta = data.relativeAltitude.doubleValue
 
         // Fall back to the pressure-derived formula only when the
@@ -132,18 +242,17 @@ class Barometer {
         // so we let the absolute reading overwrite it as soon as one
         // arrives.
         if !absoluteAvailable || !hasAbsoluteFix {
-            //Ph = P0 * exp(-0.00012 * h)
-            //exp(-0.00012 * h) = Ph / P0
-            //-0.00012 * h = ln( Ph / P0 )
-            //ln( P0 / Ph ) = 0.00012 * h
-            // h = ln ( P0 / Ph ) / 0.00012
-            // P0 = 101.325
-            let P0: Double = 101.325
-            let Ph: Double = data.pressure.doubleValue
-            let h: Double = log(P0 / Ph) / 0.00012
-            self.height = h
-            self.everest = h / 8848
+            // Lapse-rate (international barometric) altitude from the
+            // raw pressure sample, assuming standard sea-level pressure
+            // (Improvements #10/#11). The reading is already clamped to
+            // a sane window above; `Atmosphere.altitude` clamps again
+            // for safety.
+            self.rawHeight = Atmosphere.altitude(pressureKPa: self.pressure)
+            self.hasRawAltitude = true
         }
+        // Re-apply the (decaying) manual calibration every tick so `height`
+        // stays current as the offset ages.
+        self.applyCalibration()
 
         self.dataUpdated?()
     }
@@ -155,10 +264,11 @@ class Barometer {
     @available(iOS 15.0, *)
     func AbsoluteHandler(_ data: CMAbsoluteAltitudeData?, _ error: Error?) {
         guard let data = data else { return }
-        self.height = data.altitude
-        self.everest = data.altitude / 8848
+        self.rawHeight = data.altitude
+        self.hasRawAltitude = true
         self.heightAccuracy = data.accuracy
         self.hasAbsoluteFix = true
+        self.applyCalibration()
         // No `dataUpdated?()` here on purpose — the relative stream
         // fires at ~1 Hz and will pick up the new `height` on its
         // next tick. Avoids doubling the notification rate for

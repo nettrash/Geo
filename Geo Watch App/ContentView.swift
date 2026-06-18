@@ -95,31 +95,23 @@ struct ContentView: View {
             self.appDelegate.registerCallback { pressure, delta, height, everest in
                 self.barometerInformationPressure = pressure
                 self.barometerInformationDelta = delta
-                
-                //Ph = P0 * exp(-0.00012 * h)
-                //exp(-0.00012 * h) = Ph / P0
-                //-0.00012 * h = ln( Ph / P0 )
-                //ln( P0 / Ph ) = 0.00012 * h
-                // h = ln ( P0 / Ph ) / 0.00012
-                // P0 = 101.325
-                
-                let P0: Double = 101.325
-                let Ph: Double = self.barometerInformationPressure
-                let h: Double = log(P0 / Ph) / 0.00012
-                
-                self.barometerInformationHeight = h
-                self.barometerInformationEverest = h / 8848
 
-                var firstAdd: Bool = false
-                while self.historyData.count < self.historyCount {
-                    firstAdd = true;
-                    self.historyData.append(DataItem(Value: 0, Legend: trackingDateFormatter.string(from:Date())))
-                }
+                // Use the calibrated altitude the delegate already computed from the
+                // iPhone reference; do not re-derive an uncalibrated value here.
+                self.barometerInformationHeight = height
+                self.barometerInformationEverest = everest
+
+                // Append only real samples (no pre-seeded zeros) so the graph
+                // autoscales over actual data from the first two points, mirroring
+                // the Android Wear sparkline.
+                let firstAdd: Bool = self.historyData.isEmpty
 
                 if firstAdd || self.lastInfoUpdateDate.addingTimeInterval(30) < Date() {
-                    self.historyData.append(DataItem(Value: self.barometerInformationHeight, Legend: trackingDateFormatter.string(from:Date())))
-                    self.historyData.removeFirst()
-                    
+                    self.historyData.append(DataItem(Value: height, Legend: trackingDateFormatter.string(from:Date())))
+                    while self.historyData.count > self.historyCount {
+                        self.historyData.removeFirst()
+                    }
+
                     let minDataItem = self.historyData.min(by: { $0.Value < $1.Value })
                     let maxDataItem = self.historyData.max(by: { $0.Value < $1.Value })
 

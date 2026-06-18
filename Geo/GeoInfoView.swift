@@ -9,7 +9,11 @@ import SwiftUI
 
 struct GeoInfoView: View {
     @State var app: GeoAppDelegate?
-        
+    @Environment(\.scenePhase) private var scenePhase
+    /// Whether the Info tab is currently on-screen, so the scene-phase
+    /// handler only (re)starts the compass when this tab is actually showing.
+    @State private var isOnScreen = false
+
     var body: some View {
         ZStack(content: {
             Image("GeoBig")
@@ -17,19 +21,65 @@ struct GeoInfoView: View {
                 .aspectRatio(contentMode: .fit)
                 .opacity(0.02)
                 ScrollView {
-                    BarometerInformationView(barometer: app?.barometer)
-                    
+                    BarometerInformationView(barometer: app?.barometer, history: app?.history)
+                        .onAppear { app?.history.refreshIfNeeded() }
+
                     SatelliteInformationView(location: app?.location)
                         .onAppear(perform: {
                             app?.location?.initialize()
                         })
-                    
-                    ClosestMountainInformationView(location: app?.location)
-                    
-                    HighestMountainInformationView(location: app?.location)
+
+                    SolarInformationView(location: app?.location)
+
+                    ClosestMountainInformationView(location: app?.location, motion: app?.deviceMotion)
+
+                    HighestMountainInformationView(location: app?.location, motion: app?.deviceMotion)
+
+                    OfflinePackCard(manager: app?.offlinePack, location: app?.location)
+
+                    DataSourcesCredit()
                 }
-            /*}*/
+                // Run the compass only while the Info tab is visible AND the
+                // scene is active (low-power, AR-free peak direction finder).
+                // `onDisappear` doesn't fire on background, so also stop on
+                // scene-phase change — mirroring GeoNatureView's AR gating.
+                .onAppear {
+                    isOnScreen = true
+                    // Heading-only: the bearing arrow needs `heading`, not the
+                    // 30 Hz pitch/roll attitude stream (AR-only).
+                    if scenePhase == .active { app?.deviceMotion?.start(includeAttitude: false) }
+                }
+                .onDisappear {
+                    isOnScreen = false
+                    app?.deviceMotion?.stop()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    guard isOnScreen else { return }
+                    if newPhase == .active { app?.deviceMotion?.start(includeAttitude: false) }
+                    else { app?.deviceMotion?.stop() }
+                }
         })
+    }
+}
+
+/// Data-source attribution footer for the Info tab. Credits the public data
+/// providers the app depends on (fair-use / attribution courtesy for
+/// Open-Meteo and OpenStreetMap, plus Apple's frameworks).
+private struct DataSourcesCredit: View {
+    var body: some View {
+        VStack(spacing: 3) {
+            Text("Data sources")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text("Peaks © OpenStreetMap contributors (Overpass)")
+            Text("Elevation by Open-Meteo")
+            Text("Maps by Apple · AR by ARKit")
+        }
+        .font(.system(size: 11, design: .rounded))
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
     }
 }
 

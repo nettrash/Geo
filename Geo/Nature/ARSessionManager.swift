@@ -16,25 +16,43 @@ import simd
 @MainActor
 class ARSessionManager: ObservableObject {
     
+    /// Monotonic per-frame counter. The heavy matrices below update every
+    /// frame as PLAIN (non-@Published) vars so they don't fire
+    /// `objectWillChange` ~60 Hz and invalidate the whole overlay subtree.
+    /// This single lightweight published tick is bumped once per frame;
+    /// overlay bodies read it to stay live (`_ = sessionManager.frameTick`).
+    @Published private(set) var frameTick: UInt64 = 0
+
     /// The camera's 4×4 view matrix (inverse of camera transform).
-    /// Converts world-space → camera-space.
-    @Published var viewMatrix: simd_float4x4 = matrix_identity_float4x4
-    
+    /// Converts world-space → camera-space. Plain (see `frameTick`).
+    var viewMatrix: simd_float4x4 = matrix_identity_float4x4
+
     /// The camera's 4×4 projection matrix for the current viewport.
-    /// Converts camera-space → clip-space.
-    @Published var projectionMatrix: simd_float4x4 = matrix_identity_float4x4
-    
-    /// The camera's world-space transform (position + orientation).
-    @Published var cameraTransform: simd_float4x4 = matrix_identity_float4x4
-    
-    /// The current viewport size (points) — needed for projection.
-    @Published var viewportSize: CGSize = .zero
-    
-    /// Device interface orientation for correct projection matrix.
-    @Published var interfaceOrientation: UIInterfaceOrientation = .portrait
+    /// Converts camera-space → clip-space. Plain (see `frameTick`).
+    var projectionMatrix: simd_float4x4 = matrix_identity_float4x4
+
+    /// The camera's world-space transform (position + orientation). Plain (see `frameTick`).
+    var cameraTransform: simd_float4x4 = matrix_identity_float4x4
+
+    /// The current viewport size (points) — needed for projection. Plain (see `frameTick`).
+    var viewportSize: CGSize = .zero
+
+    /// Device interface orientation for correct projection matrix. Plain (see `frameTick`).
+    var interfaceOrientation: UIInterfaceOrientation = .portrait
     
     /// Whether the AR session has started delivering frames.
     @Published var isTracking: Bool = false
+
+    /// The backing `ARSCNView`, set by `ARCameraView`'s coordinator. Held
+    /// weakly so the session manager never keeps the camera view alive past
+    /// the Nature tab. Used to grab the freeze-frame for sharing.
+    weak var sceneView: ARSCNView?
+
+    /// Snapshot the live camera + rendered scene as a `UIImage`. This is the
+    /// camera feed only — the SwiftUI marker/skyline overlays are composited
+    /// on top separately by `SharePanoramaView`. Main-actor (SceneKit
+    /// `snapshot()` must run on the main thread).
+    func snapshot() -> UIImage? { sceneView?.snapshot() }
     
     /// Depth (meters) at the center of the viewport from LiDAR depth buffer.
     /// `nil` on non-LiDAR devices.
@@ -70,7 +88,11 @@ class ARSessionManager: ObservableObject {
         )
         self.viewportSize = viewportSize
         self.interfaceOrientation = orientation
-        
+
+        // Bump the single published tick once per frame so overlay views
+        // re-render while the heavy matrices above stay plain properties.
+        self.frameTick &+= 1
+
         self.isTracking = camera.trackingState == .normal
         
         // Capture scene depth for per-pixel occlusion (LiDAR devices only)
@@ -103,38 +125,20 @@ class ARSessionManager: ObservableObject {
         }
     }
     
-    /// Check if a world-space point projected to `screenPoint` is occluded
-    /// by a real surface using the LiDAR scene depth buffer.
-    /// Returns `false` (not occluded) when no depth data is available.
-    func isOccludedByDepth(screenPoint: CGPoint, worldPoint: simd_float3) -> Bool {
-        guard !depthData.isEmpty,
-              depthWidth > 0, depthHeight > 0,
-              viewportSize.width > 0, viewportSize.height > 0 else {
-            return false
-        }
-        
-        // Camera-space depth of the world point (along camera -Z axis)
-        let w4 = simd_float4(worldPoint.x, worldPoint.y, worldPoint.z, 1.0)
-        let camSpace = viewMatrix * w4
-        let pointDepth = -camSpace.z
-        guard pointDepth > 0 else { return false }
-        
-        // Screen point → normalised viewport → camera image UV (via inverse display transform)
-        let normScreen = CGPoint(
-            x: screenPoint.x / viewportSize.width,
-            y: screenPoint.y / viewportSize.height
-        )
-        let camUV = normScreen.applying(displayTransform.inverted())
-        
-        let px = min(max(Int(camUV.x * CGFloat(depthWidth)), 0), depthWidth - 1)
-        let py = min(max(Int(camUV.y * CGFloat(depthHeight)), 0), depthHeight - 1)
-        
-        let sceneDepth = depthData[py * depthWidth + px]
-        
-        // Real surface is closer than the marker → marker is behind a wall/surface
-        return sceneDepth > 0.1 && sceneDepth < pointDepth - 0.3
+    /// Map a local ENU offset (metres, East-North-Up) to an ARKit world-space
+    /// point, anchored to the camera's current world position.
+    ///
+    /// ARKit's `gravityAndHeading` frame is +X = East, +Y = Up, −Z = North,
+    /// and the world origin is the session-start pose — so we offset by the
+    /// camera's translation (columns.3) to keep markers welded to the user as
+    /// the camera drifts. This is the SINGLE projection shared by the renderer
+    /// (PeakOverlayView/HorizonOverlayView) and the occlusion-target builder
+    /// so they can never diverge.
+    func worldPoint(east: Double, up: Double, north: Double) -> simd_float3 {
+        let c = cameraTransform.columns.3
+        return simd_float3(Float(east) + c.x, Float(up) + c.y, Float(-north) + c.z)
     }
-    
+
     /// Project a world-space 3D point (x,y,z) to screen coordinates (points).
     /// Returns nil if the point is behind the camera.
     func projectToScreen(_ worldPoint: simd_float3) -> CGPoint? {

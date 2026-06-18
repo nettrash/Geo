@@ -21,6 +21,16 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     var closestMountainDistance: Double? = nil
     var highestMountain: MountainInfo? = nil
     var highestMountainDistance: Double? = nil
+    /// The closest peak while the user is within `summitProximityRadius` of it
+    /// — drives the "log this ascent?" summit-log prompt. `nil` when no peak is
+    /// close. Set continuously in `refreshCloserMountain`.
+    var nearbySummitCandidate: MountainInfo? = nil
+    /// Which set (`highest`/`sevenPeaks`/`snowLeopardOfRussia`) the candidate
+    /// belongs to, captured for the trophy-case grouping.
+    var nearbySummitSet: String? = nil
+    /// Horizontal radius (m) within which we offer to log a summit. Manual
+    /// confirm only — barometric altitude bias means we never auto-log.
+    private let summitProximityRadius: Double = 500
     var lastVisit: CLVisit? = nil
     var allowTracking: Bool = true
 
@@ -28,7 +38,17 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     private var trackingStepLocation: CLLocation? = nil
     private let horizontalStep: CGFloat = 1000 //1000m
     private let verticalStep: CGFloat = 50 //50m
+    /// Clock for the history-save path and the daily-rollover check.
+    /// Written only by `refreshData()`; read only by the daily-rollover
+    /// day-compare in `didUpdateLocations`. Kept separate from the
+    /// tracking throttle so a history save can't perturb tracking
+    /// cadence and the day-compare uses a value the tracking gate
+    /// never clobbers (matches the Android split).
     private var lastInfoDate: Date = Date()
+    /// Throttle clock for the 15s real-time tracking gate. Written/read
+    /// only by the tracking path (`trackingRefresh()` and the gate in
+    /// `didUpdateLocations` / `onBarometerUpdated`).
+    private var lastTrackingDate: Date = Date()
     private let trackingStep: TimeInterval = 15 // 15 second
     
     /// Last barometer pressure recorded for step-based history
@@ -66,25 +86,44 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     }
     
     //Location
-    private func startLocationMonitor() {
+    func startLocationMonitor() {
         self.locationManager?.startUpdatingLocation()
     }
-    
-    private func stopLocationMonitor() {
+
+    func stopLocationMonitor() {
         self.locationManager?.stopUpdatingLocation()
     }
         
     //CLLocationManagerDelegate
     @MainActor func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let latestLocation = locations.last else { return }
+        // Ignore stale/low-quality fixes. The first delivered fix is
+        // often a stale cached location that would seed a misleading
+        // first point: drop anything older than ~10s or with a
+        // horizontal accuracy worse than ~100m.
+        if abs(latestLocation.timestamp.timeIntervalSinceNow) > 10 ||
+            latestLocation.horizontalAccuracy > 100 {
+            return
+        }
+        // A negative horizontalAccuracy means the location fix is
+        // invalid; don't seed/record from it (avoids writing a phantom
+        // (0,0) coordinate into history/closest-mountain/tracking).
+        let positionValid = latestLocation.horizontalAccuracy >= 0
+        let altitudeValid = latestLocation.verticalAccuracy >= 0
+        guard positionValid else { return }
         self.location = latestLocation
         refreshCloserMountain()
         let lastInfoComponents = Calendar.current.dateComponents([.day], from: self.lastInfoDate)
         let infoComponent = Calendar.current.dateComponents([.day], from: Date())
-        
+
         if let step = self.stepLocation {
+            // Only let the altitude delta trigger a record when this
+            // fix's altitude is valid (verticalAccuracy >= 0); a
+            // negative verticalAccuracy means altitude is unreliable.
+            let altitudeStepped = altitudeValid &&
+                abs(step.altitude - latestLocation.altitude) > self.verticalStep
             if step.distance(from: latestLocation) > self.horizontalStep ||
-                abs(step.altitude - latestLocation.altitude) > self.verticalStep ||
+                altitudeStepped ||
                 lastInfoComponents.day != infoComponent.day {
                 self.stepLocation = latestLocation.copy() as? CLLocation
                 refreshData()
@@ -98,7 +137,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             if self.trackingStepLocation == nil {
                 self.trackingStepLocation = latestLocation.copy() as? CLLocation
                 self.trackingRefresh()
-            } else if self.lastInfoDate.addingTimeInterval(self.trackingStep) <= Date() {
+            } else if self.lastTrackingDate.addingTimeInterval(self.trackingStep) <= Date() {
                 self.trackingStepLocation = latestLocation.copy() as? CLLocation
                 self.trackingRefresh()
             }
@@ -133,7 +172,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         // showing both barometer and GPS data in parallel.
         if self.allowTracking && self.location != nil {
             self.trackingStepLocation = self.location?.copy() as? CLLocation
-            if self.lastInfoDate.addingTimeInterval(self.trackingStep) <= Date() {
+            if self.lastTrackingDate.addingTimeInterval(self.trackingStep) <= Date() {
                 self.trackingRefresh()
             }
         }
@@ -201,31 +240,64 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         }
         
         app?.history.addTrackingInformation(trackingLocation, self.barometer)
-        self.lastInfoDate = Date()
+        self.lastTrackingDate = Date()
     }
     
+    /// Which curated set a peak belongs to. Seven Summits / Snow Leopard take
+    /// precedence over "highest" so any peak that appears in more than one set
+    /// is grouped by the more specific trophy.
+    private func summitSet(for mountain: MountainInfo) -> String {
+        if mountainsData?.sevenPeaks?.mountains?.contains(where: { $0.id == mountain.id }) == true { return "sevenPeaks" }
+        if mountainsData?.snowLeopardOfRussia?.mountains?.contains(where: { $0.id == mountain.id }) == true { return "snowLeopardOfRussia" }
+        return "highest"
+    }
+
     func refreshCloserMountain() {
         guard let loc = self.location else {
             self.closestMountain = nil
+            self.nearbySummitCandidate = nil
+            self.nearbySummitSet = nil
             return
         }
         var m: [MountainInfo] = []
         m.append(contentsOf: self.mountainsData?.highest?.mountains ?? [])
         m.append(contentsOf: self.mountainsData?.sevenPeaks?.mountains ?? [])
         m.append(contentsOf: self.mountainsData?.snowLeopardOfRussia?.mountains ?? [])
+        // Drop coordinate-less mountains: without this they collapse to
+        // a phantom (0,0) and can wrongly win the nearest search. Check the
+        // inner latitude/longitude too (both are Optional), so a half-null
+        // coordinate can't still become a phantom (0, y) / (x, 0).
+        m = m.filter { $0.coordinates?.latitude != nil && $0.coordinates?.longitude != nil }
         if let v = m.min(by: { (a: MountainInfo, b: MountainInfo) -> Bool in
             loc.distance(from: CLLocation(latitude: a.coordinates?.latitude ?? 0, longitude: a.coordinates?.longitude ?? 0)) < loc.distance(from: CLLocation(latitude: b.coordinates?.latitude ?? 0, longitude: b.coordinates?.longitude ?? 0))
         }) {
             self.closestMountain = v
             let distance = loc.distance(from: CLLocation(latitude: v.coordinates?.latitude ?? 0, longitude: v.coordinates?.longitude ?? 0))
             self.closestMountainDistance = distance
-            let distanceH = loc.distance(from: CLLocation(latitude: self.highestMountain?.coordinates?.latitude ?? 0, longitude: self.highestMountain?.coordinates?.longitude ?? 0))
-            self.highestMountainDistance = distanceH
+            // Offer to log the ascent only when genuinely near the summit.
+            if distance < summitProximityRadius {
+                self.nearbySummitCandidate = v
+                self.nearbySummitSet = summitSet(for: v)
+            } else {
+                self.nearbySummitCandidate = nil
+                self.nearbySummitSet = nil
+            }
+            if let hm = self.highestMountain, let c = hm.coordinates,
+               let hLat = c.latitude, let hLon = c.longitude {
+                let distanceH = loc.distance(from: CLLocation(latitude: hLat, longitude: hLon))
+                self.highestMountainDistance = distanceH
+            } else {
+                // No valid highest-mountain coordinates → clear rather than
+                // leave a stale distance (the value is optional).
+                self.highestMountainDistance = nil
+            }
         } else {
             self.closestMountain = nil
+            self.nearbySummitCandidate = nil
+            self.nearbySummitSet = nil
         }
     }
-    
+
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         if status == .notDetermined { return }
         

@@ -11,6 +11,7 @@ import CoreLocation
 
 struct HighestMountainInformationView: View {
     @State var location: Location?;
+    var motion: DeviceMotionManager?
 
     var body: some View {
         ZStack {
@@ -46,6 +47,13 @@ struct HighestMountainInformationView: View {
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .padding()
+                }
+
+                if let motion {
+                    PeakBearingRow(userCoordinate: location?.location?.coordinate,
+                                   peakLatitude: location?.highestMountain?.coordinates?.latitude,
+                                   peakLongitude: location?.highestMountain?.coordinates?.longitude,
+                                   motion: motion)
                 }
 
                 HStack(alignment: .top) {
@@ -148,5 +156,5 @@ struct HighestMountainInformationView: View {
 }
 
 #Preview {
-    HighestMountainInformationView(location: nil)
+    HighestMountainInformationView(location: nil, motion: nil)
 }

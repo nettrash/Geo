@@ -9,16 +9,15 @@ import SwiftUI
 import CoreLocation
 import simd
 
-/// Overlay view that positions peak markers and history points on screen
-/// using ARKit's camera view-projection matrix for pixel-perfect alignment
-/// with the camera feed. Points are locked to their real-world GPS positions.
+/// Overlay view that positions peak markers on screen using ARKit's camera
+/// view-projection matrix for pixel-perfect alignment with the camera feed.
+/// Markers are locked to their real-world GPS positions.
 ///
-/// Points whose IDs appear in `occludedIDs` are hidden (behind real-world geometry).
-/// Nearby points (<100m) are also hidden until `isSceneReady` to prevent briefly
-/// showing points that should be occluded before ARKit has scanned the environment.
+/// Peaks whose IDs appear in `occludedIDs` are hidden (behind real-world geometry).
+/// Nearby peaks (<100m) are also hidden until `isSceneReady` to prevent briefly
+/// showing peaks that should be occluded before ARKit has scanned the environment.
 struct PeakOverlayView: View {
     let peaks: [NearbyPeak]
-    let historyPoints: [ARHistoryPoint]
     let userLocation: CLLocation?
     @ObservedObject var sessionManager: ARSessionManager
     @ObservedObject var occlusionManager: AROcclusionManager
@@ -32,30 +31,15 @@ struct PeakOverlayView: View {
     }
     
     var body: some View {
-        GeometryReader { geometry in
+        // Read the per-frame tick so SwiftUI re-evaluates this body every
+        // frame. The camera matrices are plain (non-@Published) properties
+        // on `sessionManager`, so this is the only signal that keeps the
+        // projected markers live as the device moves.
+        _ = sessionManager.frameTick
+        return GeometryReader { geometry in
             let screenWidth = geometry.size.width
             let screenHeight = geometry.size.height
-            
-            // History points (rendered first, behind peaks)
-            ForEach(historyPoints) { point in
-                if !occludedIDs.contains(point.id)
-                    && (point.distance >= nearbyThreshold || occlusionManager.isSceneReady) {
-                    if let screenPos = projectGPSPoint(
-                        coordinate: point.coordinate,
-                        altitude: point.gpsAltitude,
-                        screenWidth: screenWidth,
-                        screenHeight: screenHeight
-                    ) {
-                        HistoryPointMarkerView(point: point)
-                            .position(x: screenPos.x, y: screenPos.y)
-                            .animation(.linear(duration: 1.0 / 30.0), value: screenPos)
-                            .opacity(opacityForDistance(point.distance, maxDistance: 50000) * 0.85)
-                            .scaleEffect(scaleForDistance(point.distance, maxDistance: 50000))
-                    }
-                }
-            }
-            
-            // Peaks (rendered on top)
+
             ForEach(peaks) { peak in
                 if !occludedIDs.contains(peak.id)
                     && (peak.distance >= nearbyThreshold || occlusionManager.isSceneReady) {
@@ -103,13 +87,9 @@ struct PeakOverlayView: View {
         // The viewMatrix transforms ARKit world-space points (origin = session start).
         // Without the offset the direction to the peak drifts by however much
         // the camera has moved since the session began — very visible for nearby points.
-        // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North
-        let camCol = sessionManager.cameraTransform.columns.3
-        let worldPoint = simd_float3(
-            Float(enu.east)  + camCol.x,
-            Float(enu.up)    + camCol.y,
-            Float(-enu.north) + camCol.z
-        )
+        // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North.
+        // Shared projection so the occlusion-target builder can't diverge.
+        let worldPoint = sessionManager.worldPoint(east: enu.east, up: enu.up, north: enu.north)
         
         // 3. Project to screen via AR camera matrices
         guard let screenPos = sessionManager.projectToScreen(worldPoint) else {
