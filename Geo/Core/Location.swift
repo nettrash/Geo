@@ -35,7 +35,13 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     var allowTracking: Bool = true
 
     private var stepLocation: CLLocation? = nil
-    private var trackingStepLocation: CLLocation? = nil
+    /// True once the first real-time tracking sample has been recorded.
+    /// Lets `trackingRefresh()` record the first sample immediately, then
+    /// throttle the rest to `trackingStep`. Replaces the old
+    /// `trackingStepLocation` seed marker, which conflated "not started
+    /// yet" with "no current GPS fix" and so blocked barometer-only
+    /// tracking when GPS was unavailable.
+    private var trackingSeeded: Bool = false
     private let horizontalStep: CGFloat = 1000 //1000m
     private let verticalStep: CGFloat = 50 //50m
     /// Clock for the history-save path and the daily-rollover check.
@@ -50,6 +56,14 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     /// `didUpdateLocations` / `onBarometerUpdated`).
     private var lastTrackingDate: Date = Date()
     private let trackingStep: TimeInterval = 15 // 15 second
+    /// A GPS fix older than this is treated as "GPS unavailable" for the
+    /// real-time tracking graph: the barometer path fires every
+    /// `trackingStep`, and if the last fix hasn't refreshed within this
+    /// window the GPS series records a gap (rather than freezing the orange
+    /// line at a stale altitude while the barometer keeps moving). Well
+    /// above the ~1 Hz cadence a live GPS delivers, so a working fix is
+    /// never mistaken for stale.
+    private let trackingGPSStaleness: TimeInterval = 60
     
     /// Last barometer pressure recorded for step-based history
     private var lastRecordedPressure: Double = 0
@@ -133,14 +147,11 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             refreshData()
         }
         
+        // `self.location` is already the fresh fix (set above), so let the
+        // self-throttling tracking recorder read it directly. It seeds the
+        // first sample immediately, then honours `trackingStep`.
         if self.allowTracking {
-            if self.trackingStepLocation == nil {
-                self.trackingStepLocation = latestLocation.copy() as? CLLocation
-                self.trackingRefresh()
-            } else if self.lastTrackingDate.addingTimeInterval(self.trackingStep) <= Date() {
-                self.trackingStepLocation = latestLocation.copy() as? CLLocation
-                self.trackingRefresh()
-            }
+            self.trackingRefresh()
         }
 
         // Write combined barometer + GPS data to widget
@@ -167,14 +178,14 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             }
         }
         
-        // Update tracking on every barometer reading (subject to time interval),
-        // regardless of pressure step — this keeps the real-time tracking graph
-        // showing both barometer and GPS data in parallel.
-        if self.allowTracking && self.location != nil {
-            self.trackingStepLocation = self.location?.copy() as? CLLocation
-            if self.lastTrackingDate.addingTimeInterval(self.trackingStep) <= Date() {
-                self.trackingRefresh()
-            }
+        // Update tracking on every barometer reading (subject to the time
+        // interval), regardless of pressure step AND regardless of whether a
+        // GPS fix exists. This is what keeps the tracking graph's barometer
+        // series live when GPS is unavailable (indoors / denied / no fix yet)
+        // — with no usable fix the GPS series records a gap and only the
+        // barometer line is drawn. `trackingRefresh()` self-throttles.
+        if self.allowTracking {
+            self.trackingRefresh()
         }
     }
     
@@ -232,15 +243,50 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
     }
     
+    /// Append one real-time tracking sample to the tracking graph, subject
+    /// to the `trackingStep` throttle. Driven by BOTH the GPS path
+    /// (`didUpdateLocations`) and the barometer path (`onBarometerUpdated`)
+    /// so the barometer series keeps updating even when GPS is unavailable.
+    /// Each series is included only when it currently has usable data:
+    ///
+    /// - Barometer: only on devices that actually have the sensor
+    ///   (`available`); otherwise the barometer series records a gap.
+    /// - GPS: only when there's a *current* fix with a usable altitude —
+    ///   present, non-negative vertical accuracy, and fresher than
+    ///   `trackingGPSStaleness`. A missing / stale / vertically-invalid fix
+    ///   records a gap so the GPS line breaks instead of freezing at the
+    ///   last altitude while the barometer keeps moving.
+    ///
+    /// The first sample is recorded immediately; later ones honour
+    /// `trackingStep`. The shared `lastTrackingDate` throttle means the two
+    /// paths cooperate — whichever fires in a given window records one
+    /// sample that reads both sensors at that instant.
     @MainActor func trackingRefresh() {
-        guard self.allowTracking,
-              let trackingLocation = self.trackingStepLocation else {
-            self.trackingStepLocation = nil
-            return
+        guard self.allowTracking else { return }
+        if self.trackingSeeded,
+           self.lastTrackingDate.addingTimeInterval(self.trackingStep) > Date() {
+            return   // throttled — a sample was recorded < trackingStep ago
         }
-        
-        app?.history.addTrackingInformation(trackingLocation, self.barometer)
+        self.trackingSeeded = true
         self.lastTrackingDate = Date()
+
+        let barometerHeight: CGFloat?
+        if self.barometer?.available == true, let h = self.barometer?.height {
+            barometerHeight = CGFloat(h)
+        } else {
+            barometerHeight = nil
+        }
+
+        let gpsAltitude: CGFloat?
+        if let loc = self.location,
+           loc.verticalAccuracy >= 0,
+           abs(loc.timestamp.timeIntervalSinceNow) <= trackingGPSStaleness {
+            gpsAltitude = CGFloat(loc.altitude)
+        } else {
+            gpsAltitude = nil
+        }
+
+        app?.history.addTrackingInformation(barometerHeight: barometerHeight, gpsAltitude: gpsAltitude)
     }
     
     /// Which curated set a peak belongs to. Seven Summits / Snow Leopard take

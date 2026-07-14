@@ -321,32 +321,42 @@ final class History: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
     
-    func addTrackingInformation(_ location: CLLocation, _ barometer: Barometer?) {
-        
+    /// Append one real-time tracking sample to the tracking graph. Both
+    /// series values are optional and independent: passing `nil` records a
+    /// `.nan` gap for that series, so its line breaks (and auto-scaling
+    /// ignores it) rather than collapsing to sea level. This is what keeps
+    /// the barometer (white) line live when GPS is unavailable — the caller
+    /// passes `gpsAltitude: nil` and only the barometer series is drawn;
+    /// likewise a device with no barometer draws only the GPS (orange) line.
+    /// The caller (`Location`) owns "what counts as usable" for each sensor.
+    func addTrackingInformation(barometerHeight: CGFloat?, gpsAltitude: CGFloat?) {
+
+        // Seed the ring buffer with NaN placeholders so the graph starts
+        // empty (nothing drawn) and fills from the right as real samples
+        // arrive, instead of showing a misleading flat line at sea level
+        // until the first ~30 real samples scroll the zeros out.
         if self.trackingAltitudeDataSet.count == 0 {
             while self.trackingAltitudeDataSet.count < amountOfValuesToShow {
-                self.trackingAltitudeDataSet.append(DataPoint(Value: [0, 0], Legend: trackingDateFormatter.string(from:Date())))
+                self.trackingAltitudeDataSet.append(DataPoint(Value: [.nan, .nan], Legend: trackingDateFormatter.string(from:Date())))
             }
         }
-        
-        let barometerHeight = barometer?.height ?? 0
-        let dataItem = DataPoint(Value: [barometerHeight, location.altitude], Legend: trackingDateFormatter.string(from:Date()))
+
+        let dataItem = DataPoint(Value: [barometerHeight ?? .nan, gpsAltitude ?? .nan],
+                                 Legend: trackingDateFormatter.string(from:Date()))
         self.trackingAltitudeDataSet.append(dataItem)
-        
+
         while self.trackingAltitudeDataSet.count > amountOfValuesToShow {
             self.trackingAltitudeDataSet.removeFirst()
         }
-        
+
+        // Auto-scale over every finite sample across both series; NaN gaps
+        // are ignored so a missing GPS/barometer series never skews the
+        // window. With nothing finite yet, keep the default altitude range.
         self.trackingAltitudeDataSetMin = altitudeMinDefault
         self.trackingAltitudeDataSetMax = altitudeMaxDefault
-        
-        guard let minDataItem = trackingAltitudeDataSet.min(by: { $0.Value[0] < $1.Value[0] }),
-              let maxDataItem = trackingAltitudeDataSet.max(by: { $0.Value[0] < $1.Value[0] }),
-              minDataItem.Value.count >= 2,
-              maxDataItem.Value.count >= 2 else { return }
-        
-        let minValue = min(minDataItem.Value[0], minDataItem.Value[1])
-        let maxValue = max(maxDataItem.Value[0], maxDataItem.Value[1])
+
+        let finite = trackingAltitudeDataSet.flatMap { $0.Value }.filter { $0.isFinite }
+        guard let minValue = finite.min(), let maxValue = finite.max() else { return }
 
         if (minValue - 250 > altitudeMinDefault) {
             self.trackingAltitudeDataSetMin = minValue - 50
