@@ -89,6 +89,80 @@ final class GeometryTests: XCTestCase {
         XCTAssertLessThan(enu.up, -150)
     }
 
+    // MARK: - DEM-anchored observer altitude
+
+    func testEffectiveObserverAltitudeOnGroundSnapsToDEMEye() {
+        // Sensor within ±10 m of DEM ground + 1.7 m eye height → snap to
+        // the DEM-consistent eye altitude: self-consistency with the
+        // terrain being drawn beats sensor noise.
+        let alt = Geometry.effectiveObserverAltitude(sensor: 505, demGround: 500)
+        XCTAssertEqual(alt, 501.7, accuracy: 1e-9)
+        // Boundary: exactly at the +10 m tolerance edge still snaps.
+        XCTAssertEqual(Geometry.effectiveObserverAltitude(sensor: 511.7, demGround: 500),
+                       501.7, accuracy: 1e-9)
+    }
+
+    func testEffectiveObserverAltitudeElevatedKeepsSensor() {
+        // More than 10 m ABOVE DEM + eye height → the user is genuinely
+        // elevated (tower, cable car, aircraft): keep the sensor value.
+        let alt = Geometry.effectiveObserverAltitude(sensor: 560, demGround: 500)
+        XCTAssertEqual(alt, 560, accuracy: 1e-9)
+    }
+
+    func testEffectiveObserverAltitudeUndergroundSnapsToDEMEye() {
+        // More than 10 m BELOW DEM ground is impossible (sensor drift) →
+        // snap to DEM + eye height.
+        let alt = Geometry.effectiveObserverAltitude(sensor: 480, demGround: 500)
+        XCTAssertEqual(alt, 501.7, accuracy: 1e-9)
+    }
+
+    func testEffectiveObserverAltitudeNoDEMFallsBackToSensor() {
+        // No DEM value → current behaviour: the (baro-preferred, else GPS)
+        // sensor value passes through unchanged.
+        let alt = Geometry.effectiveObserverAltitude(sensor: 480, demGround: nil)
+        XCTAssertEqual(alt, 480, accuracy: 1e-9)
+    }
+
+    // MARK: - Manual compass alignment (ENU rotation + pan conversion)
+
+    func testRotateENUZeroDegreesIsIdentity() {
+        let r = Geometry.rotateENU(east: 123.4, north: -56.7, clockwiseDegrees: 0)
+        XCTAssertEqual(r.east, 123.4, accuracy: 1e-9)
+        XCTAssertEqual(r.north, -56.7, accuracy: 1e-9)
+    }
+
+    func testRotateENUPlus90MapsNorthToEast() {
+        // Compass-sense rotation: +90° takes a due-North point (bearing 0)
+        // to due East (bearing 90) — the overlay shifts clockwise/right.
+        let r = Geometry.rotateENU(east: 0, north: 100, clockwiseDegrees: 90)
+        XCTAssertEqual(r.east, 100, accuracy: 1e-9)
+        XCTAssertEqual(r.north, 0, accuracy: 1e-9)
+    }
+
+    func testRotateENUMinus90MapsNorthToWest() {
+        // −90° takes due North (bearing 0) to due West (bearing 270).
+        let r = Geometry.rotateENU(east: 0, north: 100, clockwiseDegrees: -90)
+        XCTAssertEqual(r.east, -100, accuracy: 1e-9)
+        XCTAssertEqual(r.north, 0, accuracy: 1e-9)
+    }
+
+    func testAlignmentPanConversionSignAndScale() {
+        // 8 pt of rightward pan = +1° of alignment; sign follows the finger.
+        XCTAssertEqual(alignmentOffsetDegrees(base: 0, panTranslationX: 8), 1, accuracy: 1e-9)
+        XCTAssertEqual(alignmentOffsetDegrees(base: 0, panTranslationX: -16), -2, accuracy: 1e-9)
+        // Pan continues from the latched base, it doesn't restart at zero.
+        XCTAssertEqual(alignmentOffsetDegrees(base: 5, panTranslationX: 24), 8, accuracy: 1e-9)
+    }
+
+    func testAlignmentPanConversionClampsToPlusMinus30() {
+        // A screen-crossing fling can't exceed the ±30° clamp in either
+        // direction, whatever the starting base.
+        XCTAssertEqual(alignmentOffsetDegrees(base: 0, panTranslationX: 10_000), 30, accuracy: 1e-9)
+        XCTAssertEqual(alignmentOffsetDegrees(base: 0, panTranslationX: -10_000), -30, accuracy: 1e-9)
+        XCTAssertEqual(alignmentOffsetDegrees(base: 29, panTranslationX: 80), 30, accuracy: 1e-9)
+        XCTAssertEqual(alignmentOffsetDegrees(base: -29, panTranslationX: -80), -30, accuracy: 1e-9)
+    }
+
     // MARK: - Bearing
 
     func testBearingDueNorth() {

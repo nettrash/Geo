@@ -15,6 +15,21 @@ enum Geometry {
     /// Earth's mean radius in metres.
     static let earthRadius: Double = 6_371_000
 
+    /// Standard terrestrial refraction coefficient (k ≈ 0.13). Light
+    /// grazing the surface bends *down* toward the Earth, so distant
+    /// terrain appears HIGHER than pure geometry suggests. Surveyors
+    /// model this by replacing the Earth radius with an effective
+    /// radius R/(1−k) wherever a curvature drop is computed.
+    static let refractionCoefficient: Double = 0.13
+
+    /// Effective Earth radius with standard refraction folded in
+    /// (~7 323 km). Every curvature-drop term along the AR sightline —
+    /// the skyline picker, the horizon overlay, the peak welds and the
+    /// AR markers — must use THIS radius, and the same one everywhere,
+    /// or distant ranges render visibly too low (and the pieces detach
+    /// from each other).
+    static let effectiveEarthRadius: Double = earthRadius / (1 - refractionCoefficient)
+
     /// Approximate metres per degree of latitude (WGS-84 mean).
     static let metersPerDegreeLatitude: Double = 111_320
 
@@ -35,12 +50,15 @@ enum Geometry {
     ///
     /// Includes Earth-curvature correction for points more than ~5 km
     /// away — without it distant peaks visibly "float" above the
-    /// horizon.
+    /// horizon. The default radius folds in standard refraction: every
+    /// caller is an AR sight-line projection (peak markers, occlusion,
+    /// tap hit-tests), and those must agree with the skyline, which is
+    /// refraction-corrected too.
     static func gpsToENU(from origin: CLLocationCoordinate2D,
                          originAltitude: Double,
                          to target: CLLocationCoordinate2D,
                          targetAltitude: Double,
-                         radius R: Double = earthRadius)
+                         radius R: Double = effectiveEarthRadius)
         -> (east: Double, north: Double, up: Double)
     {
         let latRef = origin.latitude * .pi / 180
@@ -96,6 +114,68 @@ enum Geometry {
             latitude: lat2 * 180 / .pi,
             longitude: ((lon2 * 180 / .pi) + 540).truncatingRemainder(dividingBy: 360) - 180
         )
+    }
+
+    /// Rotate a local ENU horizontal offset about the vertical axis by
+    /// `clockwiseDegrees`, in the COMPASS sense: positive degrees move a
+    /// point at bearing θ to bearing θ + degrees (clockwise when viewed
+    /// from above — N→E→S→W). Backs the manual compass-alignment knob
+    /// (`ARSessionManager.headingAlignmentDeg`): rotating all drawn
+    /// content to larger bearings shifts the overlay RIGHT on screen.
+    ///
+    ///     east'  = east·cos + north·sin
+    ///     north' = north·cos − east·sin
+    ///
+    /// (Check: +90° maps due-North (0, d) to due-East (d, 0).) Pure so
+    /// the sign convention is pinned by unit tests.
+    static func rotateENU(east: Double, north: Double,
+                          clockwiseDegrees: Double) -> (east: Double, north: Double) {
+        guard clockwiseDegrees != 0 else { return (east, north) }
+        let r = clockwiseDegrees * .pi / 180
+        let c = cos(r), s = sin(r)
+        return (east * c + north * s, north * c - east * s)
+    }
+
+    /// Observer eye height above local ground, metres. Used when the
+    /// skyline anchors the observer's altitude to the DEM cell they are
+    /// standing on (`effectiveObserverAltitude`).
+    static let observerEyeHeight: Double = 1.7
+
+    /// Sensor-vs-DEM disagreement (metres) beyond which we stop trusting
+    /// the DEM anchor and believe the sensor instead (the user may be on
+    /// a tower, cable car, aircraft, …).
+    static let observerAltitudeTolerance: Double = 10
+
+    /// The observer altitude every AR consumer (skyline picker, horizon
+    /// overlay, welded pills, markers, occlusion, tap hit-tests) should
+    /// use, reconciling the barometer/GPS sensor value with the DEM cell
+    /// the observer is standing on.
+    ///
+    /// Rationale: the silhouette is drawn FROM the DEM, so when the user
+    /// is standing on the terrain being drawn, self-consistency with that
+    /// terrain beats absolute sensor accuracy — a 10–30 m GPS/baro error
+    /// tilts the whole near silhouette up or down. Decision:
+    ///
+    /// - no DEM value → `sensor` unchanged (current baro>0-else-GPS input);
+    /// - sensor within ±`tolerance` of `demGround + eyeHeight` → snap to
+    ///   `demGround + eyeHeight` (standing on the modelled terrain);
+    /// - sensor MORE than `tolerance` ABOVE `demGround + eyeHeight` → keep
+    ///   `sensor` (genuinely elevated: tower, cable car, aircraft);
+    /// - otherwise (at/below eye level, incl. >`tolerance` below DEM
+    ///   ground — underground is impossible, that's sensor drift) → snap
+    ///   to `demGround + eyeHeight`.
+    ///
+    /// Pure and total so it unit-tests deterministically.
+    static func effectiveObserverAltitude(sensor: Double,
+                                          demGround: Double?,
+                                          eyeHeight: Double = observerEyeHeight,
+                                          tolerance: Double = observerAltitudeTolerance) -> Double {
+        guard let demGround else { return sensor }
+        let demEye = demGround + eyeHeight
+        // Only a sensor reading well ABOVE the terrain eye line survives;
+        // everything else (within tolerance, below eye level, underground)
+        // snaps to the DEM-consistent eye altitude.
+        return sensor > demEye + tolerance ? sensor : demEye
     }
 
     /// Apparent altitude angle (radians, positive = above horizontal)

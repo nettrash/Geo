@@ -43,6 +43,28 @@ class ARSessionManager: ObservableObject {
     /// Whether the AR session has started delivering frames.
     @Published var isTracking: Bool = false
 
+    /// Manual compass-alignment offset, degrees. The device compass that
+    /// seeds ARKit's `gravityAndHeading` frame is routinely 5–15° off,
+    /// sliding the whole AR overlay sideways no matter how correct the
+    /// geometry is; this knob lets the user drag the overlay back onto
+    /// the real panorama. Applied inside `worldPoint(east:up:north:)` —
+    /// the SINGLE projection every overlay element (skyline, cardinal
+    /// labels, welded pills, AR markers, occlusion targets, tap
+    /// hit-tests, share render) goes through — so everything shifts
+    /// coherently with one value.
+    ///
+    /// SIGN CONVENTION: positive rotates all drawn content CLOCKWISE in
+    /// compass bearing (a point drawn at bearing θ renders where θ +
+    /// offset would) — because screen-right corresponds to increasing
+    /// azimuth relative to the camera, a POSITIVE offset moves the
+    /// overlay RIGHT on screen, matching a rightward drag. Consumers
+    /// that window content by camera heading must compensate: the true
+    /// bearing at the screen centre is (cameraHeading − offset).
+    ///
+    /// Session-only by design (plain published state, never persisted):
+    /// compass error is different every session.
+    @Published var headingAlignmentDeg: Double = 0
+
     /// The backing `ARSCNView`, set by `ARCameraView`'s coordinator. Held
     /// weakly so the session manager never keeps the camera view alive past
     /// the Nature tab. Used to grab the freeze-frame for sharing.
@@ -134,9 +156,17 @@ class ARSessionManager: ObservableObject {
     /// the camera drifts. This is the SINGLE projection shared by the renderer
     /// (PeakOverlayView/HorizonOverlayView) and the occlusion-target builder
     /// so they can never diverge.
+    ///
+    /// The manual compass alignment (`headingAlignmentDeg`) is applied HERE,
+    /// rotating (east, north) about the vertical axis, so every consumer of
+    /// this choke point — skyline, cardinal labels, welded pills, markers,
+    /// occlusion targets, hit-tests, share render — shifts coherently with
+    /// the one knob. See the property doc for the sign derivation.
     func worldPoint(east: Double, up: Double, north: Double) -> simd_float3 {
+        let (e, n) = Geometry.rotateENU(east: east, north: north,
+                                        clockwiseDegrees: headingAlignmentDeg)
         let c = cameraTransform.columns.3
-        return simd_float3(Float(east) + c.x, Float(up) + c.y, Float(-north) + c.z)
+        return simd_float3(Float(e) + c.x, Float(up) + c.y, Float(-n) + c.z)
     }
 
     /// Project a world-space 3D point (x,y,z) to screen coordinates (points).

@@ -32,6 +32,12 @@ struct HorizonOverlayView: View {
     /// when available because it tends to be much more accurate
     /// vertically.
     let barometerAltitude: Double?
+    /// The DEM-anchored observer altitude the skyline was computed with
+    /// (`SkylineCalculator.observerAltitudeUsed`). When present it wins
+    /// over the baro/GPS expression so the drawn line, the welded pills
+    /// and the picker all share ONE altitude; `nil` (before the first
+    /// skyline pass) falls back to the baro-preferred sensor value.
+    let observerAltitudeUsed: Double?
     /// Real-terrain skyline samples sorted by bearing. Empty array
     /// triggers the geometric-horizon fallback.
     let skylineSamples: [SkylineSample]
@@ -41,10 +47,15 @@ struct HorizonOverlayView: View {
     let peaks: [NearbyPeak]
     @ObservedObject var sessionManager: ARSessionManager
 
-    /// Earth radius (mean) in metres.
-    private let earthRadius: Double = 6_371_000
+    /// Effective Earth radius with standard refraction folded in — MUST
+    /// match the radius `SkylineCalculator` picks winners with, or the
+    /// drawn line detaches from the computed silhouette.
+    private let earthRadius: Double = Geometry.effectiveEarthRadius
 
-    /// One sample every `sampleStepDeg` degrees of bearing.
+    /// Geometric-fallback sampling: one sample every `sampleStepDeg`
+    /// degrees of bearing. The terrain skyline instead walks the
+    /// calculator's actual (non-uniform, adaptively refined) samples —
+    /// see `horizonLayout`.
     private let sampleStepDeg: Double = 1.0
 
     /// Half-width (in degrees) of the bearing window we sample around
@@ -90,12 +101,16 @@ struct HorizonOverlayView: View {
         }
 
         // Effective observer height above sea level in metres. The
-        // barometer reports an absolute altitude that stays exactly 0
-        // until its first sample lands (and permanently on barometer-less
-        // devices), so a non-positive value is treated as absent and we
-        // fall back to GPS altitude rather than clamping the observer to
-        // sea level.
-        let observerAltitude = barometerAltitude.flatMap { $0 > 0 ? $0 : nil } ?? userLoc.altitude
+        // DEM-anchored altitude the skyline was computed with wins when
+        // available (one source of truth across skyline/pills/markers);
+        // otherwise the barometer, which reports an absolute altitude that
+        // stays exactly 0 until its first sample lands (and permanently on
+        // barometer-less devices), so a non-positive value is treated as
+        // absent and we fall back to GPS altitude rather than clamping the
+        // observer to sea level.
+        let observerAltitude = observerAltitudeUsed
+            ?? barometerAltitude.flatMap { $0 > 0 ? $0 : nil }
+            ?? userLoc.altitude
         // Floor so very-low altitudes still produce a meaningful line.
         let h = max(observerAltitude, 1.5)
 
@@ -117,53 +132,33 @@ struct HorizonOverlayView: View {
         var headingDeg = atan2(Double(camFwdEast), Double(camFwdNorth)) * 180 / .pi
         if headingDeg < 0 { headingDeg += 360 }
 
-        let lower = headingDeg - headingHalfWindowDeg
-        let upper = headingDeg + headingHalfWindowDeg
+        // Bearing-window centre, compensated for the manual compass
+        // alignment: `worldPoint` rotates all drawn content by +offset (a
+        // point at true bearing θ renders where θ + offset would), so the
+        // TRUE bearing now facing the screen centre is
+        // (cameraHeading − offset). Windowing on the raw camera heading
+        // would cull visible content on one screen edge and waste the
+        // head-room on the other as the offset grows.
+        let contentHeadingDeg = headingDeg - sessionManager.headingAlignmentDeg
 
-        // Pre-sort the skyline once so we can do constant-time wrap
-        // lookups. Samples are at coarse bearings (e.g. every 6°);
-        // we linearly interpolate to the 1° grid we're rendering at.
+        let lower = contentHeadingDeg - headingHalfWindowDeg
+        let upper = contentHeadingDeg + headingHalfWindowDeg
+
         let skyline = skylineSamples
         let useSkyline = !skyline.isEmpty
 
         var segments: [[CGPoint]] = []
         var current: [CGPoint] = []
 
-        var bearingDeg = lower
-        while bearingDeg <= upper {
-            // Resolve (distance, altitude) for this bearing.
-            let (distance, altitude): (Double, Double) = {
-                guard useSkyline else {
-                    // Geometric: every horizon point is at sea level
-                    // (alt 0) at the geometric distance.
-                    return (geometricHorizonDist, 0)
-                }
-                let normalised = ((bearingDeg.truncatingRemainder(dividingBy: 360)) + 360)
-                    .truncatingRemainder(dividingBy: 360)
-                let interp = interpolateSkyline(at: normalised, samples: skyline)
-                // Use the sample's actual distance. We must NOT clip
-                // it to `geometricHorizonDist` — a peak whose
-                // elevation lifts its tip above the observer's eye
-                // line is visible past the sea-level geometric
-                // horizon, and clipping the distance while keeping
-                // the altitude would project it at the wrong
-                // horizontal range and badly inflate its apparent
-                // angle (a 5 km-tall peak at 150 km would render as
-                // if it were at 35 km). Samples that genuinely sit
-                // below the horizon get filtered later by
-                // `isWithinExtendedBounds` — their projected screen
-                // y falls off the bottom of the frame.
-                return (interp.distance, interp.altitude)
-            }()
-
-            // World-space position of the skyline point.
+        // Shared projection + segment assembly for one silhouette vertex.
+        // World-space position of the skyline point; `up` is the apparent
+        // rise relative to the observer including the Earth-curvature
+        // drop. For the geometric path this works out to exactly `-h` —
+        // the skyline lies *h* metres below eye level.
+        func appendSilhouettePoint(bearingDeg: Double, distance: Double, altitude: Double) {
             let theta = bearingDeg * .pi / 180.0
             let east  = distance * sin(theta)
             let north = distance * cos(theta)
-            // Apparent rise relative to the observer, including the
-            // Earth-curvature drop. For the geometric path this works
-            // out to exactly `-h` — the skyline lies *h* metres below
-            // eye level.
             let curvatureDrop = (distance * distance) / (2 * earthRadius)
             let up = (altitude - observerAltitude) - curvatureDrop
 
@@ -182,8 +177,49 @@ struct HorizonOverlayView: View {
                 if current.count >= 2 { segments.append(current) }
                 current = []
             }
+        }
 
-            bearingDeg += sampleStepDeg
+        if useSkyline {
+            // Terrain mode walks the calculator's ACTUAL samples so every
+            // rendered vertex IS a real skyline sample. Two reasons this
+            // must not be a fixed-step lattice: (1) re-interpolating between
+            // samples blends (distance, altitude) pairs linearly, but the
+            // apparent angle is non-linear in that pair, so wherever a near
+            // hill met a distant ridge the blend cut a V-notch *below* both
+            // real samples; (2) the adaptive bearing refinement inserts
+            // midpoint bearings at silhouette discontinuities, so the sample
+            // set is intentionally non-uniform — a lattice walk would skip
+            // exactly the extra detail it adds. Samples are selected by
+            // wrap-aware heading delta and sorted by that (unwrapped) delta
+            // so segments connect in screen order across the 0°/360° seam.
+            // A sample's distance is NOT clipped to `geometricHorizonDist` —
+            // a peak whose elevation lifts its tip above the observer's eye
+            // line is visible past the sea-level geometric horizon, and
+            // clipping the distance while keeping the altitude would project
+            // it at the wrong horizontal range and badly inflate its
+            // apparent angle. Samples that genuinely sit below the horizon
+            // get filtered by `isWithinExtendedBounds` — their projected
+            // screen y falls off the bottom of the frame.
+            let visible = skyline
+                .map { (sample: $0, delta: angleDelta($0.bearing, contentHeadingDeg)) }
+                .filter { abs($0.delta) <= headingHalfWindowDeg }
+                .sorted { $0.delta < $1.delta }
+            for entry in visible {
+                appendSilhouettePoint(bearingDeg: entry.sample.bearing,
+                                      distance: entry.sample.distance,
+                                      altitude: entry.sample.altitude)
+            }
+        } else {
+            // Geometric fallback keeps the fine fixed-step 1° grid (its
+            // line is smooth by construction): every horizon point is at
+            // sea level (alt 0) at the geometric distance.
+            var bearingDeg = lower
+            while bearingDeg <= upper {
+                appendSilhouettePoint(bearingDeg: bearingDeg,
+                                      distance: geometricHorizonDist,
+                                      altitude: 0)
+                bearingDeg += sampleStepDeg
+            }
         }
         if current.count >= 2 { segments.append(current) }
 
@@ -196,7 +232,7 @@ struct HorizonOverlayView: View {
         ]
         var labels: [HorizonLabel] = []
         for cd in cardinalDirections {
-            let angularDelta = abs(angleDelta(cd.deg, headingDeg))
+            let angularDelta = abs(angleDelta(cd.deg, contentHeadingDeg))
             guard angularDelta <= headingHalfWindowDeg else { continue }
 
             // Place the label at the geometric horizon at this bearing,
@@ -218,7 +254,7 @@ struct HorizonOverlayView: View {
         // skyline to match against (the geometric fallback has no terrain).
         let peakLabels = useSkyline
             ? weldedPeakLabels(peaks: peaks, skyline: skyline,
-                               observerAltitude: observerAltitude, headingDeg: headingDeg,
+                               observerAltitude: observerAltitude, headingDeg: contentHeadingDeg,
                                size: size, sessionManager: sessionManager)
             : []
 
@@ -228,47 +264,15 @@ struct HorizonOverlayView: View {
     /// Linear-interpolate the skyline `(distance, altitude)` at an
     /// arbitrary bearing in [0, 360). Uses circular wrap-around so a
     /// query at 358° interpolates between samples at 354° and 0°.
+    /// The terrain renderer now walks the actual samples directly, so
+    /// this remains only for arbitrary-bearing skyline queries — it
+    /// delegates to the shared `horizonSkylineValue` (same math, one
+    /// implementation) that the peak-weld/occlusion paths use.
     private func interpolateSkyline(at bearing: Double,
                                     samples: [SkylineSample])
         -> (distance: Double, altitude: Double)
     {
-        // Skyline samples are pre-sorted by bearing.
-        guard !samples.isEmpty else { return (0, 0) }
-        if samples.count == 1 {
-            return (samples[0].distance, samples[0].altitude)
-        }
-
-        // Find the first sample with bearing > query (O(log n) binary search).
-        // Both the "before the first sample" (hiIdx == 0) and "after the last
-        // sample" (hiIdx == count) cases wrap around to interpolate between the
-        // last and first samples.
-        var hiIdx = firstBearingAbove(bearing, in: samples)
-        let loIdx: Int
-        if hiIdx == 0 || hiIdx == samples.count {
-            loIdx = samples.count - 1
-            hiIdx = 0
-        } else {
-            loIdx = hiIdx - 1
-        }
-        let lo = samples[loIdx]
-        let hi = samples[hiIdx]
-
-        // Distance from `lo.bearing` to `bearing` and to `hi.bearing`,
-        // wrapping around 360°.
-        let span = wrap(hi.bearing - lo.bearing)
-        let pos  = wrap(bearing - lo.bearing)
-        let t = span == 0 ? 0 : min(max(pos / span, 0), 1)
-
-        return (
-            lo.distance + (hi.distance - lo.distance) * t,
-            lo.altitude + (hi.altitude - lo.altitude) * t
-        )
-    }
-
-    /// Map any angle to the half-open [0, 360) interval.
-    private func wrap(_ deg: Double) -> Double {
-        let d = deg.truncatingRemainder(dividingBy: 360)
-        return d < 0 ? d + 360 : d
+        horizonSkylineValue(at: bearing, samples: samples)
     }
 
     /// Smallest signed difference between two angles on a 360° circle,
@@ -329,7 +333,8 @@ struct PeakHorizonLabel: Identifiable, Equatable {
 func peakOnSilhouette(_ peak: NearbyPeak, skyline: [SkylineSample],
                       observerAltitude: Double) -> Bool {
     guard !peak.name.isEmpty, peak.distance >= 1_000, !skyline.isEmpty else { return false }
-    let earthRadius = 6_371_000.0
+    // Same refraction-corrected radius as the calculator and the overlay.
+    let earthRadius = Geometry.effectiveEarthRadius
     func angle(_ d: Double, _ alt: Double) -> Double {
         atan2((alt - observerAltitude) - (d * d) / (2 * earthRadius), max(d, 1))
     }
@@ -390,35 +395,124 @@ let peakHorizonLabelLift: CGFloat = 42
 /// `PEAK_LABEL_ROTATION_DEG`.
 let peakLabelRotationDegrees: Double = -75
 
+/// Pure screen-space interpolation for the weld anchor: given the two
+/// skyline samples bracketing a peak's bearing (each already projected to
+/// its OWN screen point) blend the two screen points by the wrap-aware
+/// bearing fraction. Because the drawn polyline connects exactly those
+/// projected sample points with straight screen segments, the result lands
+/// exactly ON the drawn segment — unlike the old world-space blend of
+/// (distance, altitude), whose non-linear projection could put the pill's
+/// dot visibly off the line. Wrap-aware: lo 354° / hi 0° with a query at
+/// 358° interpolates 2/3 of the way. Extracted pure for unit testing.
+func weldedAnchorScreenPoint(bearing: Double,
+                             loBearing: Double, hiBearing: Double,
+                             loScreen: CGPoint, hiScreen: CGPoint) -> CGPoint {
+    func wrap(_ deg: Double) -> Double {
+        let d = deg.truncatingRemainder(dividingBy: 360)
+        return d < 0 ? d + 360 : d
+    }
+    let span = wrap(hiBearing - loBearing)
+    let pos = wrap(bearing - loBearing)
+    let t = span == 0 ? 0 : min(max(pos / span, 0), 1)
+    return CGPoint(x: loScreen.x + (hiScreen.x - loScreen.x) * t,
+                   y: loScreen.y + (hiScreen.y - loScreen.y) * t)
+}
+
 /// Screen position of the ridge silhouette point at `peak`'s bearing — the
 /// anchor the welded label floats above (by `peakHorizonLabelLift`). Shared by
 /// the renderer (`HorizonOverlayView.weldPeakLabels`) and the tap hit-test
 /// (`GeoNatureView.nearestMarker`) so the pill the user sees and the point the
-/// user taps are computed identically. Mirrors the Android `weldedLabelAnchor`.
+/// user taps are computed identically. Projects the two skyline samples around
+/// the peak's bearing with the SAME world-point math as the silhouette
+/// renderer, then interpolates between those two SCREEN points
+/// (`weldedAnchorScreenPoint`) so the anchor sits exactly on the drawn
+/// segment. Mirrors the Android `weldedLabelAnchor`.
 @MainActor
 func weldedLabelAnchor(peak: NearbyPeak, skyline: [SkylineSample],
                        observerAltitude: Double,
                        sessionManager: ARSessionManager) -> CGPoint? {
     guard !skyline.isEmpty else { return nil }
-    let earthRadius = 6_371_000.0
-    let sky = horizonSkylineValue(at: peak.bearing, samples: skyline)
-    let theta = peak.bearing * .pi / 180.0
-    let east = sky.distance * sin(theta)
-    let north = sky.distance * cos(theta)
-    let up = (sky.altitude - observerAltitude) - (sky.distance * sky.distance) / (2 * earthRadius)
-    let world = sessionManager.worldPoint(east: east, up: up, north: north)
-    guard let screen = sessionManager.projectToScreen(world),
-          screen.x.isFinite, screen.y.isFinite else { return nil }
-    return screen
+    // Same refraction-corrected radius as the calculator and the overlay.
+    let earthRadius = Geometry.effectiveEarthRadius
+
+    // Same up/curvature math as `HorizonOverlayView.appendSilhouettePoint`,
+    // applied to a sample's OWN (bearing, distance, altitude).
+    func project(_ s: SkylineSample) -> CGPoint? {
+        let theta = s.bearing * .pi / 180.0
+        let east = s.distance * sin(theta)
+        let north = s.distance * cos(theta)
+        let up = (s.altitude - observerAltitude) - (s.distance * s.distance) / (2 * earthRadius)
+        let world = sessionManager.worldPoint(east: east, up: up, north: north)
+        guard let screen = sessionManager.projectToScreen(world),
+              screen.x.isFinite, screen.y.isFinite else { return nil }
+        return screen
+    }
+
+    if skyline.count == 1 { return project(skyline[0]) }
+
+    // Bracketing samples around the peak's bearing, wrap-aware (a peak at
+    // 358° brackets between the last and first samples).
+    func wrap(_ deg: Double) -> Double {
+        let d = deg.truncatingRemainder(dividingBy: 360)
+        return d < 0 ? d + 360 : d
+    }
+    let b = wrap(peak.bearing)
+    var hiIdx = firstBearingAbove(b, in: skyline)
+    let loIdx: Int
+    if hiIdx == 0 || hiIdx == skyline.count { loIdx = skyline.count - 1; hiIdx = 0 }
+    else { loIdx = hiIdx - 1 }
+    let lo = skyline[loIdx]
+    let hi = skyline[hiIdx]
+
+    guard let loScreen = project(lo), let hiScreen = project(hi) else { return nil }
+    return weldedAnchorScreenPoint(bearing: b,
+                                   loBearing: lo.bearing, hiBearing: hi.bearing,
+                                   loScreen: loScreen, hiScreen: hiScreen)
+}
+
+/// Distance penalty of the peak-label importance score, metres of altitude
+/// per kilometre of distance. Calibrated so that between two similar-height
+/// summits the NEARER one wins its de-collision slot (any positive penalty
+/// does that), but a genuinely big summit survives against small near bumps:
+/// at 8 m/km a 4 000 m summit 30 km away (score 3 760) still crushes a
+/// 400 m hill 3 km away (score 376) — the old nearest-first sort labelled
+/// the hill and dropped the famous peak.
+let peakScoreDistancePenaltyMetersPerKm: Double = 8
+
+/// Importance score used to hand out the limited welded-label slots:
+/// `altitude_msl − 8 × distance_km`. Higher is more label-worthy. Pure so
+/// the ordering is pinned by unit tests.
+func peakLabelScore(altitude: Double, distance: Double) -> Double {
+    altitude - peakScoreDistancePenaltyMetersPerKm * (distance / 1_000)
+}
+
+/// Pure de-collision + cap selection over scored label candidates: highest
+/// `peakLabelScore` first, keep a candidate only if its screen x stays
+/// ≥ `minSpacing` from every already-kept label, stop at `maxCount`.
+/// Extracted from `weldedPeakLabels` so the slot-assignment policy is unit
+/// testable without an AR session.
+func selectWeldedPeakLabels(candidates: [(label: PeakHorizonLabel, score: Double)],
+                            minSpacing: CGFloat, maxCount: Int) -> [PeakHorizonLabel] {
+    let ordered = candidates.sorted { $0.score > $1.score }
+    var kept: [PeakHorizonLabel] = []
+    for c in ordered {
+        if kept.allSatisfy({ abs($0.position.x - c.label.position.x) >= minSpacing }) {
+            kept.append(c.label)
+            if kept.count >= maxCount { break }
+        }
+    }
+    return kept
 }
 
 /// The named-peak labels actually welded to the silhouette this frame — the
 /// SINGLE source of truth for which pills are drawn, shared by the renderer
 /// (`HorizonOverlayView`) and the tap hit-test (`GeoNatureView.nearestMarker`)
 /// so a tap can only ever resolve to a pill the user can actually see (no
-/// phantom targets, no nearer-vs-farther mix-up). Selection: peaks on/above the
-/// silhouette (`peakOnSilhouette`), within the heading window, whose ridge
-/// anchor projects on-screen; nearer peaks win when pills would overlap (kept
+/// phantom targets, no importance mix-up). Selection: peaks on/above the
+/// silhouette (`peakOnSilhouette`), within the heading window (pass the
+/// alignment-compensated content heading, not the raw camera heading), whose
+/// ridge anchor projects on-screen; more IMPORTANT peaks (`peakLabelScore`:
+/// altitude − 8 m/km of distance) win when pills would overlap (kept
 /// ≥ `minSpacing` apart) and the count is capped. Mirrors Android
 /// `weldedPeakLabels`.
 @MainActor
@@ -442,8 +536,7 @@ func weldedPeakLabels(peaks: [NearbyPeak], skyline: [SkylineSample],
         return d
     }
 
-    struct Candidate { let label: PeakHorizonLabel; let x: CGFloat; let distance: Double }
-    var candidates: [Candidate] = []
+    var candidates: [(label: PeakHorizonLabel, score: Double)] = []
     for peak in peaks where peakOnSilhouette(peak, skyline: skyline, observerAltitude: observerAltitude) {
         guard abs(angleDelta(peak.bearing, headingDeg)) <= headingHalfWindowDeg else { continue }
         guard let screen = weldedLabelAnchor(peak: peak, skyline: skyline,
@@ -451,22 +544,14 @@ func weldedPeakLabels(peaks: [NearbyPeak], skyline: [SkylineSample],
                                              sessionManager: sessionManager),
               screen.x > -boundsMargin, screen.x < size.width + boundsMargin,
               screen.y > -boundsMargin, screen.y < size.height + boundsMargin else { continue }
-        candidates.append(Candidate(
+        candidates.append((
             label: PeakHorizonLabel(peakID: peak.id, name: peak.name,
                                     altitude: peak.altitude, position: screen),
-            x: screen.x, distance: peak.distance))
+            score: peakLabelScore(altitude: peak.altitude, distance: peak.distance)))
     }
 
-    // Nearer (more prominent) peaks first; keep those ≥ `minSpacing` apart, capped.
-    candidates.sort { $0.distance < $1.distance }
-    var kept: [PeakHorizonLabel] = []
-    for c in candidates {
-        if kept.allSatisfy({ abs($0.position.x - c.x) >= minSpacing }) {
-            kept.append(c.label)
-            if kept.count >= maxLabels { break }
-        }
-    }
-    return kept
+    return selectWeldedPeakLabels(candidates: candidates,
+                                  minSpacing: minSpacing, maxCount: maxLabels)
 }
 
 /// Pure rendering view: takes pre-computed screen-space line segments

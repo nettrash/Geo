@@ -36,6 +36,10 @@ struct OfflinePack: Identifiable, Codable, Equatable {
     var peakCount: Int
     /// ~110 m DEM grid cells cached for the centre's skyline panorama.
     var cellCount: Int
+    /// Far-terrain ring cells (~550 m to 50 km + ~2.2 km to 200 km) that
+    /// let the offline skyline include distant ranges. `nil` for packs
+    /// downloaded before the rings existed (they cover the core only).
+    var ringCellCount: Int?
 
     var center: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
@@ -57,6 +61,12 @@ struct OfflinePackData: Codable {
     /// ~110 m), value is elevation in metres. Seeded into the elevation
     /// service as *pinned* cells so they survive LRU eviction offline.
     let cells: [String: Double]
+    /// Far-terrain ring layers, keyed by `gridKeyMedium` (~550 m cells to
+    /// ~50 km) and `gridKeyCoarse` (~2.2 km cells to ~200 km). Optional so
+    /// pack files saved before the rings existed still decode; the live
+    /// lookup falls back fine → medium → coarse on a miss.
+    let mediumCells: [String: Double]?
+    let coarseCells: [String: Double]?
 }
 
 /// File-backed persistence for offline packs. Pure I/O; the

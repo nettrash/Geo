@@ -141,7 +141,7 @@ struct OfflinePackManagerView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(pack.name)
                                     .font(.headline)
-                                Text("\(pack.peakCount) peaks · \(pack.cellCount) cells · \(Int(pack.radiusKm)) km")
+                                Text("\(pack.peakCount) peaks · \(pack.cellCount + (pack.ringCellCount ?? 0)) cells · \(Int(pack.radiusKm)) km")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Text(pack.createdAt.formatted(date: .abbreviated, time: .shortened))
@@ -170,7 +170,7 @@ struct OfflinePackManagerView: View {
                 }
 
                 Section {
-                    Text("Caches the area's named peaks and the terrain skyline so the AR Nature view works with no signal. Map tiles aren't included (provider licensing).")
+                    Text("Caches the area's named peaks and the terrain skyline so the AR Nature view works with no signal. The chosen radius sets the peak coverage and the full-detail terrain core; the skyline's distant ranges are always cached out to 200 km around the pack at coarser detail. Map tiles aren't included (provider licensing).")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

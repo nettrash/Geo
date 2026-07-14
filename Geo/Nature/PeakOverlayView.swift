@@ -19,6 +19,13 @@ import simd
 struct PeakOverlayView: View {
     let peaks: [NearbyPeak]
     let userLocation: CLLocation?
+    /// The effective observer altitude shared with the skyline/welded-pill
+    /// paths (DEM-anchored when available, else the baro-preferred sensor
+    /// value — resolved by the caller). Using it as the ENU origin altitude
+    /// keeps markers vertically attached to the drawn silhouette; the raw
+    /// GPS altitude can disagree with the baro/DEM value by 10–30 m and
+    /// detach them. `nil` falls back to the raw GPS altitude.
+    let observerAltitude: Double?
     @ObservedObject var sessionManager: ARSessionManager
     @ObservedObject var occlusionManager: AROcclusionManager
     
@@ -77,9 +84,11 @@ struct PeakOverlayView: View {
     ) -> CGPoint? {
         guard let userLoc = userLocation, sessionManager.isTracking else { return nil }
         
-        // 1. GPS → local ENU offset (meters)
+        // 1. GPS → local ENU offset (meters). Origin altitude is the SAME
+        // effective observer altitude the skyline uses (see the property
+        // doc), not the raw GPS altitude, so markers and silhouette agree.
         let enu = Geometry.gpsToENU(
-            from: userLoc.coordinate, originAltitude: userLoc.altitude,
+            from: userLoc.coordinate, originAltitude: observerAltitude ?? userLoc.altitude,
             to: coordinate, targetAltitude: altitude
         )
         

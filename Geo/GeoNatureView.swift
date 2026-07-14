@@ -32,6 +32,10 @@ struct GeoNatureView: View {
 
     /// Tap-to-identify: the marker the user tapped (drives the detail sheet).
     @State private var selectedMarker: ARMarkerSelection?
+    /// Manual compass alignment: the offset value at the start of the
+    /// current pan, so the drag applies `base + translation` rather than
+    /// compounding per-event deltas. `nil` when no pan is in flight.
+    @State private var alignmentDragBaseDeg: Double?
     /// Freeze-frame share: the rendered annotated panorama (drives the share sheet).
     @State private var shareImage: ShareImage?
     /// Guards the shutter so a second tap can't start a second capture mid-render.
@@ -75,6 +79,19 @@ struct GeoNatureView: View {
         return nil
     }
 
+    /// ONE source of truth for the observer altitude across every AR
+    /// consumer: the DEM-anchored value the skyline was computed with
+    /// (`SkylineCalculator.observerAltitudeUsed`), falling back to the
+    /// baro-preferred / GPS sensor expression until the first skyline pass
+    /// publishes it. Threaded into the welded-pill selection, the tap
+    /// hit-tests, the AR marker projection and the occlusion targets so
+    /// none of them can vertically detach from the drawn silhouette.
+    private var effectiveObserverAltitude: Double? {
+        skylineCalculator.observerAltitudeUsed
+            ?? (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil }
+            ?? overlayLocation?.altitude
+    }
+
     /// Peaks whose name is welded to the skyline ridge (HorizonOverlayView).
     /// Their AR markers are suppressed so a silhouette peak shows EITHER a ridge
     /// pill OR nothing — never a flat AR marker. Camera-INDEPENDENT
@@ -85,7 +102,7 @@ struct GeoNatureView: View {
     /// that would clutter the ridge and not match the welded pills.
     private var weldedPeakIDs: Set<UUID> {
         guard let loc = overlayLocation, !skylineCalculator.samples.isEmpty else { return [] }
-        let obsAlt = (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil } ?? loc.altitude
+        let obsAlt = effectiveObserverAltitude ?? loc.altitude
         return Set(peakFinder.peaks
             .filter { peakOnSilhouette($0, skyline: skylineCalculator.samples, observerAltitude: obsAlt) }
             .map { $0.id })
@@ -105,6 +122,7 @@ struct GeoNatureView: View {
                 HorizonOverlayView(
                     userLocation: overlayLocation,
                     barometerAltitude: app?.barometer?.height,
+                    observerAltitudeUsed: skylineCalculator.observerAltitudeUsed,
                     skylineSamples: skylineCalculator.samples,
                     peaks: peakFinder.peaks,
                     sessionManager: sessionManager
@@ -120,16 +138,24 @@ struct GeoNatureView: View {
                     // instead of getting a duplicate AR marker.
                     peaks: peakFinder.peaks.filter { !weldedPeakIDs.contains($0.id) },
                     userLocation: overlayLocation,
+                    observerAltitude: effectiveObserverAltitude,
                     sessionManager: sessionManager,
                     occlusionManager: occlusionManager
                 )
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
 
-                // Transparent tap-catch layer: a tap runs a screen-space
+                // Transparent tap/pan-catch layer: a tap runs a screen-space
                 // nearest-marker hit-test against the projected peak/history
-                // positions and opens the detail sheet. Sits above the
+                // positions and opens the detail sheet; a horizontal PAN
+                // adjusts the manual compass alignment live. Sits above the
                 // (non-interactive) markers but below the shutter button.
+                //
+                // Gesture composition: `onTapGesture` and a `DragGesture`
+                // with `minimumDistance: 12` don't compete — a tap never
+                // travels 12 pt so the drag stays inactive, and a pan
+                // exceeds the tap recognizer's movement slop so the tap
+                // fails. Tap-to-identify keeps working unchanged.
                 Color.clear
                     .contentShape(Rectangle())
                     .ignoresSafeArea()
@@ -138,6 +164,21 @@ struct GeoNatureView: View {
                             selectedMarker = marker
                         }
                     }
+                    .gesture(
+                        DragGesture(minimumDistance: 12)
+                            .onChanged { value in
+                                // Latch the offset at pan start; every event
+                                // recomputes from base + TOTAL translation
+                                // (pure, clamped ±30°). Drag right → offset
+                                // up → overlay moves right, following the
+                                // finger (see ARSessionManager doc).
+                                let base = alignmentDragBaseDeg ?? sessionManager.headingAlignmentDeg
+                                alignmentDragBaseDeg = base
+                                sessionManager.headingAlignmentDeg = alignmentOffsetDegrees(
+                                    base: base, panTranslationX: value.translation.width)
+                            }
+                            .onEnded { _ in alignmentDragBaseDeg = nil }
+                    )
 
                 // Center crosshair + wall distance
                 VStack(spacing: 6) {
@@ -238,6 +279,38 @@ struct GeoNatureView: View {
                     Spacer()
                 }
                 .allowsHitTesting(false)
+
+                // Manual compass-alignment chip — visible while an alignment
+                // offset is applied (≥0.5°, i.e. would display as ≥1°).
+                // Unobtrusive, matches the view's pill styling; tapping it
+                // (✕) resets the offset. Session-only state — deliberately
+                // never persisted, compass error differs every session.
+                if abs(sessionManager.headingAlignmentDeg) >= 0.5 {
+                    VStack {
+                        Button {
+                            sessionManager.headingAlignmentDeg = 0
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "arrow.left.and.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.orange)
+                                Text(verbatim: String(format: "Alignment %+.0f°",
+                                                      sessionManager.headingAlignmentDeg))
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.white)
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.white.opacity(0.7))
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.black.opacity(0.55), in: Capsule())
+                        }
+                        .accessibilityLabel("Reset compass alignment")
+                        Spacer()
+                    }
+                    .padding(.top, 44)
+                }
 
                 // Shutter — capture a frozen, annotated panorama to share.
                 VStack {
@@ -486,10 +559,13 @@ struct GeoNatureView: View {
         // occlusion test (camera-relative) would be off by the full
         // camera translation and disagree with where the marker is drawn.
 
-        // Build ENU world positions for peaks
+        // Build ENU world positions for peaks. Origin altitude is the SAME
+        // effective observer altitude the skyline and the marker overlay
+        // use, so the occlusion test agrees with where markers are drawn.
+        let originAlt = effectiveObserverAltitude ?? userLoc.altitude
         for peak in peakFinder.peaks {
             let (east, north, up) = Geometry.gpsToENU(
-                from: userLoc.coordinate, originAltitude: userLoc.altitude,
+                from: userLoc.coordinate, originAltitude: originAlt,
                 to: peak.coordinate, targetAltitude: peak.altitude
             )
             targets.append(.init(id: peak.id, worldPosition: sessionManager.worldPoint(east: east, up: up, north: north)))
@@ -508,8 +584,10 @@ struct GeoNatureView: View {
     /// projectToScreen), so the hit-test agrees with what's drawn.
     private func projectMarker(coordinate: CLLocationCoordinate2D, altitude: Double) -> CGPoint? {
         guard let userLoc = overlayLocation, sessionManager.isTracking else { return nil }
+        // Same effective observer altitude as PeakOverlayView's projection,
+        // so the hit-test agrees with what's drawn.
         let enu = Geometry.gpsToENU(
-            from: userLoc.coordinate, originAltitude: userLoc.altitude,
+            from: userLoc.coordinate, originAltitude: effectiveObserverAltitude ?? userLoc.altitude,
             to: coordinate, targetAltitude: altitude
         )
         let world = sessionManager.worldPoint(east: enu.east, up: enu.up, north: enu.north)
@@ -536,15 +614,19 @@ struct GeoNatureView: View {
         return distance >= nearbyThreshold || occlusionManager.isSceneReady
     }
 
-    /// Camera heading (degrees, 0 = N) from the AR camera transform — the same
-    /// formula `HorizonOverlayView` uses, so the hit-test welds against the same
+    /// Bearing-window centre for welded-label queries: the camera heading
+    /// (degrees, 0 = N) from the AR camera transform, COMPENSATED by the
+    /// manual alignment offset — the same formula and compensation
+    /// `HorizonOverlayView` uses (`worldPoint` rotates drawn content by
+    /// +offset, so the true bearing at the screen centre is
+    /// cameraHeading − offset), so the hit-test welds against exactly the
     /// labels the overlay drew.
-    private var cameraHeadingDeg: Double {
+    private var contentHeadingDeg: Double {
         let east = -sessionManager.cameraTransform.columns.2.x
         let north = sessionManager.cameraTransform.columns.2.z
         var deg = atan2(Double(east), Double(north)) * 180 / .pi
         if deg < 0 { deg += 360 }
-        return deg
+        return deg - sessionManager.headingAlignmentDeg
     }
 
     /// Nearest visible marker within the hit radius of `point`. Peaks (drawn on
@@ -554,8 +636,8 @@ struct GeoNatureView: View {
         let hitRadius: CGFloat = 60
         var best: (selection: ARMarkerSelection, dist: CGFloat)?
 
-        let obsAlt = (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil }
-            ?? (overlayLocation?.altitude ?? 0)
+        // Same effective observer altitude the overlay welded its pills with.
+        let obsAlt = effectiveObserverAltitude ?? 0
 
         // Welded peaks are drawn as floating ridge pills, not AR markers, so their
         // tap target is the pill. Test ONLY the labels actually drawn (the same
@@ -565,7 +647,7 @@ struct GeoNatureView: View {
         let welded = weldedPeakIDs
         let drawnLabels = weldedPeakLabels(
             peaks: peakFinder.peaks, skyline: skylineCalculator.samples,
-            observerAltitude: obsAlt, headingDeg: cameraHeadingDeg,
+            observerAltitude: obsAlt, headingDeg: contentHeadingDeg,
             size: sessionManager.viewportSize, sessionManager: sessionManager)
         for label in drawnLabels {
             let target = CGPoint(x: label.position.x, y: label.position.y - peakHorizonLabelLift)
@@ -613,6 +695,7 @@ struct GeoNatureView: View {
                 peaks: peakFinder.peaks,
                 userLocation: overlayLocation,
                 barometerAltitude: (app?.barometer?.height).flatMap { $0 > 0 ? $0 : nil },
+                observerAltitudeUsed: skylineCalculator.observerAltitudeUsed,
                 skylineSamples: skylineCalculator.samples,
                 sessionManager: sessionManager,
                 occlusionManager: occlusionManager,
@@ -628,6 +711,33 @@ struct GeoNatureView: View {
         }
     }
 
+}
+
+// MARK: - Manual compass alignment (pure pan→degrees conversion)
+
+/// Points of horizontal pan per degree of manual compass alignment.
+/// ~8 pt/° feels right at arm's length: nudging a 5–15° compass error takes
+/// a comfortable 40–120 pt swipe, precise enough to line a distant summit
+/// up with its drawn silhouette without overshooting.
+let alignmentPanPointsPerDegree: Double = 8
+
+/// Hard clamp on the total manual alignment. Compass error is realistically
+/// 5–15°; ±30° is generous headroom while preventing an accidental swipe
+/// from spinning the panorama into nonsense.
+let alignmentMaxOffsetDeg: Double = 30
+
+/// Pure pan→alignment conversion: the new alignment offset (degrees)
+/// produced by a pan whose TOTAL horizontal translation is
+/// `panTranslationX` points, starting from `base` degrees.
+///
+/// SIGN: a drag RIGHT (positive translation) increases the offset, which
+/// `ARSessionManager.worldPoint` turns into a clockwise bearing rotation of
+/// all drawn content — i.e. the overlay moves RIGHT, following the finger
+/// (see `ARSessionManager.headingAlignmentDeg` for the full derivation).
+/// The result is clamped to ±`alignmentMaxOffsetDeg`.
+func alignmentOffsetDegrees(base: Double, panTranslationX: Double) -> Double {
+    min(max(base + panTranslationX / alignmentPanPointsPerDegree,
+            -alignmentMaxOffsetDeg), alignmentMaxOffsetDeg)
 }
 
 #Preview {

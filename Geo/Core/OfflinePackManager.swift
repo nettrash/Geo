@@ -91,34 +91,54 @@ final class OfflinePackManager: ObservableObject {
 
         if Task.isCancelled { return }
 
-        // 2. DEM: a regular ~110 m area grid over the whole pack bounding box
-        //    (centre ± radius), fetched in chunks so we can show progress;
-        //    each chunk goes through the elevation service's own 200 ms
-        //    throttle + retry. An area grid (not a single-observer fan) is
-        //    what lets the offline skyline resolve from *any* point in the
-        //    area, not only when standing at the pack centre.
+        // 2. DEM in three layers, fetched in chunks so we can show progress;
+        //    each chunk goes through the elevation service's own throttle +
+        //    retry. Area grids (not a single-observer fan) are what let the
+        //    offline skyline resolve from *any* point in the area, not only
+        //    when standing at the pack centre:
+        //     • full-resolution ~110 m core (centre ± radius, budget-capped),
+        //     • ~550 m ring to 50 km and ~2.2 km ring to 200 km — the
+        //       skyline's full range, so distant mountain ranges stay in the
+        //       offline silhouette instead of silently vanishing past the core.
         statusText = "Caching terrain…"
-        // Build the area grid off the main actor — it's pure arithmetic and
-        // would otherwise run on the main thread during the download.
-        let coords = await Task.detached {
-            SkylineCalculator.offlinePrefetchCoordinates(center: center, radiusKm: radiusKm)
+        // Build the grids off the main actor — pure arithmetic that would
+        // otherwise run on the main thread during the download.
+        let grids = await Task.detached {
+            (fine: SkylineCalculator.offlinePrefetchCoordinates(center: center, radiusKm: radiusKm),
+             medium: SkylineCalculator.offlineMediumPrefetchCoordinates(center: center),
+             coarse: SkylineCalculator.offlineCoarsePrefetchCoordinates(center: center))
         }.value
-        var cells: [String: Double] = [:]
-        let chunkSize = 300
+        let totalCount = grids.fine.count + grids.medium.count + grids.coarse.count
         var processed = 0
-        var index = 0
-        while index < coords.count {
-            if Task.isCancelled { return }
-            let end = min(index + chunkSize, coords.count)
-            let slice = Array(coords[index..<end])
-            let elevs = await TerrainElevationService.shared.elevations(at: slice)
-            for (coord, elev) in zip(slice, elevs) {
-                if let elev { cells[TerrainElevationService.gridKey(coord)] = elev }
+        let chunkSize = 300
+
+        /// Fetch one layer's grid chunk-by-chunk, keying results with the
+        /// layer's own quantiser so they line up with the live fallback
+        /// lookups. Returns nil on cancellation.
+        func fetchLayer(_ coords: [CLLocationCoordinate2D],
+                        key: (CLLocationCoordinate2D) -> String) async -> [String: Double]? {
+            var cells: [String: Double] = [:]
+            var index = 0
+            while index < coords.count {
+                if Task.isCancelled { return nil }
+                let end = min(index + chunkSize, coords.count)
+                let slice = Array(coords[index..<end])
+                let elevs = await TerrainElevationService.shared.elevations(at: slice)
+                for (coord, elev) in zip(slice, elevs) {
+                    if let elev { cells[key(coord)] = elev }
+                }
+                processed += slice.count
+                progress = Double(processed) / Double(totalCount)
+                index = end
             }
-            processed += slice.count
-            progress = Double(processed) / Double(coords.count)
-            index = end
+            return cells
         }
+
+        guard let cells = await fetchLayer(grids.fine, key: TerrainElevationService.gridKey) else { return }
+        statusText = "Caching far terrain…"
+        guard let mediumCells = await fetchLayer(grids.medium, key: TerrainElevationService.gridKeyMedium),
+              let coarseCells = await fetchLayer(grids.coarse, key: TerrainElevationService.gridKeyCoarse)
+        else { return }
 
         if Task.isCancelled { return }
 
@@ -131,7 +151,9 @@ final class OfflinePackManager: ObservableObject {
                                      lon: $0.coordinate.longitude,
                                      altitude: $0.altitude)
             },
-            cells: cells
+            cells: cells,
+            mediumCells: mediumCells,
+            coarseCells: coarseCells
         )
         // Don't register a pack whose data file didn't persist (disk full /
         // permission error) — that would leave a phantom entry in the list that
@@ -141,7 +163,8 @@ final class OfflinePackManager: ObservableObject {
         let meta = OfflinePack(id: id, name: packName,
                                centerLat: center.latitude, centerLon: center.longitude,
                                radiusKm: radiusKm, createdAt: Date(),
-                               peakCount: peaks.count, cellCount: cells.count)
+                               peakCount: peaks.count, cellCount: cells.count,
+                               ringCellCount: mediumCells.count + coarseCells.count)
         packs.insert(meta, at: 0)
         store.saveIndex(packs)
         await reseedConsumers()
@@ -176,7 +199,9 @@ final class OfflinePackManager: ObservableObject {
         // actor-isolated `setPinned` run back on the main actor.
         let store = self.store
         let loaded = await Task.detached { OfflinePackManager.loadAll(store: store) }.value
-        await TerrainElevationService.shared.setPinned(loaded.cells)
+        await TerrainElevationService.shared.setPinned(fine: loaded.cells,
+                                                       medium: loaded.mediumCells,
+                                                       coarse: loaded.coarseCells)
         packs = loaded.metas
         combinedPeaks = loaded.peaks
     }
@@ -185,24 +210,32 @@ final class OfflinePackManager: ObservableObject {
     /// of pinned cells + deduped peaks. `nonisolated` so it runs off the main
     /// actor when invoked from a detached task.
     nonisolated static func loadAll(store: OfflinePackStore)
-        -> (metas: [OfflinePack], cells: [String: Double], peaks: [NearbyPeak]) {
+        -> (metas: [OfflinePack], cells: [String: Double],
+            mediumCells: [String: Double], coarseCells: [String: Double],
+            peaks: [NearbyPeak]) {
         let metas = store.loadIndex().sorted { $0.createdAt > $1.createdAt }
         let datas = metas.compactMap { store.loadData($0.id) }
         let seed = assembleSeed(from: datas)
-        return (metas, seed.cells, seed.peaks)
+        return (metas, seed.cells, seed.mediumCells, seed.coarseCells, seed.peaks)
     }
 
-    /// Pure assembly of the live-cache seed from loaded pack payloads: union the
-    /// DEM cells (later packs win on key collision) and dedupe peaks by their
-    /// coordinate-derived id. Pure + `nonisolated` so it's unit-testable
-    /// without disk or the shared elevation-service singleton.
+    /// Pure assembly of the live-cache seed from loaded pack payloads: union
+    /// each DEM layer (later packs win on key collision — pre-ring packs
+    /// simply contribute nothing to the ring layers) and dedupe peaks by
+    /// their coordinate-derived id. Pure + `nonisolated` so it's
+    /// unit-testable without disk or the shared elevation-service singleton.
     nonisolated static func assembleSeed(from datas: [OfflinePackData])
-        -> (cells: [String: Double], peaks: [NearbyPeak]) {
+        -> (cells: [String: Double], mediumCells: [String: Double],
+            coarseCells: [String: Double], peaks: [NearbyPeak]) {
         var cells: [String: Double] = [:]
+        var mediumCells: [String: Double] = [:]
+        var coarseCells: [String: Double] = [:]
         var peaks: [NearbyPeak] = []
         var seen = Set<UUID>()
         for data in datas {
             for (k, v) in data.cells { cells[k] = v }
+            for (k, v) in data.mediumCells ?? [:] { mediumCells[k] = v }
+            for (k, v) in data.coarseCells ?? [:] { coarseCells[k] = v }
             for p in data.peaks {
                 let peak = NearbyPeak(
                     name: p.name,
@@ -214,7 +247,7 @@ final class OfflinePackManager: ObservableObject {
                 if seen.insert(peak.id).inserted { peaks.append(peak) }
             }
         }
-        return (cells, peaks)
+        return (cells, mediumCells, coarseCells, peaks)
     }
 
     // MARK: - Helpers

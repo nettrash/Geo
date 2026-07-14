@@ -18,17 +18,30 @@ struct SharePanoramaView: View {
     let peaks: [NearbyPeak]
     let userLocation: CLLocation?
     let barometerAltitude: Double?
+    /// The DEM-anchored observer altitude the skyline was computed with —
+    /// same value the live view uses, so the share can't weld/suppress a
+    /// different set of peaks than the screen showed. `nil` falls back to
+    /// the baro-preferred / GPS expression.
+    let observerAltitudeUsed: Double?
     let skylineSamples: [SkylineSample]
     @ObservedObject var sessionManager: ARSessionManager
     @ObservedObject var occlusionManager: AROcclusionManager
     let markerCount: Int
+
+    /// One effective observer altitude for every projection in the share —
+    /// mirrors `GeoNatureView.effectiveObserverAltitude`.
+    private var effectiveObserverAltitude: Double? {
+        observerAltitudeUsed
+            ?? barometerAltitude.flatMap { $0 > 0 ? $0 : nil }
+            ?? userLocation?.altitude
+    }
 
     /// Peaks welded to the ridge (camera-independent `peakOnSilhouette`) — their
     /// AR markers are suppressed below so the share matches the live view: a
     /// silhouette peak is a ridge pill or nothing, never a flat marker.
     private var weldedPeakIDs: Set<UUID> {
         guard let loc = userLocation, !skylineSamples.isEmpty else { return [] }
-        let obsAlt = barometerAltitude.flatMap { $0 > 0 ? $0 : nil } ?? loc.altitude
+        let obsAlt = effectiveObserverAltitude ?? loc.altitude
         return Set(peaks
             .filter { peakOnSilhouette($0, skyline: skylineSamples, observerAltitude: obsAlt) }
             .map { $0.id })
@@ -48,6 +61,7 @@ struct SharePanoramaView: View {
             HorizonOverlayView(
                 userLocation: userLocation,
                 barometerAltitude: barometerAltitude,
+                observerAltitudeUsed: observerAltitudeUsed,
                 skylineSamples: skylineSamples,
                 peaks: peaks,
                 sessionManager: sessionManager
@@ -60,6 +74,7 @@ struct SharePanoramaView: View {
                 // live view never does.
                 peaks: peaks.filter { !weldedPeakIDs.contains($0.id) },
                 userLocation: userLocation,
+                observerAltitude: effectiveObserverAltitude,
                 sessionManager: sessionManager,
                 occlusionManager: occlusionManager
             )

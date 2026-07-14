@@ -42,14 +42,28 @@ actor TerrainElevationService {
     /// `SkylineCalculator.offlineMaxDEMCells` (≈ cap × number of saved packs).
     private var pinned: [String: Double] = [:]
 
+    /// Coarser pinned layers from the packs' far-terrain rings. The fine
+    /// ~110 m core only reaches ~10 km, but the skyline looks out to
+    /// 200 km — without these rings every offline sample past the core
+    /// resolved to nil and distant ranges silently vanished from the
+    /// silhouette. A miss on the fine layers falls back to the ~550 m
+    /// ring, then the ~2.2 km ring; that matches the skyline fan's own
+    /// angular resolution (2° of bearing ≈ 3.5 % of distance laterally),
+    /// so the coarse far-field costs no visible fidelity.
+    private var pinnedMedium: [String: Double] = [:]
+    private var pinnedCoarse: [String: Double] = [:]
+
     /// The persisted cache is loaded lazily on the first query — an actor's
     /// `init` is nonisolated and cannot touch isolated state under Swift 6.
     private var didLoad = false
 
     /// LRU cap. Each entry is a ~110 m grid cell at ~24 bytes on disk,
-    /// so 8000 entries (~a 100×100 km coverage envelope) stays trivially
-    /// small while surviving plenty of cold starts.
-    private let cacheCap = 8000
+    /// so even 50 000 entries is ~1.2 MB. The cap must comfortably hold
+    /// several full skyline passes: one pass is now ~8 500 distinct
+    /// cells (dense schedule + refinement round), and a cap smaller
+    /// than a few passes would make the LRU evict its own working set —
+    /// every recompute would re-fetch everything.
+    private let cacheCap = 50_000
 
     /// On-disk location of the persisted cache. `nil` only if the system
     /// can't hand us a Caches directory, in which case persistence is
@@ -100,6 +114,12 @@ actor TerrainElevationService {
                 results[i] = cached
             } else if let pin = pinned[k] {
                 // Offline-pack cell — durable, never LRU-evicted.
+                results[i] = pin
+            } else if let pin = pinnedMedium[Self.gridKeyMedium(p)] {
+                // Far-terrain ring (~550 m cells, to ~50 km from a pack).
+                results[i] = pin
+            } else if let pin = pinnedCoarse[Self.gridKeyCoarse(p)] {
+                // Far-terrain ring (~2.2 km cells, to ~200 km from a pack).
                 results[i] = pin
             } else {
                 pending.append((i, p))
@@ -172,12 +192,17 @@ actor TerrainElevationService {
         }
     }
 
-    /// Replace the set of *pinned* cells (grid-cell → elevation) from the
-    /// downloaded offline packs. Pinned cells are consulted on every cache
+    /// Replace the sets of *pinned* cells (grid-cell → elevation) from the
+    /// downloaded offline packs — the fine ~110 m core plus the two
+    /// far-terrain ring layers. Pinned cells are consulted on every cache
     /// miss and never evicted. Rebuilt wholesale by `OfflinePackManager`,
-    /// so passing the union of all packs' cells is the whole contract.
-    func setPinned(_ cells: [String: Double]) {
-        pinned = cells
+    /// so passing the union of all packs' layers is the whole contract.
+    func setPinned(fine: [String: Double],
+                   medium: [String: Double] = [:],
+                   coarse: [String: Double] = [:]) {
+        pinned = fine
+        pinnedMedium = medium
+        pinnedCoarse = coarse
     }
 
     // MARK: - HTTP
@@ -351,6 +376,34 @@ actor TerrainElevationService {
     static func gridKey(_ p: CLLocationCoordinate2D) -> String {
         let q = quantise(p)
         return "\(q.latitude),\(q.longitude)"
+    }
+
+    // MARK: - Far-terrain ring layers
+
+    /// Grid steps of the packs' far-terrain ring layers. Key safety is
+    /// the same trick the fine grid relies on: every producer and every
+    /// consumer keys through the SAME `(value / step).rounded() * step`
+    /// expression, so any two coordinates in one cell reduce to the same
+    /// Double bit pattern and therefore the same string key.
+    static let mediumStepDeg = 0.005   // ~550 m cells
+    static let coarseStepDeg = 0.02    // ~2.2 km cells
+
+    private static func quantise(_ value: Double, step: Double) -> Double {
+        (value / step).rounded() * step
+    }
+
+    /// Pinned-layer key for the ~550 m ring.
+    static func gridKeyMedium(_ p: CLLocationCoordinate2D) -> String {
+        let lat = quantise(p.latitude, step: mediumStepDeg)
+        let lon = quantise(p.longitude, step: mediumStepDeg)
+        return "\(lat),\(lon)"
+    }
+
+    /// Pinned-layer key for the ~2.2 km ring.
+    static func gridKeyCoarse(_ p: CLLocationCoordinate2D) -> String {
+        let lat = quantise(p.latitude, step: coarseStepDeg)
+        let lon = quantise(p.longitude, step: coarseStepDeg)
+        return "\(lat),\(lon)"
     }
 }
 
