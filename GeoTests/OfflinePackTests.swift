@@ -4,6 +4,13 @@
 //
 //  Round-trip + seed-assembly tests for the offline expedition pack.
 //
+//  Packs are PEAKS ONLY. The DEM-grid half (a ~110 m core plus far-terrain
+//  rings out to 200 km) existed to feed the terrain skyline; that skyline was
+//  removed from the Nature tab, so the grid prefetch, the pinned-cell seeding
+//  and their tests went with it. Peak altitudes are still DEM-resolved at
+//  download time inside `PeakFinder.fetchOSMPeaks` (one bounded lookup per
+//  peak), which is unaffected.
+//
 
 import XCTest
 import CoreLocation
@@ -15,41 +22,59 @@ final class OfflinePackTests: XCTestCase {
 
     func testPackDataRoundTrips() throws {
         let data = OfflinePackData(
-            peaks: [OfflinePackData.Peak(name: "Rainier", lat: 46.8523, lon: -121.7603, altitude: 4392)],
-            cells: ["46.852,-121.76": 4392, "46.853,-121.759": 4100],
-            mediumCells: ["46.85,-121.76": 4200],
-            coarseCells: ["46.86,-121.76": 3900]
+            peaks: [OfflinePackData.Peak(name: "Rainier", lat: 46.8523, lon: -121.7603, altitude: 4392)]
         )
         let encoded = try JSONEncoder().encode(data)
         let decoded = try JSONDecoder().decode(OfflinePackData.self, from: encoded)
 
         XCTAssertEqual(decoded.peaks.count, 1)
         XCTAssertEqual(decoded.peaks.first?.name, "Rainier")
-        XCTAssertEqual(decoded.cells["46.852,-121.76"], 4392)
-        XCTAssertEqual(decoded.cells.count, 2)
-        XCTAssertEqual(decoded.mediumCells?["46.85,-121.76"], 4200)
-        XCTAssertEqual(decoded.coarseCells?["46.86,-121.76"], 3900)
+        XCTAssertEqual(decoded.peaks.first?.altitude, 4392)
     }
 
-    /// A pack file saved before the far-terrain rings existed decodes fine —
-    /// the ring layers are simply absent, and seeding treats them as empty.
-    func testPreRingPackDataStillDecodes() throws {
-        let legacy = #"{"peaks":[],"cells":{"45.0,7.0":3000}}"#
-        let decoded = try JSONDecoder().decode(OfflinePackData.self,
-                                               from: Data(legacy.utf8))
-        XCTAssertEqual(decoded.cells.count, 1)
-        XCTAssertNil(decoded.mediumCells)
-        XCTAssertNil(decoded.coarseCells)
+    /// A pack file written by an OLDER build still carries the skyline DEM blobs
+    /// (`cells` / `mediumCells` / `coarseCells`). Those keys are no longer part
+    /// of the model — `Codable` must ignore them rather than fail — so an
+    /// existing pack on a user's device keeps working as a peak-only pack
+    /// without any migration.
+    func testLegacyPackWithDEMBlobsStillDecodes() throws {
+        let legacy = #"""
+        {"peaks":[{"name":"Mont Blanc","lat":45.8326,"lon":6.8652,"altitude":4808}],
+         "cells":{"45.0,7.0":3000},
+         "mediumCells":{"45.0,7.0":2900},
+         "coarseCells":{"44.98,7.02":2800}}
+        """#
+        let decoded = try JSONDecoder().decode(OfflinePackData.self, from: Data(legacy.utf8))
+        XCTAssertEqual(decoded.peaks.count, 1)
+        XCTAssertEqual(decoded.peaks.first?.name, "Mont Blanc")
+
+        // And it still seeds PeakFinder.
         let seed = OfflinePackManager.assembleSeed(from: [decoded])
-        XCTAssertTrue(seed.mediumCells.isEmpty)
-        XCTAssertTrue(seed.coarseCells.isEmpty)
+        XCTAssertEqual(seed.count, 1)
+        XCTAssertEqual(seed.first?.name, "Mont Blanc")
+    }
+
+    /// Likewise for the index: an entry written with the old `cellCount` /
+    /// `ringCellCount` counters decodes into the slimmed metadata.
+    func testLegacyIndexEntryWithCellCountsStillDecodes() throws {
+        let legacy = #"""
+        [{"id":"E621E1F8-C36C-495A-93FC-0C247A3E6E5F","name":"Rainier area",
+          "centerLat":46.85,"centerLon":-121.76,"radiusKm":25,
+          "createdAt":"1992-03-07T20:26:40Z","peakCount":3,
+          "cellCount":3600,"ringCellCount":12000}]
+        """#
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode([OfflinePack].self, from: Data(legacy.utf8))
+        XCTAssertEqual(decoded.count, 1)
+        XCTAssertEqual(decoded.first?.name, "Rainier area")
+        XCTAssertEqual(decoded.first?.peakCount, 3)
     }
 
     func testIndexRoundTripsWithISO8601Date() throws {
         let meta = OfflinePack(id: UUID(), name: "Rainier area",
                                centerLat: 46.85, centerLon: -121.76, radiusKm: 25,
                                createdAt: Date(timeIntervalSince1970: 700_000_000),
-                               peakCount: 3, cellCount: 3600, ringCellCount: 12_000)
+                               peakCount: 3)
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
 
@@ -57,89 +82,28 @@ final class OfflinePackTests: XCTestCase {
         XCTAssertEqual(decoded, [meta])
     }
 
-    // MARK: - Seed assembly (the reseed dedupe + cell union)
+    // MARK: - Seed assembly (the reseed dedupe)
 
-    /// Two packs that share a peak coordinate collapse to a single peak (the id
-    /// is derived from the coordinate), and DEM cells union across packs with a
-    /// later pack winning on a key collision.
-    func testAssembleSeedDedupesPeaksAndUnionsCells() {
+    /// Two packs that share a peak coordinate collapse to a single peak — the id
+    /// is derived from the coordinate, so the union across packs is deduped.
+    func testAssembleSeedDedupesPeaks() {
         let shared = OfflinePackData.Peak(name: "Shared", lat: 45.0, lon: 7.0, altitude: 3000)
         let packA = OfflinePackData(
-            peaks: [shared, OfflinePackData.Peak(name: "OnlyA", lat: 45.1, lon: 7.1, altitude: 2500)],
-            cells: ["45.0,7.0": 3000, "45.1,7.1": 2500],
-            mediumCells: ["45.0,7.0": 2900],
-            coarseCells: nil
+            peaks: [shared, OfflinePackData.Peak(name: "OnlyA", lat: 45.1, lon: 7.1, altitude: 2500)]
         )
         let packB = OfflinePackData(
-            peaks: [shared, OfflinePackData.Peak(name: "OnlyB", lat: 46.0, lon: 8.0, altitude: 4000)],
-            cells: ["46.0,8.0": 4000, "45.0,7.0": 3100],   // collides with packA
-            mediumCells: ["45.0,7.0": 3050],               // collides with packA's ring
-            coarseCells: ["44.98,7.02": 2800]
+            peaks: [shared, OfflinePackData.Peak(name: "OnlyB", lat: 46.0, lon: 8.0, altitude: 4000)]
         )
 
         let seed = OfflinePackManager.assembleSeed(from: [packA, packB])
 
-        // Peaks: the shared coordinate appears once → 3 unique peaks.
-        XCTAssertEqual(seed.peaks.count, 3)
-        XCTAssertEqual(seed.peaks.filter { $0.name == "Shared" }.count, 1)
-
-        // Cells: 3 distinct keys; the colliding key takes the later pack's value.
-        XCTAssertEqual(seed.cells.count, 3)
-        XCTAssertEqual(seed.cells["45.0,7.0"], 3100)
-        XCTAssertEqual(seed.cells["46.0,8.0"], 4000)
-
-        // Ring layers union the same way, later pack winning; a nil layer
-        // contributes nothing.
-        XCTAssertEqual(seed.mediumCells["45.0,7.0"], 3050)
-        XCTAssertEqual(seed.coarseCells.count, 1)
+        XCTAssertEqual(seed.count, 3)                                        // shared appears once
+        XCTAssertEqual(seed.filter { $0.name == "Shared" }.count, 1)
+        XCTAssertTrue(seed.contains { $0.name == "OnlyA" })
+        XCTAssertTrue(seed.contains { $0.name == "OnlyB" })
     }
 
     func testAssembleSeedEmptyIsEmpty() {
-        let seed = OfflinePackManager.assembleSeed(from: [])
-        XCTAssertTrue(seed.peaks.isEmpty)
-        XCTAssertTrue(seed.cells.isEmpty)
-        XCTAssertTrue(seed.mediumCells.isEmpty)
-        XCTAssertTrue(seed.coarseCells.isEmpty)
-    }
-
-    // MARK: - Far-terrain ring layers
-
-    func testRingGridsSnapToTheirOwnLattices() {
-        let center = CLLocationCoordinate2D(latitude: 47.1234, longitude: 8.5678)
-        let medium = SkylineCalculator.offlineMediumPrefetchCoordinates(center: center)
-        let coarse = SkylineCalculator.offlineCoarsePrefetchCoordinates(center: center)
-        XCTAssertFalse(medium.isEmpty)
-        XCTAssertFalse(coarse.isEmpty)
-        XCTAssertLessThanOrEqual(medium.count, SkylineCalculator.offlineMaxRingCells)
-        XCTAssertLessThanOrEqual(coarse.count, SkylineCalculator.offlineMaxRingCells)
-        // Every node keys to a distinct cell of its own layer — the exact
-        // property the live fallback lookup depends on (no phase drift,
-        // no duplicate keys, no gaps).
-        XCTAssertEqual(Set(medium.map(TerrainElevationService.gridKeyMedium)).count, medium.count)
-        XCTAssertEqual(Set(coarse.map(TerrainElevationService.gridKeyCoarse)).count, coarse.count)
-    }
-
-    func testCoarseRingReachesTheSkylineRange() {
-        // The coarse ring must reach (nearly) the 200 km skyline range —
-        // that's the whole point of the layer: distant mountain ranges
-        // staying in the offline silhouette.
-        let center = CLLocationCoordinate2D(latitude: 47.0, longitude: 8.0)
-        let coarse = SkylineCalculator.offlineCoarsePrefetchCoordinates(center: center)
-        let maxLatSpanMeters = coarse.map { abs($0.latitude - 47.0) * 111_320 }.max() ?? 0
-        XCTAssertGreaterThan(maxLatSpanMeters, 150_000)
-    }
-
-    func testPinnedRingFallbackResolvesWithoutNetwork() async {
-        let service = TerrainElevationService()
-        await service.clearCache()
-        // Pin ONLY a coarse cell; query a nearby point that misses the fine
-        // and medium layers. It must resolve through the coarse fallback —
-        // and because everything resolves from pinned data, no network
-        // request is ever attempted (the whole offline promise).
-        let p = CLLocationCoordinate2D(latitude: 45.003, longitude: 7.006)
-        let coarseKey = TerrainElevationService.gridKeyCoarse(p)
-        await service.setPinned(fine: [:], medium: [:], coarse: [coarseKey: 1234])
-        let result = await service.elevations(at: [p])
-        XCTAssertEqual(result, [1234])
+        XCTAssertTrue(OfflinePackManager.assembleSeed(from: []).isEmpty)
     }
 }

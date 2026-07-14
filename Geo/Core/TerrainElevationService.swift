@@ -33,25 +33,15 @@ actor TerrainElevationService {
     /// entries once we exceed `cacheCap`.
     private var lruOrder: [String] = []
 
-    /// Cells from downloaded **offline expedition packs**, keyed exactly
-    /// like `cache`. Consulted on every cache miss and *never* LRU-evicted,
-    /// so a prefetched area's terrain skyline keeps resolving from cache
-    /// with no signal. Rebuilt wholesale from the saved packs by
-    /// `OfflinePackManager` at launch and whenever a pack is added/removed.
-    /// Total memory is bounded because each pack caps its cell count at
-    /// `SkylineCalculator.offlineMaxDEMCells` (≈ cap × number of saved packs).
-    private var pinned: [String: Double] = [:]
-
-    /// Coarser pinned layers from the packs' far-terrain rings. The fine
-    /// ~110 m core only reaches ~10 km, but the skyline looks out to
-    /// 200 km — without these rings every offline sample past the core
-    /// resolved to nil and distant ranges silently vanished from the
-    /// silhouette. A miss on the fine layers falls back to the ~550 m
-    /// ring, then the ~2.2 km ring; that matches the skyline fan's own
-    /// angular resolution (2° of bearing ≈ 3.5 % of distance laterally),
-    /// so the coarse far-field costs no visible fidelity.
-    private var pinnedMedium: [String: Double] = [:]
-    private var pinnedCoarse: [String: Double] = [:]
+    // NOTE: this service used to also hold *pinned* DEM layers (a fine ~110 m
+    // core plus ~550 m / ~2.2 km far-terrain rings) seeded from offline
+    // expedition packs, so the terrain skyline could resolve a full 200 km
+    // panorama with no signal. The skyline was removed from the Nature tab, and
+    // with it the pinned layers, `setPinned(...)` and the pack DEM prefetch.
+    //
+    // What remains is what `PeakFinder` actually needs: resolve the altitude of
+    // an OSM peak node that carries no `ele` tag. That's a bounded, on-demand
+    // lookup (one point per peak), served by the LRU cache below.
 
     /// The persisted cache is loaded lazily on the first query — an actor's
     /// `init` is nonisolated and cannot touch isolated state under Swift 6.
@@ -112,15 +102,6 @@ actor TerrainElevationService {
             if let cached = cache[k] {
                 touchLRU(k)
                 results[i] = cached
-            } else if let pin = pinned[k] {
-                // Offline-pack cell — durable, never LRU-evicted.
-                results[i] = pin
-            } else if let pin = pinnedMedium[Self.gridKeyMedium(p)] {
-                // Far-terrain ring (~550 m cells, to ~50 km from a pack).
-                results[i] = pin
-            } else if let pin = pinnedCoarse[Self.gridKeyCoarse(p)] {
-                // Far-terrain ring (~2.2 km cells, to ~200 km from a pack).
-                results[i] = pin
             } else {
                 pending.append((i, p))
             }
@@ -190,19 +171,6 @@ actor TerrainElevationService {
         if let url = cacheURL {
             try? FileManager.default.removeItem(at: url)
         }
-    }
-
-    /// Replace the sets of *pinned* cells (grid-cell → elevation) from the
-    /// downloaded offline packs — the fine ~110 m core plus the two
-    /// far-terrain ring layers. Pinned cells are consulted on every cache
-    /// miss and never evicted. Rebuilt wholesale by `OfflinePackManager`,
-    /// so passing the union of all packs' layers is the whole contract.
-    func setPinned(fine: [String: Double],
-                   medium: [String: Double] = [:],
-                   coarse: [String: Double] = [:]) {
-        pinned = fine
-        pinnedMedium = medium
-        pinnedCoarse = coarse
     }
 
     // MARK: - HTTP
@@ -370,40 +338,12 @@ actor TerrainElevationService {
         )
     }
 
-    /// Canonical cache/pinned key for a coordinate: the ~110 m quantised
-    /// "lat,lon" string. Exposed so `OfflinePackManager` builds pack-cell
-    /// keys that line up byte-for-byte with the live lookups.
+    /// Canonical cache key for a coordinate: the ~110 m quantised "lat,lon"
+    /// string. The quantisation doubles as the privacy grid — a coordinate is
+    /// rounded to ~110 m before it is ever sent to the elevation API.
     static func gridKey(_ p: CLLocationCoordinate2D) -> String {
         let q = quantise(p)
         return "\(q.latitude),\(q.longitude)"
-    }
-
-    // MARK: - Far-terrain ring layers
-
-    /// Grid steps of the packs' far-terrain ring layers. Key safety is
-    /// the same trick the fine grid relies on: every producer and every
-    /// consumer keys through the SAME `(value / step).rounded() * step`
-    /// expression, so any two coordinates in one cell reduce to the same
-    /// Double bit pattern and therefore the same string key.
-    static let mediumStepDeg = 0.005   // ~550 m cells
-    static let coarseStepDeg = 0.02    // ~2.2 km cells
-
-    private static func quantise(_ value: Double, step: Double) -> Double {
-        (value / step).rounded() * step
-    }
-
-    /// Pinned-layer key for the ~550 m ring.
-    static func gridKeyMedium(_ p: CLLocationCoordinate2D) -> String {
-        let lat = quantise(p.latitude, step: mediumStepDeg)
-        let lon = quantise(p.longitude, step: mediumStepDeg)
-        return "\(lat),\(lon)"
-    }
-
-    /// Pinned-layer key for the ~2.2 km ring.
-    static func gridKeyCoarse(_ p: CLLocationCoordinate2D) -> String {
-        let lat = quantise(p.latitude, step: coarseStepDeg)
-        let lon = quantise(p.longitude, step: coarseStepDeg)
-        return "\(lat),\(lon)"
     }
 }
 

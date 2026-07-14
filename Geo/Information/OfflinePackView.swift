@@ -141,7 +141,7 @@ struct OfflinePackManagerView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(pack.name)
                                     .font(.headline)
-                                Text("\(pack.peakCount) peaks · \(pack.cellCount + (pack.ringCellCount ?? 0)) cells · \(Int(pack.radiusKm)) km")
+                                Text("\(pack.peakCount) peaks · \(Int(pack.radiusKm)) km")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Text(pack.createdAt.formatted(date: .abbreviated, time: .shortened))

@@ -13,30 +13,20 @@ import simd
 /// view-projection matrix for pixel-perfect alignment with the camera feed.
 /// Markers are locked to their real-world GPS positions.
 ///
-/// Peaks whose IDs appear in `occludedIDs` are hidden (behind real-world geometry).
-/// Nearby peaks (<100m) are also hidden until `isSceneReady` to prevent briefly
-/// showing peaks that should be occluded before ARKit has scanned the environment.
+/// This is the Nature tab's whole point: identify the peaks you can see through
+/// the camera. Every peak the finder returns gets a marker — there is no
+/// LiDAR-occlusion culling (peaks are kilometres away, so nothing indoors can
+/// meaningfully occlude them) and no silhouette-welding suppression.
 struct PeakOverlayView: View {
     let peaks: [NearbyPeak]
     let userLocation: CLLocation?
-    /// The effective observer altitude shared with the skyline/welded-pill
-    /// paths (DEM-anchored when available, else the baro-preferred sensor
-    /// value — resolved by the caller). Using it as the ENU origin altitude
-    /// keeps markers vertically attached to the drawn silhouette; the raw
-    /// GPS altitude can disagree with the baro/DEM value by 10–30 m and
-    /// detach them. `nil` falls back to the raw GPS altitude.
+    /// Observer altitude used as the ENU origin — the barometer-preferred
+    /// sensor value, resolved by the caller. The raw GPS altitude can disagree
+    /// with the barometric one by 10–30 m and visibly detach the markers.
+    /// `nil` falls back to the raw GPS altitude.
     let observerAltitude: Double?
     @ObservedObject var sessionManager: ARSessionManager
-    @ObservedObject var occlusionManager: AROcclusionManager
-    
-    /// Distance threshold (meters) below which points wait for scene reconstruction
-    private let nearbyThreshold: Double = 100.0
-    
-    /// Convenience accessor for occluded IDs
-    private var occludedIDs: Set<UUID> {
-        occlusionManager.occludedIDs
-    }
-    
+
     var body: some View {
         // Read the per-frame tick so SwiftUI re-evaluates this body every
         // frame. The camera matrices are plain (non-@Published) properties
@@ -48,20 +38,17 @@ struct PeakOverlayView: View {
             let screenHeight = geometry.size.height
 
             ForEach(peaks) { peak in
-                if !occludedIDs.contains(peak.id)
-                    && (peak.distance >= nearbyThreshold || occlusionManager.isSceneReady) {
-                    if let screenPos = projectGPSPoint(
-                        coordinate: peak.coordinate,
-                        altitude: peak.altitude,
-                        screenWidth: screenWidth,
-                        screenHeight: screenHeight
-                    ) {
-                        PeakMarkerView(peak: peak)
-                            .position(x: screenPos.x, y: screenPos.y)
-                            .animation(.linear(duration: 1.0 / 30.0), value: screenPos)
-                            .opacity(opacityForDistance(peak.distance, maxDistance: 50000))
-                            .scaleEffect(scaleForDistance(peak.distance, maxDistance: 50000))
-                    }
+                if let screenPos = projectGPSPoint(
+                    coordinate: peak.coordinate,
+                    altitude: peak.altitude,
+                    screenWidth: screenWidth,
+                    screenHeight: screenHeight
+                ) {
+                    PeakMarkerView(peak: peak)
+                        .position(x: screenPos.x, y: screenPos.y)
+                        .animation(.linear(duration: 1.0 / 30.0), value: screenPos)
+                        .opacity(opacityForDistance(peak.distance, maxDistance: 50000))
+                        .scaleEffect(scaleForDistance(peak.distance, maxDistance: 50000))
                 }
             }
         }
@@ -84,9 +71,9 @@ struct PeakOverlayView: View {
     ) -> CGPoint? {
         guard let userLoc = userLocation, sessionManager.isTracking else { return nil }
         
-        // 1. GPS → local ENU offset (meters). Origin altitude is the SAME
-        // effective observer altitude the skyline uses (see the property
-        // doc), not the raw GPS altitude, so markers and silhouette agree.
+        // 1. GPS → local ENU offset (meters). Origin altitude is the
+        // barometer-preferred observer altitude (see the property doc), not the
+        // raw GPS altitude, which can sit 10–30 m off and tilt every marker.
         let enu = Geometry.gpsToENU(
             from: userLoc.coordinate, originAltitude: observerAltitude ?? userLoc.altitude,
             to: coordinate, targetAltitude: altitude
@@ -97,7 +84,7 @@ struct PeakOverlayView: View {
         // Without the offset the direction to the peak drifts by however much
         // the camera has moved since the session began — very visible for nearby points.
         // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North.
-        // Shared projection so the occlusion-target builder can't diverge.
+        // Shared projection so the horizon line and the tap hit-test agree.
         let worldPoint = sessionManager.worldPoint(east: enu.east, up: enu.up, north: enu.north)
         
         // 3. Project to screen via AR camera matrices

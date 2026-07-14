@@ -2,17 +2,15 @@
 //  OfflinePack.swift
 //  Geo
 //
-//  "Offline expedition pack" — a pre-cached area so the AR peaks +
-//  terrain skyline keep working on a summit with no signal. Each pack
-//  bundles the area's OSM peaks and the skyline DEM (digital elevation
-//  model) sampled from the pack centre, both pulled through the same
-//  throttled public-API paths the live app uses.
+//  "Offline expedition pack" — a pre-cached area so the AR peak markers keep
+//  working on a summit with no signal. Each pack bundles the area's OSM peaks
+//  (name, coordinate, altitude), pulled through the same throttled public-API
+//  path the live app uses.
 //
-//  Storage is plain JSON files (Application Support), NOT Core Data:
-//  the DEM blob is large and purely local, so there's no reason to sync
-//  it through CloudKit. A lightweight `index.json` holds the metadata
-//  the management UI lists; each pack's peaks + cells live in its own
-//  `<id>.json` so the list doesn't have to load megabytes of terrain.
+//  Storage is plain JSON files (Application Support), NOT Core Data: the data is
+//  purely local and re-downloadable, so there's no reason to sync it through
+//  CloudKit. A lightweight `index.json` holds the metadata the management UI
+//  lists; each pack's peaks live in its own `<id>.json`.
 //
 //  Map tiles are intentionally out of scope — MapKit/Google Maps
 //  licensing forbids caching their tiles, so this is "offline data &
@@ -23,7 +21,11 @@ import Foundation
 import CoreLocation
 
 /// Lightweight metadata for one downloaded pack — what the management
-/// list shows. The bulky peaks + DEM cells live in `OfflinePackData`.
+/// list shows. The peaks themselves live in `OfflinePackData`.
+///
+/// The old `cellCount` / `ringCellCount` DEM counters are gone along with the
+/// terrain skyline. `Codable` ignores unknown keys, so index files written by
+/// an older build still decode cleanly — their DEM counters are simply dropped.
 struct OfflinePack: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
@@ -34,21 +36,20 @@ struct OfflinePack: Identifiable, Codable, Equatable {
     let createdAt: Date
     /// Named peaks cached for the area.
     var peakCount: Int
-    /// ~110 m DEM grid cells cached for the centre's skyline panorama.
-    var cellCount: Int
-    /// Far-terrain ring cells (~550 m to 50 km + ~2.2 km to 200 km) that
-    /// let the offline skyline include distant ranges. `nil` for packs
-    /// downloaded before the rings existed (they cover the core only).
-    var ringCellCount: Int?
 
     var center: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon)
     }
 }
 
-/// The heavy payload for one pack: its OSM peaks and the quantised
-/// grid-cell → elevation map. Stored in `<id>.json`, loaded only when a
-/// pack is created/deleted or seeded into the live caches at launch.
+/// The payload for one pack: its OSM peaks (name, coordinate, altitude).
+/// Stored in `<id>.json`, loaded only when a pack is created/deleted or seeded
+/// into `PeakFinder` at launch.
+///
+/// Packs written by an older build also carry `cells` / `mediumCells` /
+/// `coarseCells` DEM blobs for the removed terrain skyline. Those keys are no
+/// longer decoded — `Codable` ignores them — so old packs keep working as
+/// peak-only packs without a migration.
 struct OfflinePackData: Codable {
     struct Peak: Codable {
         let name: String
@@ -57,16 +58,6 @@ struct OfflinePackData: Codable {
         let altitude: Double
     }
     let peaks: [Peak]
-    /// Key is `TerrainElevationService.gridKey` ("lat,lon" quantised to
-    /// ~110 m), value is elevation in metres. Seeded into the elevation
-    /// service as *pinned* cells so they survive LRU eviction offline.
-    let cells: [String: Double]
-    /// Far-terrain ring layers, keyed by `gridKeyMedium` (~550 m cells to
-    /// ~50 km) and `gridKeyCoarse` (~2.2 km cells to ~200 km). Optional so
-    /// pack files saved before the rings existed still decode; the live
-    /// lookup falls back fine → medium → coarse on a miss.
-    let mediumCells: [String: Double]?
-    let coarseCells: [String: Double]?
 }
 
 /// File-backed persistence for offline packs. Pure I/O; the

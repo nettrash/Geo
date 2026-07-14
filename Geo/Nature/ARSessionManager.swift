@@ -65,39 +65,10 @@ class ARSessionManager: ObservableObject {
     /// compass error is different every session.
     @Published var headingAlignmentDeg: Double = 0
 
-    /// The backing `ARSCNView`, set by `ARCameraView`'s coordinator. Held
-    /// weakly so the session manager never keeps the camera view alive past
-    /// the Nature tab. Used to grab the freeze-frame for sharing.
-    weak var sceneView: ARSCNView?
-
-    /// Snapshot the live camera + rendered scene as a `UIImage`. This is the
-    /// camera feed only — the SwiftUI marker/skyline overlays are composited
-    /// on top separately by `SharePanoramaView`. Main-actor (SceneKit
-    /// `snapshot()` must run on the main thread).
-    func snapshot() -> UIImage? { sceneView?.snapshot() }
-    
-    /// Depth (meters) at the center of the viewport from LiDAR depth buffer.
-    /// `nil` on non-LiDAR devices.
-    @Published var centerDepth: Float?
-    
-    /// Distance (meters) to the nearest surface along the camera's forward direction,
-    /// computed via `ARSession.raycast` with `.estimatedPlane`.
-    /// Works on ALL ARKit devices and at much greater range (~20 m+) than plane detection.
-    @Published var raycastDistance: Float?
-    
-    // MARK: - Scene Depth (LiDAR)
-    
-    /// Scene depth buffer copied each frame (Float32 meters). Not @Published to avoid extra SwiftUI churn.
-    private(set) var depthData: [Float] = []
-    private(set) var depthWidth: Int = 0
-    private(set) var depthHeight: Int = 0
-    /// Maps normalised camera-image UV → normalised viewport UV.
-    private(set) var displayTransform: CGAffineTransform = .identity
-    
     /// Update from an ARFrame — called by ARCameraView coordinator every frame.
     func update(from frame: ARFrame, viewportSize: CGSize, orientation: UIInterfaceOrientation) {
         let camera = frame.camera
-        
+
         self.cameraTransform = camera.transform
         // viewMatrix = inverse of camera transform = converts world → camera space
         self.viewMatrix = camera.viewMatrix(for: orientation)
@@ -116,35 +87,6 @@ class ARSessionManager: ObservableObject {
         self.frameTick &+= 1
 
         self.isTracking = camera.trackingState == .normal
-        
-        // Capture scene depth for per-pixel occlusion (LiDAR devices only)
-        self.displayTransform = frame.displayTransform(for: orientation, viewportSize: viewportSize)
-        if let depthMap = (frame.smoothedSceneDepth ?? frame.sceneDepth)?.depthMap {
-            CVPixelBufferLockBaseAddress(depthMap, .readOnly)
-            defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
-            let w = CVPixelBufferGetWidth(depthMap)
-            let h = CVPixelBufferGetHeight(depthMap)
-            if let base = CVPixelBufferGetBaseAddress(depthMap) {
-                let floatPtr = base.assumingMemoryBound(to: Float32.self)
-                depthData = Array(UnsafeBufferPointer(start: floatPtr, count: w * h))
-                depthWidth = w
-                depthHeight = h
-            }
-        } else {
-            depthData = []
-        }
-        
-        // Compute center-of-viewport depth for wall distance display
-        if !depthData.isEmpty, depthWidth > 0, depthHeight > 0 {
-            let centerNorm = CGPoint(x: 0.5, y: 0.5)
-            let camUV = centerNorm.applying(self.displayTransform.inverted())
-            let px = min(max(Int(camUV.x * CGFloat(depthWidth)), 0), depthWidth - 1)
-            let py = min(max(Int(camUV.y * CGFloat(depthHeight)), 0), depthHeight - 1)
-            let d = depthData[py * depthWidth + px]
-            centerDepth = d > 0.01 ? d : nil
-        } else {
-            centerDepth = nil
-        }
     }
     
     /// Map a local ENU offset (metres, East-North-Up) to an ARKit world-space
@@ -153,14 +95,14 @@ class ARSessionManager: ObservableObject {
     /// ARKit's `gravityAndHeading` frame is +X = East, +Y = Up, −Z = North,
     /// and the world origin is the session-start pose — so we offset by the
     /// camera's translation (columns.3) to keep markers welded to the user as
-    /// the camera drifts. This is the SINGLE projection shared by the renderer
-    /// (PeakOverlayView/HorizonOverlayView) and the occlusion-target builder
-    /// so they can never diverge.
+    /// the camera drifts. This is the SINGLE projection shared by every overlay
+    /// (PeakOverlayView, HorizonOverlayView) and the tap hit-test, so they can
+    /// never diverge.
     ///
     /// The manual compass alignment (`headingAlignmentDeg`) is applied HERE,
     /// rotating (east, north) about the vertical axis, so every consumer of
-    /// this choke point — skyline, cardinal labels, welded pills, markers,
-    /// occlusion targets, hit-tests, share render — shifts coherently with
+    /// this choke point — horizon line, cardinal labels, peak markers,
+    /// hit-tests — shifts coherently with
     /// the one knob. See the property doc for the sign derivation.
     func worldPoint(east: Double, up: Double, north: Double) -> simd_float3 {
         let (e, n) = Geometry.rotateENU(east: east, north: north,
