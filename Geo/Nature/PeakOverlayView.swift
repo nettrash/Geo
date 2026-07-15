@@ -9,14 +9,24 @@ import SwiftUI
 import CoreLocation
 import simd
 
-/// Overlay view that positions peak markers on screen using ARKit's camera
-/// view-projection matrix for pixel-perfect alignment with the camera feed.
-/// Markers are locked to their real-world GPS positions.
+/// Leader length (screen points) from a peak's projected summit up to its
+/// floating name banner. Exposed so the tap hit-test in `GeoNatureView` can
+/// target the banner (where the label is drawn), not the bare summit point.
+let peakBannerLeaderLength: CGFloat = 46
+
+/// Overlay that annotates each visible peak at its real summit position.
 ///
-/// This is the Nature tab's whole point: identify the peaks you can see through
-/// the camera. Every peak the finder returns gets a marker — there is no
-/// LiDAR-occlusion culling (peaks are kilometres away, so nothing indoors can
-/// meaningfully occlude them) and no silhouette-welding suppression.
+/// Instead of a label box sitting *on* the peak, each peak is drawn as:
+///   • a small dot at the projected **summit** — the screen point where the
+///     peak's top lands, computed from its GPS position + altitude and the
+///     observer's altitude through the AR camera (so it tracks the real peak),
+///   • a thin vertical **leader** rising from that dot, and
+///   • a slightly **tilted banner** (name + altitude) at the leader's top.
+///
+/// The dot marks the exact summit; the banner floats clear of it so it never
+/// hides the peak you're identifying. This is the Nature tab's whole point —
+/// every peak the finder returns is annotated; there's no occlusion culling
+/// (peaks are kilometres away).
 struct PeakOverlayView: View {
     let peaks: [NearbyPeak]
     let userLocation: CLLocation?
@@ -27,42 +37,77 @@ struct PeakOverlayView: View {
     let observerAltitude: Double?
     @ObservedObject var sessionManager: ARSessionManager
 
+    /// Counter-clockwise banner tilt (right edge lifted), so it stands up from
+    /// the leader like a signpost, reading upward. At −75° it's near-vertical.
+    private let bannerTiltDegrees: Double = -75
+
+    private struct ProjectedPeak: Identifiable {
+        let id: UUID
+        let peak: NearbyPeak
+        let summit: CGPoint       // projected peak top
+        let opacity: Double
+        let scale: CGFloat
+        /// Leader top = banner anchor (summit lifted by the leader length).
+        var anchor: CGPoint { CGPoint(x: summit.x, y: summit.y - peakBannerLeaderLength) }
+    }
+
     var body: some View {
-        // Read the per-frame tick so SwiftUI re-evaluates this body every
-        // frame. The camera matrices are plain (non-@Published) properties
-        // on `sessionManager`, so this is the only signal that keeps the
-        // projected markers live as the device moves.
+        // Read the per-frame tick so SwiftUI re-evaluates this body every frame;
+        // the camera matrices are plain (non-@Published) properties, so this is
+        // what keeps the annotations tracking as the device moves.
         _ = sessionManager.frameTick
         return GeometryReader { geometry in
-            let screenWidth = geometry.size.width
-            let screenHeight = geometry.size.height
+            let projected = projectedPeaks(in: geometry.size)
+            ZStack {
+                // Leaders + summit dots — one Canvas for all of them.
+                Canvas { ctx, _ in
+                    for p in projected {
+                        var line = Path()
+                        line.move(to: p.summit)
+                        line.addLine(to: p.anchor)
+                        ctx.stroke(line, with: .color(.orange.opacity(0.9 * p.opacity)),
+                                   style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                        let r: CGFloat = 2.5
+                        ctx.fill(Path(ellipseIn: CGRect(x: p.summit.x - r, y: p.summit.y - r,
+                                                        width: r * 2, height: r * 2)),
+                                 with: .color(.orange.opacity(p.opacity)))
+                    }
+                }
+                .allowsHitTesting(false)
 
-            ForEach(peaks) { peak in
-                if let screenPos = projectGPSPoint(
-                    coordinate: peak.coordinate,
-                    altitude: peak.altitude,
-                    screenWidth: screenWidth,
-                    screenHeight: screenHeight
-                ) {
-                    PeakMarkerView(peak: peak)
-                        .position(x: screenPos.x, y: screenPos.y)
-                        .animation(.linear(duration: 1.0 / 30.0), value: screenPos)
-                        .opacity(opacityForDistance(peak.distance, maxDistance: 50000))
-                        .scaleEffect(scaleForDistance(peak.distance, maxDistance: 50000))
+                // Tilted name/altitude banners at the leader tops. No implicit
+                // position animation: `frameTick` already re-projects every
+                // frame, and the leader (drawn in the Canvas above) and the
+                // banner share the same anchor — animating only the banner would
+                // let it lag behind its own leader.
+                ForEach(projected) { p in
+                    PeakSummitBanner(peak: p.peak, anchor: p.anchor,
+                                     tiltDegrees: bannerTiltDegrees,
+                                     scale: p.scale, opacity: p.opacity)
                 }
             }
         }
     }
-    
+
+    private func projectedPeaks(in size: CGSize) -> [ProjectedPeak] {
+        peaks.compactMap { peak in
+            guard let summit = projectGPSPoint(coordinate: peak.coordinate, altitude: peak.altitude,
+                                               screenWidth: size.width, screenHeight: size.height)
+            else { return nil }
+            return ProjectedPeak(
+                id: peak.id, peak: peak, summit: summit,
+                opacity: opacityForDistance(peak.distance, maxDistance: 50000),
+                scale: scaleForDistance(peak.distance, maxDistance: 50000)
+            )
+        }
+    }
+
     // MARK: - GPS → World → Screen Projection
-    
-    /// Project a GPS coordinate + altitude to screen coordinates using the AR camera.
-    ///
-    /// Steps:
-    /// 1. Convert GPS (lat/lon/alt) → local ENU (East-North-Up) offset in meters from user
-    /// 2. Map ENU → ARKit world space (+X=East, +Y=Up, −Z=North per gravityAndHeading)
-    /// 3. Multiply by AR camera view-projection matrix → clip space
-    /// 4. Perspective divide → NDC → screen points
+
+    /// Project a GPS coordinate + altitude to screen coordinates using the AR
+    /// camera. GPS→ENU (origin at the observer altitude) → ARKit world (offset
+    /// by the camera's world position) → clip space → screen. `nil` when not
+    /// tracking, behind the camera, or off-screen (with margin).
     private func projectGPSPoint(
         coordinate: CLLocationCoordinate2D,
         altitude: Double,
@@ -70,48 +115,85 @@ struct PeakOverlayView: View {
         screenHeight: Double
     ) -> CGPoint? {
         guard let userLoc = userLocation, sessionManager.isTracking else { return nil }
-        
-        // 1. GPS → local ENU offset (meters). Origin altitude is the
-        // barometer-preferred observer altitude (see the property doc), not the
-        // raw GPS altitude, which can sit 10–30 m off and tilt every marker.
+
         let enu = Geometry.gpsToENU(
             from: userLoc.coordinate, originAltitude: observerAltitude ?? userLoc.altitude,
             to: coordinate, targetAltitude: altitude
         )
-        
-        // 2. ENU → ARKit world space, offset by the camera's current world position.
-        // The viewMatrix transforms ARKit world-space points (origin = session start).
-        // Without the offset the direction to the peak drifts by however much
-        // the camera has moved since the session began — very visible for nearby points.
-        // ARKit gravityAndHeading: +X = East, +Y = Up, −Z = North.
-        // Shared projection so the horizon line and the tap hit-test agree.
         let worldPoint = sessionManager.worldPoint(east: enu.east, up: enu.up, north: enu.north)
-        
-        // 3. Project to screen via AR camera matrices
-        guard let screenPos = sessionManager.projectToScreen(worldPoint) else {
-            return nil
-        }
-        
-        // 4. Visibility check — is the point on-screen (with margin)?
+        guard let screenPos = sessionManager.projectToScreen(worldPoint) else { return nil }
+
         let margin: CGFloat = 50
         guard screenPos.x > -margin && screenPos.x < screenWidth + margin &&
               screenPos.y > -margin && screenPos.y < screenHeight + margin else {
             return nil
         }
-        
         return screenPos
     }
-    
-    
-    /// Points further away are more transparent
+
+    /// Points further away are more transparent.
     private func opacityForDistance(_ distance: Double, maxDistance: Double) -> Double {
-        let opacity = 1.0 - (distance / maxDistance) * 0.5
-        return max(0.5, min(1.0, opacity))
+        max(0.5, min(1.0, 1.0 - (distance / maxDistance) * 0.5))
     }
-    
-    /// Points further away are slightly smaller
-    private func scaleForDistance(_ distance: Double, maxDistance: Double) -> Double {
-        let scale = 1.0 - (distance / maxDistance) * 0.4
-        return max(0.6, min(1.0, scale))
+
+    /// Points further away are slightly smaller.
+    private func scaleForDistance(_ distance: Double, maxDistance: Double) -> CGFloat {
+        max(0.6, min(1.0, 1.0 - (distance / maxDistance) * 0.4))
+    }
+}
+
+/// A peak's floating name/altitude banner. Single-line so it reads cleanly as
+/// one strip when stood up near-vertical. Pins its bottom-LEADING corner to the
+/// leader top (`anchor`) and rotates/scales about that corner, so the banner
+/// rises from the leader tip like a signpost regardless of tilt or distance
+/// scaling. Parked invisible until measured so it can't flash at the wrong spot.
+private struct PeakSummitBanner: View {
+    let peak: NearbyPeak
+    let anchor: CGPoint
+    let tiltDegrees: Double
+    let scale: CGFloat
+    let opacity: Double
+    @State private var size: CGSize = .zero
+
+    var body: some View {
+        content
+            .fixedSize()
+            .background(GeometryReader { proxy in
+                Color.clear
+                    .onAppear { size = proxy.size }
+                    .onChange(of: proxy.size) { _, newValue in size = newValue }
+            })
+            .rotationEffect(.degrees(tiltDegrees), anchor: .bottomLeading)
+            .scaleEffect(scale, anchor: .bottomLeading)
+            .opacity(opacity * (size == .zero ? 0 : 1))
+            // `.position` centres the (unrotated) layout frame; place the centre
+            // so the bottom-leading corner lands on the anchor. Rotation + scale
+            // both pivot at `.bottomLeading`, i.e. exactly there.
+            .position(x: anchor.x + size.width / 2, y: anchor.y - size.height / 2)
+    }
+
+    private var content: some View {
+        HStack(spacing: 5) {
+            Text(verbatim: peak.name)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            if peak.altitude > 0 {
+                // Summit altitude in metres — the mountaineering convention
+                // ("Mont Blanc 4808 m"), not kilometres.
+                Text(verbatim: "\(Int(peak.altitude.rounded())) m")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(.black.opacity(0.6))
+                .overlay(RoundedRectangle(cornerRadius: 7)
+                    .strokeBorder(.orange.opacity(0.8), lineWidth: 1))
+        )
     }
 }

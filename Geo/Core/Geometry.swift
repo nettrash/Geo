@@ -195,6 +195,22 @@ enum Geometry {
         return atan2(apparentRise, distance)
     }
 
+    /// Whether a peak of height `targetAltitude` is above the visible horizon
+    /// for an observer at `observerAltitude`, `distance` metres away — the
+    /// classic two-tangent test: the peak clears the Earth's bulge when the
+    /// distance is no more than the sum of the two horizon distances
+    /// `√(2·R·h_obs) + √(2·R·h_peak)`. Uses the refraction-corrected effective
+    /// radius so the cut matches the drawn geometric horizon. This ignores
+    /// intervening terrain (a nearer, higher ridge can still hide a peak this
+    /// says is visible) — that would need a DEM, which the Nature view no longer
+    /// carries. Kept identical to Android `GeoCalculations.isAboveHorizon`.
+    static func isAboveHorizon(observerAltitude: Double, targetAltitude: Double,
+                               distance: Double, radius R: Double = effectiveEarthRadius) -> Bool {
+        let ho = Swift.max(observerAltitude, 0)
+        let hp = Swift.max(targetAltitude, 0)
+        return distance <= (2 * R * ho).squareRoot() + (2 * R * hp).squareRoot()
+    }
+
     /// Great-circle (haversine) distance in metres between two coordinates.
     /// Kept identical to Android `GeoCalculations.distanceBetween` so trip
     /// distances match across platforms.

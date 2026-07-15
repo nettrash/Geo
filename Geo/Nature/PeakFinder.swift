@@ -57,7 +57,13 @@ class PeakFinder: ObservableObject {
     /// Search for peaks near the given location. Network source (OSM)
     /// is awaited first, then merged with the local bundled list.
     func searchPeaks(near location: CLLocation, mountainsData: MountainData?,
-                     offlinePeaks: [NearbyPeak] = []) async {
+                     offlinePeaks: [NearbyPeak] = [],
+                     observerAltitude: Double? = nil) async {
+        // Observer altitude for the horizon-visibility cut. Prefer the caller's
+        // (barometer-preferred) value — GPS altitude can be tens of metres off,
+        // or garbage-low, which would wrongly hide visible peaks. Falls back to
+        // the fix's altitude.
+        let obsAlt = observerAltitude ?? location.altitude
         // Don't re-search if we haven't moved much. We still age out
         // stale peaks though: prune the existing set by TTL + drop-radius
         // against the current location so a stationary user's stale peaks
@@ -66,7 +72,7 @@ class PeakFinder: ObservableObject {
         if let last = lastSearchLocation,
            last.distance(from: location) < minimumSearchDistance,
            !peaks.isEmpty {
-            peaks = pruneAndRecompute(peaks, from: location)
+            peaks = pruneAndRecompute(peaks, from: location, observerAltitude: obsAlt)
             return
         }
 
@@ -113,7 +119,7 @@ class PeakFinder: ObservableObject {
         for p in peaks { byID[p.id] = p }
         for p in foundPeaks { byID[p.id] = p } // fresh data wins on duplicates
 
-        peaks = pruneAndRecompute(Array(byID.values), from: location)
+        peaks = pruneAndRecompute(Array(byID.values), from: location, observerAltitude: obsAlt)
     }
 
     /// Prune a peak set against the current user location and recompute
@@ -122,7 +128,8 @@ class PeakFinder: ObservableObject {
     /// recompute distance/bearing for the survivors, and cap the total.
     /// Shared by the move path and the stationary no-move path so stale
     /// peaks age out in both cases.
-    private func pruneAndRecompute(_ input: [NearbyPeak], from location: CLLocation) -> [NearbyPeak] {
+    private func pruneAndRecompute(_ input: [NearbyPeak], from location: CLLocation,
+                                   observerAltitude: Double) -> [NearbyPeak] {
         let dropRadius = maxPeakRenderDistance // keep distant offline-pack peaks visible
         let now = Date()
         let ttl = peakTTL
@@ -139,6 +146,10 @@ class PeakFinder: ObservableObject {
             // re-confirmed by a search within the TTL window.
             guard d <= dropRadius else { continue }
             guard now.timeIntervalSince(peak.lastSeenAt) <= ttl else { continue }
+            // Drop peaks hidden below the Earth's bulge from here — only keep the
+            // ones actually above the visible horizon (what you can really see).
+            guard Geometry.isAboveHorizon(observerAltitude: observerAltitude,
+                                          targetAltitude: peak.altitude, distance: d) else { continue }
 
             peak.distance = d
             peak.bearing = Geometry.bearing(from: location.coordinate, to: peak.coordinate)

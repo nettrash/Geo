@@ -42,12 +42,15 @@ struct ARCameraView: UIViewRepresentable {
 
         // Store the ARSCNView in the coordinator so we can read its bounds
         context.coordinator.arView = arView
+        // Expose it to the session manager for the freeze-frame shutter.
+        sessionManager?.sceneView = arView
 
         return arView
     }
 
     func updateUIView(_ uiView: ARSCNView, context: Context) {
         context.coordinator.sessionManager = sessionManager
+        sessionManager?.sceneView = uiView
 
         // Resume / pause to match the parent's intent. ARKit handles
         // these calls cheaply when the state already matches.

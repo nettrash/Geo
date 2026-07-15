@@ -50,6 +50,19 @@ struct GeoNatureView: View {
     /// compounding per-event deltas. `nil` when no pan is in flight.
     @State private var alignmentDragBaseDeg: Double?
 
+    /// Minimum peak altitude (metres) to show, set by the on-screen slider
+    /// (0…Everest). A live view filter that declutters the horizon by raising
+    /// the floor — 0 shows everything. Persisted (`@AppStorage`) so the chosen
+    /// floor is remembered across launches, unlike the compass offset.
+    @AppStorage("natureMinPeakAltitude") private var minPeakAltitude: Double = 0
+
+    /// Freeze-frame share: the rendered camera + peak overlay (drives the share
+    /// sheet). `isCapturing` guards the shutter against a double-tap mid-render.
+    @State private var shareImage: ShareImage?
+    @State private var isCapturing = false
+    /// Render scale for the off-screen `ImageRenderer` capture.
+    @Environment(\.displayScale) private var displayScale
+
     /// Tracks whether this view is the user's currently visible tab AND
     /// the app is in the foreground. Drives `ARCameraView.isActive` and
     /// gates the AR-related work loops so we don't burn battery while
@@ -81,6 +94,14 @@ struct GeoNatureView: View {
             ?? overlayLocation?.altitude
     }
 
+    /// Peaks that pass the on-screen min-altitude filter — the single set the
+    /// markers, the tap hit-test and the top-bar count all read, so they always
+    /// agree. `< 1` means "no filter" (avoids a pointless full pass at 0).
+    private var visiblePeaks: [NearbyPeak] {
+        minPeakAltitude < 1 ? peakFinder.peaks
+            : peakFinder.peaks.filter { $0.altitude >= minPeakAltitude }
+    }
+
     var body: some View {
         ZStack {
             if cameraPermissionGranted {
@@ -101,7 +122,7 @@ struct GeoNatureView: View {
                 // 3. Peak markers, projected GPS→ENU→ARKit. This is the point of
                 // the tab.
                 PeakOverlayView(
-                    peaks: peakFinder.peaks,
+                    peaks: visiblePeaks,
                     userLocation: overlayLocation,
                     observerAltitude: effectiveObserverAltitude,
                     sessionManager: sessionManager
@@ -152,7 +173,7 @@ struct GeoNatureView: View {
                     HStack {
                         Image(systemName: "mountain.2.fill")
                             .foregroundStyle(.orange)
-                        Text(verbatim: "\(peakFinder.peaks.count)")
+                        Text(verbatim: "\(visiblePeaks.count)")
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.white)
 
@@ -203,6 +224,41 @@ struct GeoNatureView: View {
                         Spacer()
                     }
                     .padding(.top, 44)
+                }
+
+                // Min-altitude filter — a vertical bar on the right edge. Drag
+                // the handle up to raise the floor and hide the smaller peaks;
+                // the orange band is the altitude range being shown.
+                HStack {
+                    Spacer()
+                    AltitudeFilterSlider(minAltitude: $minPeakAltitude)
+                        .padding(.trailing, 10)
+                }
+
+                // Shutter — capture the camera frame + peak overlay as a photo to
+                // share. Disabled until the AR session is tracking.
+                VStack {
+                    Spacer()
+                    Button {
+                        captureShare()
+                    } label: {
+                        ZStack {
+                            Circle().stroke(.white.opacity(0.9), lineWidth: 4)
+                                .frame(width: 68, height: 68)
+                            Circle().fill(.white).frame(width: 54, height: 54)
+                            if isCapturing {
+                                ProgressView().tint(.black)
+                            } else {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundStyle(.black)
+                            }
+                        }
+                    }
+                    .disabled(!sessionManager.isTracking || isCapturing)
+                    .opacity(sessionManager.isTracking ? 1 : 0.4)
+                    .padding(.bottom, 28)
+                    .accessibilityLabel("Capture photo")
                 }
             } else {
                 // Camera permission not granted. We split this into two
@@ -290,9 +346,45 @@ struct GeoNatureView: View {
         .sheet(item: $selectedMarker) { marker in
             MarkerDetailSheet(selection: marker)
         }
+        .sheet(item: $shareImage) { share in
+            ActivityView(items: [share.image])
+        }
     }
 
     // MARK: - Helpers
+
+    /// Freeze the camera frame, composite the peak/horizon overlay over it, and
+    /// present the system share sheet. Fully on-device. The camera snapshot and
+    /// the `ImageRenderer` pass run back-to-back on the main actor, so the AR
+    /// matrices are frozen for both — the markers line up with the still frame.
+    private func captureShare() {
+        guard !isCapturing, sessionManager.isTracking else { return }
+        isCapturing = true
+        // Hop to the next main-actor turn so SwiftUI can render the shutter's
+        // busy state before the (main-actor-bound) snapshot + render pass runs.
+        Task { @MainActor in
+            defer { isCapturing = false }
+            guard let cameraImage = sessionManager.snapshot() else { return }
+            let size = sessionManager.viewportSize
+            guard size.width > 0, size.height > 0 else { return }
+
+            let panorama = NaturePanoramaView(
+                cameraImage: cameraImage,
+                size: size,
+                userLocation: overlayLocation,
+                barometerAltitude: app?.barometer?.height,
+                observerAltitude: effectiveObserverAltitude,
+                peaks: visiblePeaks,
+                sessionManager: sessionManager
+            )
+            let renderer = ImageRenderer(content: panorama)
+            renderer.scale = displayScale
+            renderer.proposedSize = ProposedViewSize(size)
+            if let image = renderer.uiImage {
+                shareImage = ShareImage(image: image)
+            }
+        }
+    }
 
     /// Description shown above the action button in the pre-AR view.
     /// Wording differs by state so a user who already denied access
@@ -359,7 +451,8 @@ struct GeoNatureView: View {
         guard let location = app?.location?.location else { return }
         Task {
             await peakFinder.searchPeaks(near: location, mountainsData: app?.mountainsData,
-                                         offlinePeaks: app?.offlinePack?.combinedPeaks ?? [])
+                                         offlinePeaks: app?.offlinePack?.combinedPeaks ?? [],
+                                         observerAltitude: effectiveObserverAltitude)
         }
     }
 
@@ -389,15 +482,19 @@ struct GeoNatureView: View {
             && screen.y > -margin && screen.y < vp.height + margin
     }
 
-    /// Nearest peak marker within the hit radius of `point`.
+    /// Nearest peak within the hit radius of `point`. Targets the floating
+    /// BANNER (summit lifted by `peakBannerLeaderLength`), i.e. where the label
+    /// is actually drawn, so a tap lands on the visible name rather than the
+    /// bare summit dot below it.
     private func nearestMarker(to point: CGPoint) -> ARMarkerSelection? {
         guard sessionManager.isTracking else { return nil }
         let hitRadius: CGFloat = 60
         var best: (selection: ARMarkerSelection, dist: CGFloat)?
 
-        for peak in peakFinder.peaks {
+        for peak in visiblePeaks {
             guard let screen = projectMarker(coordinate: peak.coordinate, altitude: peak.altitude) else { continue }
-            let d = hypot(screen.x - point.x, screen.y - point.y)
+            let target = CGPoint(x: screen.x, y: screen.y - peakBannerLeaderLength)
+            let d = hypot(target.x - point.x, target.y - point.y)
             if d <= hitRadius, best == nil || d < best!.dist { best = (.peak(peak), d) }
         }
         return best?.selection
@@ -429,6 +526,102 @@ let alignmentMaxOffsetDeg: Double = 30
 func alignmentOffsetDegrees(base: Double, panTranslationX: Double) -> Double {
     min(max(base + panTranslationX / alignmentPanPointsPerDegree,
             -alignmentMaxOffsetDeg), alignmentMaxOffsetDeg)
+}
+
+/// Everest — the top of the min-altitude filter's range.
+private let maxFilterAltitude: Double = 8848
+
+/// Vertical min-altitude filter for the Nature view. The handle's height on the
+/// track maps to a minimum peak altitude (0 at the bottom → Everest at the top);
+/// the orange band above the handle is the altitude range still shown. Tapping
+/// or dragging anywhere on the track sets the value; the value label rounds to a
+/// tidy 10 m. Session-only, unobtrusive, matching the view's pill styling.
+private struct AltitudeFilterSlider: View {
+    @Binding var minAltitude: Double
+    private let trackHeight: CGFloat = 200
+    private let knob: CGFloat = 18
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(minAltitude < 1 ? "All" : "≥ \(Int(minAltitude.rounded())) m")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.black.opacity(0.55), in: Capsule())
+
+            GeometryReader { geo in
+                let h = geo.size.height
+                let frac = CGFloat(min(max(minAltitude / maxFilterAltitude, 0), 1))
+                ZStack(alignment: .bottom) {
+                    // Track casing.
+                    Capsule().fill(.white.opacity(0.18)).frame(width: 5)
+                    // The shown band: from the handle up to the top (higher peaks).
+                    Capsule().fill(.orange.opacity(0.55))
+                        .frame(width: 5, height: h * (1 - frac))
+                        .frame(maxHeight: .infinity, alignment: .top)
+                    // Handle.
+                    Circle()
+                        .fill(.orange)
+                        .overlay(Circle().strokeBorder(.white, lineWidth: 2))
+                        .frame(width: knob, height: knob)
+                        .offset(y: -(h - knob) * frac)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            // y grows downward; invert so the top of the track is
+                            // the maximum altitude. Round to a tidy 10 m step.
+                            let clampedY = min(max(0, value.location.y), h)
+                            let raw = Double(1 - clampedY / h) * maxFilterAltitude
+                            minAltitude = (raw / 10).rounded() * 10
+                        }
+                )
+            }
+            .frame(width: 44, height: trackHeight)
+        }
+        .accessibilityLabel("Minimum peak altitude")
+        .accessibilityValue(minAltitude < 1 ? "All peaks" : "\(Int(minAltitude.rounded())) metres and up")
+    }
+}
+
+/// Off-screen composite rendered by the shutter: the frozen camera frame with
+/// the SAME horizon line and peak banners drawn over it. The overlays re-project
+/// through the live `sessionManager` matrices, which — because the snapshot and
+/// this render run back-to-back on the main actor — still match the frozen
+/// frame, so the markers land on the right summits in the shared photo.
+private struct NaturePanoramaView: View {
+    let cameraImage: UIImage
+    let size: CGSize
+    let userLocation: CLLocation?
+    let barometerAltitude: Double?
+    let observerAltitude: Double?
+    let peaks: [NearbyPeak]
+    @ObservedObject var sessionManager: ARSessionManager
+
+    var body: some View {
+        ZStack {
+            Image(uiImage: cameraImage)
+                .resizable()
+                .frame(width: size.width, height: size.height)
+
+            HorizonOverlayView(
+                userLocation: userLocation,
+                barometerAltitude: barometerAltitude,
+                sessionManager: sessionManager
+            )
+
+            PeakOverlayView(
+                peaks: peaks,
+                userLocation: userLocation,
+                observerAltitude: observerAltitude,
+                sessionManager: sessionManager
+            )
+        }
+        .frame(width: size.width, height: size.height)
+    }
 }
 
 #Preview {

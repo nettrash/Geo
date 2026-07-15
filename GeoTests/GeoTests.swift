@@ -396,3 +396,35 @@ final class TrackingGraphTests: XCTestCase {
         XCTAssertEqual(last.Value[0], CGFloat(100 + slots * 2 - 1), accuracy: 1e-9)
     }
 }
+
+/// Horizon-visibility test — the Nature tab only annotates peaks actually above
+/// the Earth's bulge from the observer. Mirrored by Android
+/// `GeoCalculationsTest`'s `isAboveHorizon` cases.
+final class HorizonVisibilityTests: XCTestCase {
+
+    func testTallNearbyPeakIsVisible() {
+        // 3000 m peak 20 km away, observer at 500 m: comfortably over the horizon.
+        XCTAssertTrue(Geometry.isAboveHorizon(observerAltitude: 500, targetAltitude: 3000, distance: 20_000))
+    }
+
+    func testLowFarPeakBelowSeaLevelObserverIsHidden() {
+        // A 200 m hill 120 km away, observer at the shore (0 m): its own horizon
+        // reaches ~54 km, the observer adds ~0 — so at 120 km it's hidden.
+        XCTAssertFalse(Geometry.isAboveHorizon(observerAltitude: 0, targetAltitude: 200, distance: 120_000))
+    }
+
+    func testHeightExtendsVisibility() {
+        // The SAME far hill becomes visible once the observer is high enough that
+        // the two horizon distances together span the gap.
+        XCTAssertFalse(Geometry.isAboveHorizon(observerAltitude: 0, targetAltitude: 500, distance: 150_000))
+        XCTAssertTrue(Geometry.isAboveHorizon(observerAltitude: 3000, targetAltitude: 500, distance: 150_000))
+    }
+
+    func testExactlyAtCombinedHorizonIsVisible() {
+        // At d == √(2R·h_obs)+√(2R·h_peak) the peak just grazes the horizon (≤).
+        let r = Geometry.effectiveEarthRadius
+        let d = (2 * r * 100).squareRoot() + (2 * r * 100).squareRoot()
+        XCTAssertTrue(Geometry.isAboveHorizon(observerAltitude: 100, targetAltitude: 100, distance: d, radius: r))
+        XCTAssertFalse(Geometry.isAboveHorizon(observerAltitude: 100, targetAltitude: 100, distance: d + 1, radius: r))
+    }
+}

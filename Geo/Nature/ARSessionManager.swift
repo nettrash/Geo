@@ -65,6 +65,16 @@ class ARSessionManager: ObservableObject {
     /// compass error is different every session.
     @Published var headingAlignmentDeg: Double = 0
 
+    /// The backing `ARSCNView`, set by `ARCameraView`'s coordinator. Held weakly
+    /// so the session manager never keeps the camera view alive past the Nature
+    /// tab. Used to grab the freeze-frame for the share shutter.
+    weak var sceneView: ARSCNView?
+
+    /// Snapshot the live camera feed as a `UIImage` (SceneKit `snapshot()` must
+    /// run on the main thread). The SwiftUI peak/horizon overlays aren't SceneKit
+    /// content, so they're composited on top separately by `NaturePanoramaView`.
+    func snapshot() -> UIImage? { sceneView?.snapshot() }
+
     /// Update from an ARFrame — called by ARCameraView coordinator every frame.
     func update(from frame: ARFrame, viewportSize: CGSize, orientation: UIInterfaceOrientation) {
         let camera = frame.camera

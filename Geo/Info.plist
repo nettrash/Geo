@@ -15,6 +15,8 @@
 	<string>Location is used to find nearby mountain peaks and show your position on the map.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Motion data is used for barometer altitude readings and AR peak positioning.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save the captured peak photo to your photo library.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>
