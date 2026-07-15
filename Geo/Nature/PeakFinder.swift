@@ -30,9 +30,24 @@ class PeakFinder: ObservableObject {
     private var lastSearchLocation: CLLocation?
     private let minimumSearchDistance: CLLocationDistance = 500 // re-search after moving 500m
 
+    /// How far a peak may be from the observer and still be kept for the AR
+    /// overlay. Deliberately MUCH larger than `searchRadius`: the live Overpass
+    /// query only reaches 5 km (to stay polite on the shared endpoint), but a
+    /// downloaded offline pack holds peaks out to 100 km — and in a camera
+    /// peak-identifier the summits you point at are the distant ones on the
+    /// horizon. Capping at `searchRadius × 2` threw ~90 % of a big pack away.
+    /// The AR projection already culls peaks that fall below the horizon / off
+    /// screen, so this is a coverage bound, not a visibility one. Mirrors
+    /// Android `PeakFinder.maxPeakRenderDistanceM`.
+    private let maxPeakRenderDistance: CLLocationDistance = 80_000 // 80 km
+
     /// Maximum number of peaks we keep in the merged set. Older / further
-    /// entries are evicted first when this is exceeded.
-    private let maxRetainedPeaks: Int = 200
+    /// entries are evicted first when this is exceeded. Larger than before so a
+    /// dense range doesn't evict the distant flagship summits (which are the
+    /// whole point of pointing the camera at the horizon) in favour of nearer
+    /// foothills. Only in-view peaks are actually drawn, so the on-screen count
+    /// stays small regardless.
+    private let maxRetainedPeaks: Int = 300
 
     /// Time after which a peak that has not been re-confirmed by a search
     /// gets dropped, even if the user hasn't moved. Stops stale results
@@ -108,7 +123,7 @@ class PeakFinder: ObservableObject {
     /// Shared by the move path and the stationary no-move path so stale
     /// peaks age out in both cases.
     private func pruneAndRecompute(_ input: [NearbyPeak], from location: CLLocation) -> [NearbyPeak] {
-        let dropRadius = searchRadius * 2 // hysteresis to avoid flicker at the edge
+        let dropRadius = maxPeakRenderDistance // keep distant offline-pack peaks visible
         let now = Date()
         let ttl = peakTTL
 

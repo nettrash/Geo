@@ -3,7 +3,7 @@
 //  Geo
 //
 //  Info-tab card + management sheet for the offline expedition pack:
-//  download the area around the current location (peaks + terrain DEM)
+//  download the area around the current location (named peaks)
 //  so the AR view keeps working with no signal, and list / delete the
 //  saved packs. Map tiles are out of scope (MapKit licensing) — this is
 //  "offline data & AR", not "offline map".
@@ -51,7 +51,7 @@ private struct OfflinePackCardBody: View {
                     VStack(alignment: .trailing) {
                         Text(verbatim: summary)
                         if manager.isDownloading {
-                            Text(verbatim: "Downloading… \(Int(manager.progress * 100))%")
+                            Text(verbatim: "Downloading…")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }
@@ -110,11 +110,14 @@ struct OfflinePackManagerView: View {
                             }
                         }
                         if manager.isDownloading {
-                            VStack(alignment: .leading, spacing: 6) {
+                            // A pack is now a single Overpass peak query — quick,
+                            // and with no multi-step phase to chart — so this is an
+                            // indeterminate spinner, not a 0%-stuck progress bar.
+                            HStack(spacing: 8) {
+                                ProgressView()
                                 Text(manager.statusText.isEmpty ? "Downloading…" : manager.statusText)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                ProgressView(value: manager.progress)
                             }
                         } else {
                             Button("Download this area") {
@@ -170,7 +173,7 @@ struct OfflinePackManagerView: View {
                 }
 
                 Section {
-                    Text("Caches the area's named peaks and the terrain skyline so the AR Nature view works with no signal. The chosen radius sets the peak coverage and the full-detail terrain core; the skyline's distant ranges are always cached out to 200 km around the pack at coarser detail. Map tiles aren't included (provider licensing).")
+                    Text("Caches the area's named mountain peaks so the AR Nature view can label them with no signal. The chosen radius sets how wide an area is cached; peaks are shown in the camera out to ~80 km, so a wider pack means more distant summits get named on the horizon. Map tiles aren't included (provider licensing).")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
