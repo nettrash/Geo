@@ -36,8 +36,12 @@ final class OfflinePackManager: ObservableObject {
     /// 0…1 across the DEM prefetch (the long phase).
     @Published private(set) var progress: Double = 0
 
-    /// Short human-readable phase ("Finding peaks…", "Caching terrain…").
+    /// Short human-readable phase ("Finding peaks…", "Updating…").
     @Published private(set) var statusText = ""
+
+    /// The pack currently being re-downloaded by `updatePack`, or `nil`. Lets the
+    /// management list show a per-row spinner on exactly the pack being refreshed.
+    @Published private(set) var updatingPackID: UUID?
 
     /// Union of every pack's peaks, deduped — handed to `PeakFinder` so
     /// the area's peaks show offline. Distance/bearing are placeholders;
@@ -136,6 +140,48 @@ final class OfflinePackManager: ObservableObject {
               let i = packs.firstIndex(where: { $0.id == pack.id }) else { return }
         packs[i].name = trimmed
         store.saveIndex(packs)
+    }
+
+    /// Re-fetch a saved pack's peaks for its ORIGINAL centre + radius and replace
+    /// its stored data in place (same id / name / created date). Use it to pick
+    /// up new OpenStreetMap peaks, or to complete a download that was partial.
+    ///
+    /// A failed or empty fetch (offline, Overpass down) is IGNORED — an empty
+    /// result almost always means the request didn't get through, not that a
+    /// once-populated area is suddenly peakless, so an update attempt can never
+    /// wipe a good pack.
+    func updatePack(_ pack: OfflinePack) async {
+        guard !isDownloading else { return }
+        isDownloading = true
+        updatingPackID = pack.id
+        statusText = "Updating…"
+        defer {
+            isDownloading = false
+            updatingPackID = nil
+            statusText = ""
+            progress = 0
+        }
+
+        let osmPeaks = await PeakFinder.fetchOSMPeaks(center: pack.center,
+                                                      radiusMeters: pack.radiusKm * 1000)
+        let peaks = Array(osmPeaks.sorted { $0.distance < $1.distance }.prefix(maxPackPeaks))
+        if Task.isCancelled { return }
+        guard !peaks.isEmpty else { return }   // never overwrite a good pack with nothing
+
+        let data = OfflinePackData(
+            peaks: peaks.map {
+                OfflinePackData.Peak(name: $0.name,
+                                     lat: $0.coordinate.latitude,
+                                     lon: $0.coordinate.longitude,
+                                     altitude: $0.altitude)
+            }
+        )
+        guard store.saveData(pack.id, data) else { return }
+        if let i = packs.firstIndex(where: { $0.id == pack.id }) {
+            packs[i].peakCount = peaks.count
+            store.saveIndex(packs)
+        }
+        await reseedConsumers()
     }
 
     /// Delete a saved pack and re-seed the live caches without it.

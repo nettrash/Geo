@@ -141,17 +141,23 @@ struct OfflinePackManagerView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(manager.packs) { pack in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(pack.name)
-                                    .font(.headline)
-                                Text("\(pack.peakCount) peaks · \(Int(pack.radiusKm)) km")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(pack.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(pack.name)
+                                        .font(.headline)
+                                    Text("\(pack.peakCount) peaks · \(Int(pack.radiusKm)) km")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(pack.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if manager.updatingPackID == pack.id {
+                                    Spacer()
+                                    ProgressView()
+                                }
                             }
-                            // Swipe right = rename, swipe left = delete.
+                            // Swipe right = rename / update, swipe left = delete.
                             .swipeActions(edge: .leading) {
                                 Button {
                                     renameText = pack.name
@@ -160,6 +166,14 @@ struct OfflinePackManagerView: View {
                                     Label("Rename", systemImage: "pencil")
                                 }
                                 .tint(.blue)
+
+                                Button {
+                                    Task { await manager.updatePack(pack) }
+                                } label: {
+                                    Label("Update", systemImage: "arrow.clockwise")
+                                }
+                                .tint(.orange)
+                                .disabled(manager.isDownloading)
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
