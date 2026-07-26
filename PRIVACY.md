@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** 25 July 2026
+**Effective date:** 26 July 2026
 **Applies to:** Geo — the iOS app (with Apple Watch companion) published by nettrash on the App Store. This policy is versioned alongside the app's source code; the most recent commit on `main` is authoritative.
 
 ## TL;DR
