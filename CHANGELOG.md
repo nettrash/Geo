@@ -55,13 +55,6 @@ exactly where you're standing, plus a Stats-tab tracking fix.
   compass's own error is larger than that.
 - **Data sources credit** now names NOAA SWPC (public domain) and the IGRF-14
   and AACGM-v2 magnetic coordinate models.
-
-## [1.2] — 2026-07-16
-
-A Nature-view rebuild focused on one thing — naming the peaks you can see —
-plus a Stats-tab tracking fix.
-
-### Changed
 - **The Nature (AR) view is now built around identifying the peaks you can
   see, and nothing else.** The modelled terrain "skyline" silhouette from 1.1
   was removed: on camera it rarely lined up with the real ridge, which made
