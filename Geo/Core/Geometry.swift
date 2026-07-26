@@ -59,8 +59,7 @@ enum Geometry {
                          to target: CLLocationCoordinate2D,
                          targetAltitude: Double,
                          radius R: Double = effectiveEarthRadius)
-        -> (east: Double, north: Double, up: Double)
-    {
+        -> (east: Double, north: Double, up: Double) {
         let latRef = origin.latitude * .pi / 180
         let metersPerDegreeLon = metersPerDegreeLatitude * cos(latRef)
 
@@ -136,65 +135,6 @@ enum Geometry {
         return (east * c + north * s, north * c - east * s)
     }
 
-    /// Observer eye height above local ground, metres. Used when the
-    /// skyline anchors the observer's altitude to the DEM cell they are
-    /// standing on (`effectiveObserverAltitude`).
-    static let observerEyeHeight: Double = 1.7
-
-    /// Sensor-vs-DEM disagreement (metres) beyond which we stop trusting
-    /// the DEM anchor and believe the sensor instead (the user may be on
-    /// a tower, cable car, aircraft, …).
-    static let observerAltitudeTolerance: Double = 10
-
-    /// The observer altitude every AR consumer (skyline picker, horizon
-    /// overlay, welded pills, markers, occlusion, tap hit-tests) should
-    /// use, reconciling the barometer/GPS sensor value with the DEM cell
-    /// the observer is standing on.
-    ///
-    /// Rationale: the silhouette is drawn FROM the DEM, so when the user
-    /// is standing on the terrain being drawn, self-consistency with that
-    /// terrain beats absolute sensor accuracy — a 10–30 m GPS/baro error
-    /// tilts the whole near silhouette up or down. Decision:
-    ///
-    /// - no DEM value → `sensor` unchanged (current baro>0-else-GPS input);
-    /// - sensor within ±`tolerance` of `demGround + eyeHeight` → snap to
-    ///   `demGround + eyeHeight` (standing on the modelled terrain);
-    /// - sensor MORE than `tolerance` ABOVE `demGround + eyeHeight` → keep
-    ///   `sensor` (genuinely elevated: tower, cable car, aircraft);
-    /// - otherwise (at/below eye level, incl. >`tolerance` below DEM
-    ///   ground — underground is impossible, that's sensor drift) → snap
-    ///   to `demGround + eyeHeight`.
-    ///
-    /// Pure and total so it unit-tests deterministically.
-    static func effectiveObserverAltitude(sensor: Double,
-                                          demGround: Double?,
-                                          eyeHeight: Double = observerEyeHeight,
-                                          tolerance: Double = observerAltitudeTolerance) -> Double {
-        guard let demGround else { return sensor }
-        let demEye = demGround + eyeHeight
-        // Only a sensor reading well ABOVE the terrain eye line survives;
-        // everything else (within tolerance, below eye level, underground)
-        // snaps to the DEM-consistent eye altitude.
-        return sensor > demEye + tolerance ? sensor : demEye
-    }
-
-    /// Apparent altitude angle (radians, positive = above horizontal)
-    /// of a target at `targetAltitude` and horizontal `distance` from
-    /// an observer at `observerAltitude`. Includes Earth-curvature
-    /// drop, which makes a distant peak look lower than its raw
-    /// `(target - observer)` height suggests.
-    static func apparentAltitudeAngle(observerAltitude: Double,
-                                      targetAltitude: Double,
-                                      distance: Double,
-                                      radius R: Double = earthRadius) -> Double {
-        guard distance > 0 else {
-            return targetAltitude > observerAltitude ? .pi / 2 : -.pi / 2
-        }
-        let curvatureDrop = (distance * distance) / (2 * R)
-        let apparentRise = (targetAltitude - observerAltitude) - curvatureDrop
-        return atan2(apparentRise, distance)
-    }
-
     /// Whether a peak of height `targetAltitude` is above the visible horizon
     /// for an observer at `observerAltitude`, `distance` metres away — the
     /// classic two-tangent test: the peak clears the Earth's bulge when the
@@ -266,6 +206,15 @@ enum Solar {
     /// Golden-hour band: sun between −4° and +6°.
     static let goldenLowerElevation = -4.0
     static let goldenUpperElevation = 6.0
+    /// Dark enough for the aurora: sun centre 12° below the horizon. That is
+    /// strictly the end of NAUTICAL twilight — full astronomical darkness is
+    /// −18° — but the aurora is well seen at −12°, and holding out for −18°
+    /// would report "no dark tonight" for most of a British summer.
+    /// Mirrored by `Geomagnetic.darkElevationDeg`.
+    static let astroDarkElevation = -12.0
+    /// Ideal band: sun 18° below the horizon, full astronomical darkness.
+    /// Mirrored by `Geomagnetic.idealDarkElevationDeg`.
+    static let idealDarkElevation = -18.0
 
     /// Geographic horizon dip (degrees) for an observer `h` m above MSL,
     /// reusing `Geometry.horizonDistance`: `dip = atan(d / R)`. Makes the
@@ -429,5 +378,125 @@ extension Solar {
             if t.noonElevationDeg > riseSetElevation { t.isPolarDay = true } else { t.isPolarNight = true }
         }
         return t
+    }
+}
+
+// MARK: - Night window (the dark band the aurora card runs on)
+
+extension Solar {
+
+    /// The dark band around ONE solar midnight. `start` is the evening
+    /// crossing computed on day D, `end` the morning crossing computed on day
+    /// D+1: the window SPANS MIDNIGHT. Building it from a single day's two
+    /// crossings instead produces a "night" that runs from the morning to the
+    /// evening of the same date — the classic bug here, and the reason this
+    /// is a type with its own test rather than two loose `Date?`s.
+    ///
+    /// The ideal pair is the same band at `idealDarkElevation` and is nil
+    /// when the sun never gets that low.
+    struct NightWindow: Sendable, Equatable {
+        let start: Date
+        let end: Date
+        let idealStart: Date?
+        let idealEnd: Date?
+
+        var duration: TimeInterval { end.timeIntervalSince(start) }
+    }
+
+    /// The dark window that follows the local noon of `date`'s calendar day,
+    /// or nil when the sun never drops to `astroDarkElevation` between the two
+    /// noons (an arctic summer night, which is not a dark one).
+    ///
+    /// `altitude` is accepted so a call site reads like `times(…)` and the two
+    /// stay swappable, but it is deliberately NOT folded into the thresholds:
+    /// the horizon dip moves the VISIBLE horizon, while twilight is defined by
+    /// the sun's depression below the astronomical one. Applying the dip here
+    /// would claim a summit gets dark LATER, which is backwards — above most
+    /// of the scattering it gets dark sooner, and this model carries no term
+    /// for that.
+    static func nightWindow(date: Date, latitude: Double, longitude: Double,
+                            altitude: Double = 0,
+                            calendar: Calendar = .current) -> NightWindow? {
+        guard let today = utcDayAnchor(date: date, calendar: calendar),
+              let tomorrow = today.nextDay,
+              let dark = darkSpan(elevationDeg: astroDarkElevation, from: today, to: tomorrow,
+                                  latitude: latitude, longitude: longitude) else { return nil }
+        let ideal = darkSpan(elevationDeg: idealDarkElevation, from: today, to: tomorrow,
+                             latitude: latitude, longitude: longitude)
+        return NightWindow(start: dark.start, end: dark.end,
+                           idealStart: ideal?.start, idealEnd: ideal?.end)
+    }
+
+    /// Fixed UTC calendar for the day arithmetic below. The event math is all
+    /// minutes past 00:00 UTC, so every date part it consumes has to come from
+    /// this calendar and never the device's.
+    private static let utcCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        return calendar
+    }()
+
+    /// One UTC day: the parts `eventUTCMinutes` wants plus the instant its
+    /// minutes count from.
+    private struct UTCDayAnchor {
+        let year: Int
+        let month: Int
+        let day: Int
+        let midnight: Date
+
+        /// UTC keeps no daylight saving, so the next day really is +86 400 s.
+        var nextDay: UTCDayAnchor? { UTCDayAnchor(midnight: midnight.addingTimeInterval(86_400)) }
+
+        init?(midnight: Date) {
+            let comps = Solar.utcCalendar.dateComponents([.year, .month, .day], from: midnight)
+            guard let year = comps.year, let month = comps.month, let day = comps.day else { return nil }
+            self.year = year
+            self.month = month
+            self.day = day
+            self.midnight = midnight
+        }
+    }
+
+    /// The UTC day that the LOCAL noon of `date`'s calendar day belongs to —
+    /// the same anchoring `times(…)` does inline, kept as its own helper here
+    /// because the night window also has to reach day D+1. Anchoring straight
+    /// to UTC midnight of the local date shifts every event by a day in the
+    /// far-east clock zones (UTC+13/+14: Samoa, Kiritimati, Chatham), where
+    /// the local day's solar events fall on the previous UTC date.
+    private static func utcDayAnchor(date: Date, calendar: Calendar) -> UTCDayAnchor? {
+        let local = calendar.dateComponents([.year, .month, .day], from: date)
+        guard let year = local.year, let month = local.month, let day = local.day,
+              let localNoon = calendar.date(from: DateComponents(year: year, month: month,
+                                                                 day: day, hour: 12))
+        else { return nil }
+        return UTCDayAnchor(midnight: utcCalendar.startOfDay(for: localNoon))
+    }
+
+    /// Evening crossing of `elevationDeg` on `today` to the morning crossing
+    /// on `tomorrow`. A missing crossing means the sun never reaches that
+    /// elevation on that side, which is either polar night — dark the whole
+    /// day, so bound the span with solar noon — or an arctic summer, where
+    /// there is no dark span at all and this returns nil.
+    private static func darkSpan(elevationDeg: Double,
+                                 from today: UTCDayAnchor, to tomorrow: UTCDayAnchor,
+                                 latitude: Double, longitude: Double) -> (start: Date, end: Date)? {
+        func crossing(_ day: UTCDayAnchor, rising: Bool) -> Date? {
+            eventUTCMinutes(year: day.year, month: day.month, day: day.day,
+                            latitude: latitude, longitude: longitude,
+                            elevationDeg: elevationDeg, rising: rising)
+                .map { day.midnight.addingTimeInterval($0 * 60) }
+        }
+        func noonBound(_ day: UTCDayAnchor) -> Date? {
+            let noonElevation = noonElevationDeg(year: day.year, month: day.month, day: day.day,
+                                                 latitude: latitude, longitude: longitude)
+            guard noonElevation < elevationDeg else { return nil }
+            let minutes = solarNoonUTCMinutes(year: day.year, month: day.month, day: day.day,
+                                              longitude: longitude)
+            return day.midnight.addingTimeInterval(minutes * 60)
+        }
+        guard let start = crossing(today, rising: false) ?? noonBound(today),
+              let end = crossing(tomorrow, rising: true) ?? noonBound(tomorrow),
+              start < end else { return nil }
+        return (start, end)
     }
 }

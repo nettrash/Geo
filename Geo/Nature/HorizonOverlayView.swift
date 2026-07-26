@@ -66,6 +66,12 @@ struct HorizonOverlayView: View {
                 HorizonLabelsView(labels: layout.labels)
             }
             .allowsHitTesting(false)
+            // Strip any inherited implicit animation (an interface rotation
+            // wraps its relayout in an animated transaction). The line is a raw
+            // Path that snaps to each frame's projection while the cardinal
+            // pills sit on animatable `.position`s — letting them animate would
+            // glide the badges off the line mid-rotation.
+            .transaction { $0.animation = nil }
         }
     }
 
@@ -144,7 +150,7 @@ struct HorizonOverlayView: View {
 
         // Cardinal + intercardinal markers, anchored to true compass bearings.
         let cardinalDirections: [(label: String, deg: Double)] = [
-            ("N", 0),   ("NE", 45),  ("E", 90),  ("SE", 135),
+            ("N", 0), ("NE", 45), ("E", 90), ("SE", 135),
             ("S", 180), ("SW", 225), ("W", 270), ("NW", 315)
         ]
         var labels: [HorizonLabel] = []

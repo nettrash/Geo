@@ -27,6 +27,12 @@ let peakBannerLeaderLength: CGFloat = 46
 /// hides the peak you're identifying. This is the Nature tab's whole point —
 /// every peak the finder returns is annotated; there's no occlusion culling
 /// (peaks are kilometres away).
+///
+/// Dot, leader and banner are ONE view per peak (`PeakMarkerView`) — not a
+/// shared Canvas under separate banner views. During an interface rotation
+/// SwiftUI animates layout, and a Canvas redraws instantly while banners glide,
+/// visibly tearing each banner off its leader; a single united figure cannot
+/// come apart, whatever animates.
 struct PeakOverlayView: View {
     let peaks: [NearbyPeak]
     let userLocation: CLLocation?
@@ -58,34 +64,32 @@ struct PeakOverlayView: View {
         _ = sessionManager.frameTick
         return GeometryReader { geometry in
             let projected = projectedPeaks(in: geometry.size)
+            // One united marker per peak, each hung off a ZERO-SIZE anchor: the
+            // dimensionless base is `.position`ed at the projected anchor and
+            // the marker rides on it as an overlay, so the marker's own frame
+            // never participates in layout. (Pinning the markers directly with
+            // alignment guides let any pill overhanging the top/left screen
+            // edge — routine, given the ±50 pt projection cull margin — grow
+            // the stack's layout union and renormalise its origin, shifting
+            // EVERY marker off its summit at once.) Overlay alignment and
+            // `.position` both resolve synchronously, so this also renders in
+            // the shutter's one-shot `ImageRenderer` pass.
             ZStack {
-                // Leaders + summit dots — one Canvas for all of them.
-                Canvas { ctx, _ in
-                    for p in projected {
-                        var line = Path()
-                        line.move(to: p.summit)
-                        line.addLine(to: p.anchor)
-                        ctx.stroke(line, with: .color(.orange.opacity(0.9 * p.opacity)),
-                                   style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                        let r: CGFloat = 2.5
-                        ctx.fill(Path(ellipseIn: CGRect(x: p.summit.x - r, y: p.summit.y - r,
-                                                        width: r * 2, height: r * 2)),
-                                 with: .color(.orange.opacity(p.opacity)))
-                    }
-                }
-                .allowsHitTesting(false)
-
-                // Tilted name/altitude banners at the leader tops. No implicit
-                // position animation: `frameTick` already re-projects every
-                // frame, and the leader (drawn in the Canvas above) and the
-                // banner share the same anchor — animating only the banner would
-                // let it lag behind its own leader.
                 ForEach(projected) { p in
-                    PeakSummitBanner(peak: p.peak, anchor: p.anchor,
-                                     tiltDegrees: bannerTiltDegrees,
-                                     scale: p.scale, opacity: p.opacity)
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                        .overlay(alignment: .bottomLeading) {
+                            PeakMarkerView(peak: p.peak, tiltDegrees: bannerTiltDegrees,
+                                           scale: p.scale, opacity: p.opacity)
+                        }
+                        .position(x: p.anchor.x, y: p.anchor.y)
                 }
             }
+            // Strip any inherited implicit animation (an interface rotation
+            // wraps its relayout in an animated transaction). The AR projection
+            // snaps to the new pose every `frameTick`; letting layout animate
+            // would only drag markers off their summits mid-rotation.
+            .transaction { $0.animation = nil }
         }
     }
 
@@ -142,34 +146,67 @@ struct PeakOverlayView: View {
     }
 }
 
-/// A peak's floating name/altitude banner. Single-line so it reads cleanly as
-/// one strip when stood up near-vertical. Pins its bottom-LEADING corner to the
-/// leader top (`anchor`) and rotates/scales about that corner, so the banner
-/// rises from the leader tip like a signpost regardless of tilt or distance
-/// scaling. Parked invisible until measured so it can't flash at the wrong spot.
-private struct PeakSummitBanner: View {
+/// A peak's complete marker — summit dot, leader and floating name/altitude
+/// banner — rendered as ONE view, the single united figure. The banner is
+/// single-line so it reads cleanly as one strip when stood up near-vertical;
+/// it rotates/scales about its bottom-LEADING corner (the leader top), and the
+/// leader + dot hang below that corner in a fixed-size background welded to the
+/// pivot — so tilt and distance scaling never move them, and no animation or
+/// layout pass can separate line, dot and banner.
+///
+/// The marker's own layout frame is the banner's un-rotated pill (visual
+/// effects and the background don't change layout). The caller must attach it
+/// to a zero-size anchor via `.overlay(alignment: .bottomLeading)` — aligning
+/// the pill's bottom-leading corner (the transform pivot) onto the projected
+/// anchor point — rather than measuring it through an async `@State` size:
+/// overlay alignment resolves synchronously during layout, so the marker also
+/// renders in the shutter's one-shot `ImageRenderer` pass — the old
+/// `@State`-driven placement stayed at size `.zero` there, hiding every label
+/// in the shared photo.
+private struct PeakMarkerView: View {
     let peak: NearbyPeak
-    let anchor: CGPoint
     let tiltDegrees: Double
     let scale: CGFloat
     let opacity: Double
-    @State private var size: CGSize = .zero
+
+    /// Summit dot radius (screen points).
+    private let dotRadius: CGFloat = 2.5
 
     var body: some View {
         content
             .fixedSize()
-            .background(GeometryReader { proxy in
-                Color.clear
-                    .onAppear { size = proxy.size }
-                    .onChange(of: proxy.size) { _, newValue in size = newValue }
-            })
+            .opacity(opacity)
             .rotationEffect(.degrees(tiltDegrees), anchor: .bottomLeading)
             .scaleEffect(scale, anchor: .bottomLeading)
-            .opacity(opacity * (size == .zero ? 0 : 1))
-            // `.position` centres the (unrotated) layout frame; place the centre
-            // so the bottom-leading corner lands on the anchor. Rotation + scale
-            // both pivot at `.bottomLeading`, i.e. exactly there.
-            .position(x: anchor.x + size.width / 2, y: anchor.y - size.height / 2)
+            // Leader + dot, in the SAME view as the banner. Attached after the
+            // rotation/scale so they stay screen-vertical and unscaled, aligned
+            // to the un-rotated layout frame's bottom-leading corner — the
+            // transform pivot, the one point tilt and scale never move.
+            .background(alignment: .bottomLeading) { leaderAndDot }
+            // Internal geometry updates apply atomically with the marker's own
+            // placement, so an animated ancestor can't shear the figure.
+            .geometryGroup()
+    }
+
+    /// Thin vertical leader from the banner corner down to the summit dot. The
+    /// overridden guides hang it fully below the pill (its `bottom` resolves to
+    /// its top edge) with the line centred on the pivot corner's x.
+    private var leaderAndDot: some View {
+        Canvas { ctx, size in
+            let x = size.width / 2
+            var line = Path()
+            line.move(to: CGPoint(x: x, y: 0))
+            line.addLine(to: CGPoint(x: x, y: peakBannerLeaderLength))
+            ctx.stroke(line, with: .color(.orange.opacity(0.9 * opacity)),
+                       style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            ctx.fill(Path(ellipseIn: CGRect(x: x - dotRadius,
+                                            y: peakBannerLeaderLength - dotRadius,
+                                            width: dotRadius * 2, height: dotRadius * 2)),
+                     with: .color(.orange.opacity(opacity)))
+        }
+        .frame(width: dotRadius * 2, height: peakBannerLeaderLength + dotRadius)
+        .alignmentGuide(VerticalAlignment.bottom) { _ in 0 }
+        .alignmentGuide(HorizontalAlignment.leading) { dims in dims.width / 2 }
     }
 
     private var content: some View {

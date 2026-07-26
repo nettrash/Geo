@@ -89,40 +89,6 @@ final class GeometryTests: XCTestCase {
         XCTAssertLessThan(enu.up, -150)
     }
 
-    // MARK: - DEM-anchored observer altitude
-
-    func testEffectiveObserverAltitudeOnGroundSnapsToDEMEye() {
-        // Sensor within ±10 m of DEM ground + 1.7 m eye height → snap to
-        // the DEM-consistent eye altitude: self-consistency with the
-        // terrain being drawn beats sensor noise.
-        let alt = Geometry.effectiveObserverAltitude(sensor: 505, demGround: 500)
-        XCTAssertEqual(alt, 501.7, accuracy: 1e-9)
-        // Boundary: exactly at the +10 m tolerance edge still snaps.
-        XCTAssertEqual(Geometry.effectiveObserverAltitude(sensor: 511.7, demGround: 500),
-                       501.7, accuracy: 1e-9)
-    }
-
-    func testEffectiveObserverAltitudeElevatedKeepsSensor() {
-        // More than 10 m ABOVE DEM + eye height → the user is genuinely
-        // elevated (tower, cable car, aircraft): keep the sensor value.
-        let alt = Geometry.effectiveObserverAltitude(sensor: 560, demGround: 500)
-        XCTAssertEqual(alt, 560, accuracy: 1e-9)
-    }
-
-    func testEffectiveObserverAltitudeUndergroundSnapsToDEMEye() {
-        // More than 10 m BELOW DEM ground is impossible (sensor drift) →
-        // snap to DEM + eye height.
-        let alt = Geometry.effectiveObserverAltitude(sensor: 480, demGround: 500)
-        XCTAssertEqual(alt, 501.7, accuracy: 1e-9)
-    }
-
-    func testEffectiveObserverAltitudeNoDEMFallsBackToSensor() {
-        // No DEM value → current behaviour: the (baro-preferred, else GPS)
-        // sensor value passes through unchanged.
-        let alt = Geometry.effectiveObserverAltitude(sensor: 480, demGround: nil)
-        XCTAssertEqual(alt, 480, accuracy: 1e-9)
-    }
-
     // MARK: - Manual compass alignment (ENU rotation + pan conversion)
 
     func testRotateENUZeroDegreesIsIdentity() {

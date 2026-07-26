@@ -33,9 +33,6 @@ final class OfflinePackManager: ObservableObject {
     /// disables a second concurrent download).
     @Published private(set) var isDownloading = false
 
-    /// 0…1 across the DEM prefetch (the long phase).
-    @Published private(set) var progress: Double = 0
-
     /// Short human-readable phase ("Finding peaks…", "Updating…").
     @Published private(set) var statusText = ""
 
@@ -76,12 +73,10 @@ final class OfflinePackManager: ObservableObject {
     func createPack(name: String, center: CLLocationCoordinate2D, radiusKm: Double) async {
         guard !isDownloading else { return }
         isDownloading = true
-        progress = 0
         statusText = "Finding peaks…"
         defer {
             isDownloading = false
             statusText = ""
-            progress = 0
         }
 
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -159,7 +154,6 @@ final class OfflinePackManager: ObservableObject {
             isDownloading = false
             updatingPackID = nil
             statusText = ""
-            progress = 0
         }
 
         let osmPeaks = await PeakFinder.fetchOSMPeaks(center: pack.center,

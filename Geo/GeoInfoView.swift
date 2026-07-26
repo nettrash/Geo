@@ -13,6 +13,10 @@ struct GeoInfoView: View {
     /// Whether the Info tab is currently on-screen, so the scene-phase
     /// handler only (re)starts the compass when this tab is actually showing.
     @State private var isOnScreen = false
+    /// Published up from the Magnetic Conditions card so the peak-bearing rows
+    /// below it can add the G3+ heading caption without a second fetch or a
+    /// second copy of the state.
+    @State private var magnetic: MagneticConditions?
 
     var body: some View {
         ZStack(content: {
@@ -31,9 +35,22 @@ struct GeoInfoView: View {
 
                     SolarInformationView(location: app?.location)
 
-                    ClosestMountainInformationView(location: app?.location, motion: app?.deviceMotion)
+                    // Sibling of the Sun card — both answer "what is the sky
+                    // doing here" — and deliberately above the mountain cards,
+                    // where its compass caption lands. Not next to the
+                    // barometer card, whose own storm warning is a different
+                    // storm entirely.
+                    MagneticInformationView(location: app?.location,
+                                            weather: app?.spaceWeather) { magnetic = $0 }
+                        .onAppear { Task { await app?.spaceWeather?.refreshIfStale() } }
 
-                    HighestMountainInformationView(location: app?.location, motion: app?.deviceMotion)
+                    ClosestMountainInformationView(location: app?.location,
+                                                   motion: app?.deviceMotion,
+                                                   magnetic: magnetic)
+
+                    HighestMountainInformationView(location: app?.location,
+                                                   motion: app?.deviceMotion,
+                                                   magnetic: magnetic)
 
                     OfflinePackCard(manager: app?.offlinePack, location: app?.location)
 
@@ -55,8 +72,7 @@ struct GeoInfoView: View {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     guard isOnScreen else { return }
-                    if newPhase == .active { app?.deviceMotion?.start(includeAttitude: false) }
-                    else { app?.deviceMotion?.stop() }
+                    if newPhase == .active { app?.deviceMotion?.start(includeAttitude: false) } else { app?.deviceMotion?.stop() }
                 }
         })
     }
@@ -73,6 +89,8 @@ private struct DataSourcesCredit: View {
                 .foregroundStyle(.secondary)
             Text("Peaks © OpenStreetMap contributors (Overpass)")
             Text("Elevation by Open-Meteo")
+            Text("Space weather by NOAA SWPC (public domain)")
+            Text("Magnetic coordinates from IGRF-14 and AACGM-v2")
             Text("Maps by Apple · AR by ARKit")
         }
         .font(.system(size: 11, design: .rounded))

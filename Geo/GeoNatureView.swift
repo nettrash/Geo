@@ -94,6 +94,22 @@ struct GeoNatureView: View {
             ?? overlayLocation?.altitude
     }
 
+    /// Where the camera is pointing (degrees, 0 = N), from the ARKit camera
+    /// transform. ARKit's `.gravityAndHeading` world alignment is true-north
+    /// aligned, so this is the true bearing — and being camera-axis it does NOT
+    /// gimbal-lock when the phone is held upright at the horizon the way the flat
+    /// magnetometer heading (`DeviceMotionManager.heading`) does. Matches how the
+    /// Android top bar reads its camera azimuth. Re-evaluates each frame via the
+    /// session manager's `frameTick`.
+    private var cameraFacingHeading: Double {
+        _ = sessionManager.frameTick
+        let east = -sessionManager.cameraTransform.columns.2.x
+        let north = sessionManager.cameraTransform.columns.2.z
+        var deg = atan2(Double(east), Double(north)) * 180 / .pi
+        if deg < 0 { deg += 360 }
+        return deg
+    }
+
     /// Peaks that pass the on-screen min-altitude filter — the single set the
     /// markers, the tap hit-test and the top-bar count all read, so they always
     /// agree. `< 1` means "no filter" (avoids a pointless full pass at 0).
@@ -180,9 +196,9 @@ struct GeoNatureView: View {
                         Spacer()
 
                         Image(systemName: "location.north.fill")
-                            .rotationEffect(.degrees(motionManager.heading))
+                            .rotationEffect(.degrees(cameraFacingHeading))
                             .foregroundStyle(.orange)
-                        Text(verbatim: String(format: "%.0f°", motionManager.heading))
+                        Text(verbatim: String(format: "%.0f°", cameraFacingHeading))
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.white)
                     }
