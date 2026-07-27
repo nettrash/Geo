@@ -71,7 +71,19 @@ struct GeoNatureView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private var isARActive: Bool {
-        cameraPermissionGranted && isOnScreen && scenePhase == .active
+        // `shareImage != nil` means the system share sheet is up. A SwiftUI
+        // `.sheet` fires neither `onDisappear` on the presenter nor a
+        // `scenePhase` change, and `ActivityView` sets no detents — so it covers
+        // the screen completely while camera + VIO + the whole overlay loop kept
+        // running fully occluded, for as long as the user takes to pick a target
+        // app or wait on an upload.
+        //
+        // `captureShare()` finishes the snapshot AND the `ImageRenderer` pass
+        // before it assigns `shareImage`, so the picture is already a rendered
+        // `UIImage` by the time this gate closes. `MarkerDetailSheet` is
+        // deliberately NOT included: it uses `.presentationDetents([.medium])`,
+        // so the AR view stays half-visible behind it.
+        cameraPermissionGranted && isOnScreen && scenePhase == .active && shareImage == nil
     }
 
     /// Stable location snapshot passed to the overlays.

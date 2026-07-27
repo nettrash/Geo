@@ -109,6 +109,11 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
 
     /// Pushes the latest combined data to the widget.
     /// Delegates to Location which owns the unified data write path.
+    ///
+    /// Both call sites are scene transitions (resign-active and
+    /// become-active), not per-sample updates, so the Watch push here
+    /// bypasses `sendCurrentSnapshot`'s throttle: it is the last sample the
+    /// Watch will see before the foreground sensor streams stop.
     func pushDataToWidget() {
         // Carry the last known GPS altitude / coords forward when there's no
         // live fix, instead of writing a 0 m / null-island sentinel. A
@@ -128,7 +133,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             gpsLongitude: loc?.coordinate.longitude ?? previous?.gpsLongitude ?? 0.0
         )
         SharedSnapshotStore.write(info)
-        connectivity?.sendCurrentSnapshot(info)
+        connectivity?.sendCurrentSnapshot(info, force: true)
         reloadWidgetIfNeeded()
     }
 

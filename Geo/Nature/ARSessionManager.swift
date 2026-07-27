@@ -34,6 +34,16 @@ class ARSessionManager: ObservableObject {
     /// The camera's world-space transform (position + orientation). Plain (see `frameTick`).
     var cameraTransform: simd_float4x4 = matrix_identity_float4x4
 
+    /// `projectionMatrix * viewMatrix`, combined ONCE per frame.
+    ///
+    /// `projectToScreen` used to evaluate `projectionMatrix * viewMatrix * world4`,
+    /// and `*` is left-associative — so every projected point paid a full 4x4·4x4
+    /// matrix product (64 multiplies) before the matrix-vector product it actually
+    /// needed. Every AR consumer goes through that one function: up to 300 peak
+    /// markers plus 221 horizon samples, per frame. Folding the two matrices here
+    /// makes each projection a single matrix-vector multiply.
+    private(set) var viewProjectionMatrix: simd_float4x4 = matrix_identity_float4x4
+
     /// The current viewport size (points) — needed for projection. Plain (see `frameTick`).
     var viewportSize: CGSize = .zero
 
@@ -89,6 +99,7 @@ class ARSessionManager: ObservableObject {
             zNear: 0.01,
             zFar: 1000
         )
+        self.viewProjectionMatrix = self.projectionMatrix * self.viewMatrix
         self.viewportSize = viewportSize
         self.interfaceOrientation = orientation
 
@@ -96,7 +107,12 @@ class ARSessionManager: ObservableObject {
         // re-render while the heavy matrices above stay plain properties.
         self.frameTick &+= 1
 
-        self.isTracking = camera.trackingState == .normal
+        // `@Published` fires `objectWillChange` on every SET, not on every
+        // CHANGE — so assigning the same Bool 60x/second invalidated every view
+        // observing this object for the whole AR session. Tracking state flips
+        // a handful of times per session; only publish when it actually moves.
+        let tracking = camera.trackingState == .normal
+        if self.isTracking != tracking { self.isTracking = tracking }
     }
     
     /// Map a local ENU offset (metres, East-North-Up) to an ARKit world-space
@@ -127,9 +143,9 @@ class ARSessionManager: ObservableObject {
         let vp = viewportSize
         guard vp.width > 0 && vp.height > 0 else { return nil }
         
-        // World → clip space
+        // World → clip space, via the pre-combined view-projection matrix.
         let world4 = simd_float4(worldPoint.x, worldPoint.y, worldPoint.z, 1.0)
-        let clip = projectionMatrix * viewMatrix * world4
+        let clip = viewProjectionMatrix * world4
         
         // Behind camera check
         guard clip.w > 0 else { return nil }

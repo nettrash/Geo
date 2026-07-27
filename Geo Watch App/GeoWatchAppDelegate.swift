@@ -61,6 +61,12 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
     private var delegates: [(_ vPressure: Double, _ vDelta: Double, _ vHeight: Double, _ vEverest: Double) -> Void] = []
     var isUpdating: Bool = false
     private var lastWidgetReloadDate: Date = .distantPast
+    /// Last time the App Group snapshot was written to disk. See
+    /// `shareDataWithWidget(force:)`.
+    private var lastSnapshotWriteDate: Date = .distantPast
+    /// Minimum spacing between App Group snapshot writes. Well under the 30 s
+    /// widget-reload budget, so the widget never reads a stale sample.
+    private static let snapshotWriteInterval: TimeInterval = 5
 
     /// WatchConnectivity bridge to the paired iPhone.
     private var connectivity: WatchConnectivityManager?
@@ -83,6 +89,11 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
     /// barometer doesn't keep firing while the wrist is down / the app
     /// is backgrounded, draining the Watch battery.
     func applicationWillResignActive() {
+        // Flush the final live reading past both throttles before sampling
+        // stops, so the widget and the iPhone are left holding the freshest
+        // sample rather than one up to a throttle-window old.
+        shareDataWithWidget(force: true)
+        connectivity?.sendCurrentSnapshot(currentSnapshot(), force: true)
         stopUpdating()
     }
 
@@ -262,7 +273,21 @@ class GeoWatchAppDelegate: NSObject, WKApplicationDelegate {
         )
     }
 
-    private func shareDataWithWidget() {
+    /// Persist the current reading for the widget / complication.
+    ///
+    /// The altimeter handler calls this ~1 Hz, but every call is a real disk
+    /// write (an App Group plist rewrite for the five legacy keys, plus the
+    /// unified snapshot) and the only reader is the widget — whose reload is
+    /// already throttled to 30 s below. Writing 30x more often than anything can
+    /// read it was pure I/O. Gate the writes on `snapshotWriteInterval`, kept
+    /// deliberately shorter than the reload budget so a system-initiated widget
+    /// refresh landing between our writes still finds a fresh sample.
+    /// `force` is used when the app resigns active, so the last live reading is
+    /// always the one left on disk.
+    private func shareDataWithWidget(force: Bool = false) {
+        guard force || lastSnapshotWriteDate.addingTimeInterval(Self.snapshotWriteInterval) < Date() else { return }
+        lastSnapshotWriteDate = Date()
+
         // Write both the unified snapshot (new readers) and the legacy
         // keys (old readers) so existing watch faces don't break.
         let token = currentSnapshot()

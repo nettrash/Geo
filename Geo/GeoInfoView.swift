@@ -65,14 +65,20 @@ struct GeoInfoView: View {
                     // Heading-only: the bearing arrow needs `heading`, not the
                     // 30 Hz pitch/roll attitude stream (AR-only).
                     if scenePhase == .active { app?.deviceMotion?.start(includeAttitude: false) }
+                    // The Satellite card below is the app's ONLY high-fidelity
+                    // GPS consumer (6 dp coordinates, live speed), so full
+                    // accuracy is bought only while this tab is showing.
+                    app?.location?.setPrecision(high: true)
                 }
                 .onDisappear {
                     isOnScreen = false
                     app?.deviceMotion?.stop()
+                    app?.location?.setPrecision(high: false)
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     guard isOnScreen else { return }
                     if newPhase == .active { app?.deviceMotion?.start(includeAttitude: false) } else { app?.deviceMotion?.stop() }
+                    app?.location?.setPrecision(high: newPhase == .active)
                 }
         })
     }

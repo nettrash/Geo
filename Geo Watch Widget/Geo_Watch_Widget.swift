@@ -32,6 +32,20 @@ struct GeoProvider: TimelineProvider {
     private static let calibPressureKey = "iPhoneCalibPressure"
     private static let calibAltitudeKey = "iPhoneCalibAltitude"
 
+    /// Fallback cadence for this complication's own timeline policy.
+    ///
+    /// Every request here powers up `CMAltimeter` for a one-shot sample, and
+    /// this runs on the smallest battery in the system. The old 300 s ask was
+    /// 288 requests/day against a WidgetKit budget of a few dozen, so most were
+    /// refused anyway — the practical effect was an exhausted budget and a
+    /// complication that then went stale for hours.
+    ///
+    /// 15 minutes matches the phone widget and the `BGAppRefreshTask` cadence.
+    /// Nothing else changes: the Watch app still force-refreshes on its own
+    /// 30 s budget while open (`shareDataWithWidget`), and the sample this
+    /// provider shows is still taken live on every request.
+    private static let fallbackRefreshInterval: TimeInterval = 15 * 60
+
     func placeholder(in context: Context) -> GeoEntry {
         GeoEntry(date: Date(), altitude: 0.0, pressure: 101.325)
     }
@@ -60,13 +74,13 @@ struct GeoProvider: TimelineProvider {
                     }
 
                     let entry = GeoEntry(date: Date(), altitude: h, pressure: pressure)
-                    let refreshDate = Date().addingTimeInterval(300)
+                    let refreshDate = Date().addingTimeInterval(Self.fallbackRefreshInterval)
                     completion(Timeline(entries: [entry], policy: .after(refreshDate)))
                 } else {
                     // Barometer read failed — fall back to UserDefaults
                     let (altitude, pressure) = self.readFromUserDefaults()
                     let entry = GeoEntry(date: Date(), altitude: altitude, pressure: pressure)
-                    let refreshDate = Date().addingTimeInterval(300)
+                    let refreshDate = Date().addingTimeInterval(Self.fallbackRefreshInterval)
                     completion(Timeline(entries: [entry], policy: .after(refreshDate)))
                 }
             }
@@ -74,7 +88,7 @@ struct GeoProvider: TimelineProvider {
             // Barometer not available — use UserDefaults
             let (altitude, pressure) = readFromUserDefaults()
             let entry = GeoEntry(date: Date(), altitude: altitude, pressure: pressure)
-            let refreshDate = Date().addingTimeInterval(300)
+            let refreshDate = Date().addingTimeInterval(Self.fallbackRefreshInterval)
             completion(Timeline(entries: [entry], policy: .after(refreshDate)))
         }
     }
