@@ -30,9 +30,24 @@ class PeakFinder: ObservableObject {
     private var lastSearchLocation: CLLocation?
     private let minimumSearchDistance: CLLocationDistance = 500 // re-search after moving 500m
 
+    /// How far a peak may be from the observer and still be kept for the AR
+    /// overlay. Deliberately MUCH larger than `searchRadius`: the live Overpass
+    /// query only reaches 5 km (to stay polite on the shared endpoint), but a
+    /// downloaded offline pack holds peaks out to 100 km — and in a camera
+    /// peak-identifier the summits you point at are the distant ones on the
+    /// horizon. Capping at `searchRadius × 2` threw ~90 % of a big pack away.
+    /// The AR projection already culls peaks that fall below the horizon / off
+    /// screen, so this is a coverage bound, not a visibility one. Mirrors
+    /// Android `PeakFinder.maxPeakRenderDistanceM`.
+    private let maxPeakRenderDistance: CLLocationDistance = 80_000 // 80 km
+
     /// Maximum number of peaks we keep in the merged set. Older / further
-    /// entries are evicted first when this is exceeded.
-    private let maxRetainedPeaks: Int = 200
+    /// entries are evicted first when this is exceeded. Larger than before so a
+    /// dense range doesn't evict the distant flagship summits (which are the
+    /// whole point of pointing the camera at the horizon) in favour of nearer
+    /// foothills. Only in-view peaks are actually drawn, so the on-screen count
+    /// stays small regardless.
+    private let maxRetainedPeaks: Int = 300
 
     /// Time after which a peak that has not been re-confirmed by a search
     /// gets dropped, even if the user hasn't moved. Stops stale results
@@ -42,7 +57,13 @@ class PeakFinder: ObservableObject {
     /// Search for peaks near the given location. Network source (OSM)
     /// is awaited first, then merged with the local bundled list.
     func searchPeaks(near location: CLLocation, mountainsData: MountainData?,
-                     offlinePeaks: [NearbyPeak] = []) async {
+                     offlinePeaks: [NearbyPeak] = [],
+                     observerAltitude: Double? = nil) async {
+        // Observer altitude for the horizon-visibility cut. Prefer the caller's
+        // (barometer-preferred) value — GPS altitude can be tens of metres off,
+        // or garbage-low, which would wrongly hide visible peaks. Falls back to
+        // the fix's altitude.
+        let obsAlt = observerAltitude ?? location.altitude
         // Don't re-search if we haven't moved much. We still age out
         // stale peaks though: prune the existing set by TTL + drop-radius
         // against the current location so a stationary user's stale peaks
@@ -51,7 +72,7 @@ class PeakFinder: ObservableObject {
         if let last = lastSearchLocation,
            last.distance(from: location) < minimumSearchDistance,
            !peaks.isEmpty {
-            peaks = pruneAndRecompute(peaks, from: location)
+            peaks = pruneAndRecompute(peaks, from: location, observerAltitude: obsAlt)
             return
         }
 
@@ -98,7 +119,7 @@ class PeakFinder: ObservableObject {
         for p in peaks { byID[p.id] = p }
         for p in foundPeaks { byID[p.id] = p } // fresh data wins on duplicates
 
-        peaks = pruneAndRecompute(Array(byID.values), from: location)
+        peaks = pruneAndRecompute(Array(byID.values), from: location, observerAltitude: obsAlt)
     }
 
     /// Prune a peak set against the current user location and recompute
@@ -107,8 +128,9 @@ class PeakFinder: ObservableObject {
     /// recompute distance/bearing for the survivors, and cap the total.
     /// Shared by the move path and the stationary no-move path so stale
     /// peaks age out in both cases.
-    private func pruneAndRecompute(_ input: [NearbyPeak], from location: CLLocation) -> [NearbyPeak] {
-        let dropRadius = searchRadius * 2 // hysteresis to avoid flicker at the edge
+    private func pruneAndRecompute(_ input: [NearbyPeak], from location: CLLocation,
+                                   observerAltitude: Double) -> [NearbyPeak] {
+        let dropRadius = maxPeakRenderDistance // keep distant offline-pack peaks visible
         let now = Date()
         let ttl = peakTTL
 
@@ -124,6 +146,10 @@ class PeakFinder: ObservableObject {
             // re-confirmed by a search within the TTL window.
             guard d <= dropRadius else { continue }
             guard now.timeIntervalSince(peak.lastSeenAt) <= ttl else { continue }
+            // Drop peaks hidden below the Earth's bulge from here — only keep the
+            // ones actually above the visible horizon (what you can really see).
+            guard Geometry.isAboveHorizon(observerAltitude: observerAltitude,
+                                          targetAltitude: peak.altitude, distance: d) else { continue }
 
             peak.distance = d
             peak.bearing = Geometry.bearing(from: location.coordinate, to: peak.coordinate)
@@ -303,7 +329,16 @@ class PeakFinder: ObservableObject {
         return fallback
     }
 
-    /// Find known mountains from app data that are within range
+    /// Find known mountains from app data that are within range.
+    ///
+    /// Bounded by `maxPeakRenderDistance`, not `searchRadius`: this is the one
+    /// source that needs no network at all, and at 5 km it was hidden exactly
+    /// where the summit is in front of you — you are rarely within 5 km of a
+    /// mountain you can see, and never within 5 km of the whole ridge of them.
+    /// The bundled list is 136 entries spread over the whole planet, so the
+    /// widened bound adds at most 26 (the densest spot on Earth, Gasherbrum I)
+    /// and normally none — it cannot meaningfully grow what `searchPeaks`
+    /// feeds to its O(n²) dedupe.
     private func findKnownMountains(near location: CLLocation, mountainsData: MountainData?) -> [NearbyPeak] {
         guard let data = mountainsData else { return [] }
         
@@ -321,7 +356,7 @@ class PeakFinder: ObservableObject {
                 let mountainLocation = CLLocation(latitude: lat, longitude: lon)
                 let distance = location.distance(from: mountainLocation)
                 
-                guard distance <= searchRadius else { continue }
+                guard distance <= maxPeakRenderDistance else { continue }
                 
                 let mountainBearing = Geometry.bearing(from: location.coordinate,
                                                        to: CLLocationCoordinate2D(latitude: lat, longitude: lon))

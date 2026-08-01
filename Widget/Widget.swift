@@ -10,7 +10,26 @@ import SwiftUI
 import CoreMotion
 
 struct Provider: AppIntentTimelineProvider {
-    
+
+    /// Fallback cadence for the widget's own timeline policy.
+    ///
+    /// WidgetKit meters timeline reloads to a few dozen per day, so the old
+    /// 120 s ask could never actually be granted — it just spent the day's
+    /// budget early and left the widget stale for long stretches afterwards.
+    /// Asking less often makes it MORE current, not less.
+    ///
+    /// 15 minutes matches the `BGAppRefreshTask` cadence, whose
+    /// `captureBarometerSampleAndPersist()` already takes a fresh barometer
+    /// sample, writes it through `SharedSnapshotStore` and requests a reload —
+    /// so the two drivers now cooperate instead of competing for one budget.
+    ///
+    /// Every app-driven trigger is unchanged: the 30 s foreground throttle
+    /// (`reloadWidgetIfNeeded`), the forced reload on
+    /// `applicationWillResignActive`, and the background task above. The data
+    /// shown is unchanged too — `timeline(for:in:)` still takes a live
+    /// barometer sample on every request.
+    private static let fallbackRefreshInterval: TimeInterval = 15 * 60
+
     /// Reads the latest data from the shared App Group store.
     private func readLatestInformation() -> InformationToken? {
         SharedSnapshotStore.readCurrent()
@@ -127,10 +146,8 @@ struct Provider: AppIntentTimelineProvider {
         let info = await readFreshBarometer() ?? readLatestInformation()
         let entry = InformationEntry(date: Date(), configuration: configuration, information: info)
         
-        // Self-refresh every 2 minutes as a fallback.
-        // The main app also triggers immediate reloads via WidgetCenter
-        // whenever barometer or GPS data changes.
-        let refreshDate = Date().addingTimeInterval(120)
+        // Fallback self-refresh cadence — see `fallbackRefreshInterval`.
+        let refreshDate = Date().addingTimeInterval(Self.fallbackRefreshInterval)
         return Timeline(entries: [entry], policy: .after(refreshDate))
     }
 }

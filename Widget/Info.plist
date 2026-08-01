@@ -4,10 +4,8 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Location is used by the system to calibrate barometric altitude with local sea-level pressure.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Geo uses barometer to measure altitude and atmospheric pressure</string>
+	<string>Geo uses the barometer to measure your altitude and the air pressure around you.</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>

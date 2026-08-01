@@ -10,8 +10,12 @@ import MapKit
 import CoreLocation
 
 struct HighestMountainInformationView: View {
-    @State var location: Location?;
+    @State var location: Location?
     var motion: DeviceMotionManager?
+    /// Magnetic Conditions, published down from the card above — same
+    /// pass-through as `ClosestMountainInformationView`, since both cards
+    /// share `PeakBearingRow`.
+    var magnetic: MagneticConditions?
 
     var body: some View {
         ZStack {
@@ -22,7 +26,7 @@ struct HighestMountainInformationView: View {
                 .padding()
 
             VStack {
-                
+
                 HStack(alignment: .top) {
                     Text("Name")
                         .font(.subheadline)
@@ -36,7 +40,7 @@ struct HighestMountainInformationView: View {
                     }
                     .padding()
                 }
-                
+
                 HStack(alignment: .top) {
                     Text("Distance")
                         .font(.subheadline)
@@ -53,7 +57,9 @@ struct HighestMountainInformationView: View {
                     PeakBearingRow(userCoordinate: location?.location?.coordinate,
                                    peakLatitude: location?.highestMountain?.coordinates?.latitude,
                                    peakLongitude: location?.highestMountain?.coordinates?.longitude,
-                                   motion: motion)
+                                   motion: motion,
+                                   gScale: magnetic?.gScale ?? .g0,
+                                   compass: magnetic?.compass ?? .normal)
                 }
 
                 HStack(alignment: .top) {
@@ -72,9 +78,9 @@ struct HighestMountainInformationView: View {
 
                 HStack(alignment: .top) {
                     Spacer()
-                    Button(action: {
+                    Button {
                         OpenMapForHighestMountain()
-                    }) {
+                    } label: {
                         Text("Directions")
                             .font(.system(size: 12))
                             .padding(6)
@@ -85,7 +91,7 @@ struct HighestMountainInformationView: View {
                     Spacer()
                         .frame(width: 10)
                 }
-                
+
                 Spacer()
                     .frame(height: 10)
             }
@@ -97,35 +103,35 @@ struct HighestMountainInformationView: View {
             .padding()
         }
     }
-    
+
     func HighestMountainName() -> String {
         guard location?.highestMountain != nil else { return "?" }
         return location?.highestMountain?.name ?? "-"
     }
-    
+
     func HighestMountainAltitude() -> String {
         guard location?.highestMountain != nil else { return "? m" }
         return "\(String(location?.highestMountain?.height ?? 0)) m"
     }
-    
+
     func HighestMountainDistance() -> String {
         guard location?.highestMountain != nil else { return "? m" }
         return "\(String(format: "%.2f", (location?.highestMountainDistance ?? 0.0) / 1000.0)) km"
     }
-    
+
     func HighestMountainLocationLatitude() -> String {
         guard location?.highestMountain != nil else { return "? lt" }
         return "\(String(format: "%.6f", location?.highestMountain?.coordinates?.latitude ?? 0.0)) lt"
     }
-    
+
     func HighestMountainLocationLongitude() -> String {
         guard location?.highestMountain != nil else { return "? lg" }
         return "\(String(format: "%.6f", location?.highestMountain?.coordinates?.longitude ?? 0.0)) lg"
     }
-    
+
     func OpenMapForHighestMountain() {
         guard location != nil else { return }
-        
+
         let sourceCoordinate = CLLocationCoordinate2D(
             latitude: location?.location?.coordinate.latitude ?? 0,
             longitude: location?.location?.coordinate.longitude ?? 0
@@ -136,7 +142,7 @@ struct HighestMountainInformationView: View {
         )
         let source = MKMapItem(location: sourceLocation, address: nil)
         source.name = "Current location"
-        
+
         let destinationCoordinate = CLLocationCoordinate2D(
             latitude: location?.highestMountain?.coordinates?.latitude ?? 0,
             longitude: location?.highestMountain?.coordinates?.longitude ?? 0
@@ -147,7 +153,7 @@ struct HighestMountainInformationView: View {
         )
         let destination = MKMapItem(location: destinationLocation, address: nil)
         destination.name = location?.highestMountain?.name ?? "Destination"
-        
+
         MKMapItem.openMaps(
             with: [source, destination],
             launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving]
@@ -156,5 +162,5 @@ struct HighestMountainInformationView: View {
 }
 
 #Preview {
-    HighestMountainInformationView(location: nil, motion: nil)
+    HighestMountainInformationView(location: nil, motion: nil, magnetic: nil)
 }

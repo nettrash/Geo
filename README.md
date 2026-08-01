@@ -4,14 +4,14 @@
 
 iOS + Apple Watch app for tracking your geographical state in real time: GPS coordinates, satellite (GPS) altitude, barometric altitude, atmospheric pressure, and an augmented-reality view of nearby mountain peaks.
 
-All sensor history stays on your device. There are no analytics, no accounts, no servers operated by us — see [PRIVACY.md](PRIVACY.md) for the full breakdown. The only outbound calls are to public elevation/peak services (OpenStreetMap Overpass, Open-Elevation), and your coordinates are quantised to a ~110 m grid before any request.
+All sensor history stays on your device. There are no analytics, no accounts, no servers operated by us — see [PRIVACY.md](PRIVACY.md) for the full breakdown. The only outbound calls are to public peak/elevation services (OpenStreetMap Overpass, Open-Meteo) and to NOAA SWPC for the planetary K index — a fixed URL with no parameters, carrying nothing about you. Your coordinates are quantised to a ~110 m grid before any peak or elevation request, and are not part of the NOAA request at all.
 
 ## Features
 
 - **Info** — current coordinates, satellite altitude, barometer altitude, pressure and "% Everest". When the altitude is the weather-biased pressure estimate rather than Apple's calibrated value, a small **calibrating… / uncalibrated** cue says so.
 - **Stat** — on-device history of pressure and altitude, plotted over time (anchored to a rolling 30-day window). Old points are auto-pruned and a **Clear history** action wipes it on demand.
 - **Map** — your position on an Apple MapKit map with pins for nearby peaks, history points, the Seven Summits and the Snow Leopard peaks.
-- **Nature** — AR view that overlays the names of nearby mountain peaks on the camera feed, draws a terrain-aware skyline, and lists "Nearby" peaks with distance, bearing and elevation. Peak data comes from the OpenStreetMap Overpass API and elevations from Open-Elevation; the elevation cache is persisted on-device, so the skyline reappears instantly on a return visit and works offline.
+- **Nature** — AR view that overlays the names of nearby mountain peaks on the camera feed against a horizon line with cardinal (N/E/S/W) markers, showing only the summits actually above your horizon. A min-altitude slider hides smaller hills, and a shutter button captures the labelled view. Peak data comes from the OpenStreetMap Overpass API and ground elevations from Open-Meteo; downloaded offline packs let peaks appear out to ~80 km with no signal.
 - **Apple Watch companion** — barometer-driven altitude (calibrated against the iPhone's reference) with its own on-device history.
 - **Home-screen & Watch widgets** — current altitude and pressure at a glance, with a staleness cue when the data is old.
 

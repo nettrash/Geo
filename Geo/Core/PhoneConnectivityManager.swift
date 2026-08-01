@@ -48,6 +48,21 @@ final class PhoneConnectivityManager: NSObject, @unchecked Sendable {
     /// Hard minimum spacing between inserts, regardless of pressure delta.
     private static let minInterval: TimeInterval = 30
 
+    /// Outbound mirror of the inbound throttle above. `pushCombinedDataToWidget`
+    /// fires from BOTH hot paths — `didUpdateLocations` (~1 Hz) and
+    /// `onBarometerUpdated` (~1 Hz) — so an unthrottled send woke the Bluetooth
+    /// radio ~2x/second for the whole foreground session.
+    ///
+    /// Suppressing those sends is behaviour-neutral because nothing on the Watch
+    /// renders this token live: `GeoWatchAppDelegate.applyInbound` only stores the
+    /// GPS context (never displayed — it is re-emitted into the Watch complication
+    /// snapshot) and refreshes the barometric calibration reference, which tracks
+    /// weather on a minutes-to-hours scale. The Watch's live altitude comes from
+    /// its own altimeter. Keeping the pressure-delta tier means a real climb still
+    /// pushes a fresh calibration reference immediately.
+    private var lastSentPressure: Double?
+    private var lastSentDate: Date?
+
     override init() {
         if WCSession.isSupported() {
             self.session = WCSession.default
@@ -64,15 +79,38 @@ final class PhoneConnectivityManager: NSObject, @unchecked Sendable {
     /// Push the latest combined snapshot to the Watch. Best-effort —
     /// fire-and-forget; the Watch already runs its own barometer and
     /// uses our values mostly for GPS context.
-    func sendCurrentSnapshot(_ token: InformationToken) {
+    ///
+    /// Throttled on the same two tiers as the inbound path (significant
+    /// pressure move OR `minInterval` elapsed). Pass `force: true` at
+    /// scene transitions so the Watch always receives the freshest sample
+    /// before we stop sampling — mirrors `reloadWidgetIfNeeded`'s
+    /// `lastWidgetReloadDate = .distantPast` bypass and Android's
+    /// `WidgetUpdater.pushImmediate()`.
+    ///
+    /// `@MainActor` because both call sites (`Location.pushCombinedDataToWidget`
+    /// and `GeoAppDelegate.pushDataToWidget`) are already main-actor isolated;
+    /// the annotation is what keeps the throttle state race-free.
+    @MainActor
+    func sendCurrentSnapshot(_ token: InformationToken, force: Bool = false) {
         guard let session, session.activationState == .activated, session.isReachable else {
             return
+        }
+        if !force,
+           let lastPressure = lastSentPressure,
+           let lastDate = lastSentDate {
+            let deltaPressure = abs(token.barPreassure - lastPressure)
+            let deltaTime = token.recordDate.timeIntervalSince(lastDate)
+            if deltaPressure < Self.pressureDeltaKPa && deltaTime < Self.minInterval {
+                return
+            }
         }
         do {
             let data = try JSONEncoder().encode(token)
             session.sendMessageData(data, replyHandler: nil) { error in
                 AppLog.connectivity.error("Failed to send snapshot to Watch: \(String(describing: error))")
             }
+            lastSentPressure = token.barPreassure
+            lastSentDate = token.recordDate
         } catch {
             AppLog.connectivity.error("Failed to encode outbound snapshot: \(String(describing: error))")
         }

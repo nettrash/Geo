@@ -7,7 +7,6 @@
 
 import Foundation
 import CoreLocation
-import WidgetKit
 
 @Observable
 class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
@@ -35,7 +34,13 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     var allowTracking: Bool = true
 
     private var stepLocation: CLLocation? = nil
-    private var trackingStepLocation: CLLocation? = nil
+    /// True once the first real-time tracking sample has been recorded.
+    /// Lets `trackingRefresh()` record the first sample immediately, then
+    /// throttle the rest to `trackingStep`. Replaces the old
+    /// `trackingStepLocation` seed marker, which conflated "not started
+    /// yet" with "no current GPS fix" and so blocked barometer-only
+    /// tracking when GPS was unavailable.
+    private var trackingSeeded: Bool = false
     private let horizontalStep: CGFloat = 1000 //1000m
     private let verticalStep: CGFloat = 50 //50m
     /// Clock for the history-save path and the daily-rollover check.
@@ -50,6 +55,14 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     /// `didUpdateLocations` / `onBarometerUpdated`).
     private var lastTrackingDate: Date = Date()
     private let trackingStep: TimeInterval = 15 // 15 second
+    /// A GPS fix older than this is treated as "GPS unavailable" for the
+    /// real-time tracking graph: the barometer path fires every
+    /// `trackingStep`, and if the last fix hasn't refreshed within this
+    /// window the GPS series records a gap (rather than freezing the orange
+    /// line at a stale altitude while the barometer keeps moving). Well
+    /// above the ~1 Hz cadence a live GPS delivers, so a working fix is
+    /// never mistaken for stale.
+    private let trackingGPSStaleness: TimeInterval = 60
     
     /// Last barometer pressure recorded for step-based history
     private var lastRecordedPressure: Double = 0
@@ -57,12 +70,49 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
     /// ~0.1 kPa ≈ ~8m altitude change
     private let pressureStep: Double = 0.1
     
+    /// Whether a high-fidelity consumer is currently on screen. Stored rather
+    /// than applied directly so `setPrecision(high:)` is order-independent:
+    /// `GeoInfoView`'s gate can fire before `SatelliteInformationView.onAppear`
+    /// has called `initialize()`, and `initialize()` then applies whatever was
+    /// last requested.
+    private var wantsHighPrecision: Bool = false
+
+    /// Accuracy class actually wanted right now.
+    ///
+    /// `kCLLocationAccuracyBest` selects the receiver's most power-hungry mode
+    /// and used to be latched for the entire foreground session, on every tab.
+    /// Only the Satellite card needs it — it renders coordinates to 6 dp and
+    /// live speed to 0.1 m/s. Every other consumer is coarser by one to three
+    /// orders of magnitude: history steps at 50 m / 1 km, the tracking graph at
+    /// 15 s, the AR overlay ignores movement under 5 m, and the Magnetic card
+    /// snaps to a ~110 m grid.
+    ///
+    /// NOTE: `distanceFilter` is deliberately left at `kCLDistanceFilterNone`.
+    /// Filtering delivery (rather than accuracy class) would freeze the
+    /// Satellite card's speed readout when the user stops, and `trackingRefresh`
+    /// treats a fix older than `trackingGPSStaleness` as GPS-unavailable and
+    /// records a deliberate GAP — so standing still would break the Stat graph
+    /// while GPS is perfectly healthy. Accuracy class is what selects the
+    /// receiver's power mode, so this captures the saving without either.
+    private var wantedAccuracy: CLLocationAccuracy {
+        wantsHighPrecision ? kCLLocationAccuracyBest : kCLLocationAccuracyNearestTenMeters
+    }
+
+    /// Raise/lower the GNSS accuracy class. Called from `GeoInfoView`'s
+    /// on-screen gate, alongside the compass it already starts and stops there.
+    func setPrecision(high: Bool) {
+        guard wantsHighPrecision != high else { return }
+        wantsHighPrecision = high
+        guard let lm = locationManager, lm.desiredAccuracy != wantedAccuracy else { return }
+        lm.desiredAccuracy = wantedAccuracy
+    }
+
     func initialize() {
         if (self.locationManager == nil) {
             self.locationManager = CLLocationManager()
 
             self.locationManager!.delegate = self
-            self.locationManager!.desiredAccuracy = kCLLocationAccuracyBest
+            self.locationManager!.desiredAccuracy = wantedAccuracy
             let status = self.locationManager!.authorizationStatus
             if status == .authorizedAlways || status == .authorizedWhenInUse {
                 startLocationMonitor()
@@ -133,14 +183,11 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             refreshData()
         }
         
+        // `self.location` is already the fresh fix (set above), so let the
+        // self-throttling tracking recorder read it directly. It seeds the
+        // first sample immediately, then honours `trackingStep`.
         if self.allowTracking {
-            if self.trackingStepLocation == nil {
-                self.trackingStepLocation = latestLocation.copy() as? CLLocation
-                self.trackingRefresh()
-            } else if self.lastTrackingDate.addingTimeInterval(self.trackingStep) <= Date() {
-                self.trackingStepLocation = latestLocation.copy() as? CLLocation
-                self.trackingRefresh()
-            }
+            self.trackingRefresh()
         }
 
         // Write combined barometer + GPS data to widget
@@ -167,14 +214,14 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             }
         }
         
-        // Update tracking on every barometer reading (subject to time interval),
-        // regardless of pressure step — this keeps the real-time tracking graph
-        // showing both barometer and GPS data in parallel.
-        if self.allowTracking && self.location != nil {
-            self.trackingStepLocation = self.location?.copy() as? CLLocation
-            if self.lastTrackingDate.addingTimeInterval(self.trackingStep) <= Date() {
-                self.trackingRefresh()
-            }
+        // Update tracking on every barometer reading (subject to the time
+        // interval), regardless of pressure step AND regardless of whether a
+        // GPS fix exists. This is what keeps the tracking graph's barometer
+        // series live when GPS is unavailable (indoors / denied / no fix yet)
+        // — with no usable fix the GPS series records a gap and only the
+        // barometer line is drawn. `trackingRefresh()` self-throttles.
+        if self.allowTracking {
+            self.trackingRefresh()
         }
     }
     
@@ -227,20 +274,61 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         // `refreshIfNeeded()` when they actually need the data.
         app?.history.markDirty()
         self.lastInfoDate = Date()
-        // Widgets still want a nudge on every save so the next
-        // timeline cycle picks up the freshest sample.
-        WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
+        // Widgets still want a nudge on every save so the next timeline cycle
+        // picks up the freshest sample — but route it through the same 30 s
+        // budget as every other reload site. Both callers of `refreshData()`
+        // run `pushCombinedDataToWidget()` in the SAME callback, which already
+        // requests a throttled reload, so the unthrottled call here only ever
+        // added a duplicate. WidgetKit meters reloads per day and silently drops
+        // the overflow, so spending the budget on duplicates made the widget
+        // less current, not more.
+        app?.reloadWidgetIfNeeded()
     }
     
+    /// Append one real-time tracking sample to the tracking graph, subject
+    /// to the `trackingStep` throttle. Driven by BOTH the GPS path
+    /// (`didUpdateLocations`) and the barometer path (`onBarometerUpdated`)
+    /// so the barometer series keeps updating even when GPS is unavailable.
+    /// Each series is included only when it currently has usable data:
+    ///
+    /// - Barometer: only on devices that actually have the sensor
+    ///   (`available`); otherwise the barometer series records a gap.
+    /// - GPS: only when there's a *current* fix with a usable altitude —
+    ///   present, non-negative vertical accuracy, and fresher than
+    ///   `trackingGPSStaleness`. A missing / stale / vertically-invalid fix
+    ///   records a gap so the GPS line breaks instead of freezing at the
+    ///   last altitude while the barometer keeps moving.
+    ///
+    /// The first sample is recorded immediately; later ones honour
+    /// `trackingStep`. The shared `lastTrackingDate` throttle means the two
+    /// paths cooperate — whichever fires in a given window records one
+    /// sample that reads both sensors at that instant.
     @MainActor func trackingRefresh() {
-        guard self.allowTracking,
-              let trackingLocation = self.trackingStepLocation else {
-            self.trackingStepLocation = nil
-            return
+        guard self.allowTracking else { return }
+        if self.trackingSeeded,
+           self.lastTrackingDate.addingTimeInterval(self.trackingStep) > Date() {
+            return   // throttled — a sample was recorded < trackingStep ago
         }
-        
-        app?.history.addTrackingInformation(trackingLocation, self.barometer)
+        self.trackingSeeded = true
         self.lastTrackingDate = Date()
+
+        let barometerHeight: CGFloat?
+        if self.barometer?.available == true, let h = self.barometer?.height {
+            barometerHeight = CGFloat(h)
+        } else {
+            barometerHeight = nil
+        }
+
+        let gpsAltitude: CGFloat?
+        if let loc = self.location,
+           loc.verticalAccuracy >= 0,
+           abs(loc.timestamp.timeIntervalSinceNow) <= trackingGPSStaleness {
+            gpsAltitude = CGFloat(loc.altitude)
+        } else {
+            gpsAltitude = nil
+        }
+
+        app?.history.addTrackingInformation(barometerHeight: barometerHeight, gpsAltitude: gpsAltitude)
     }
     
     /// Which curated set a peak belongs to. Seven Summits / Snow Leopard take
@@ -252,36 +340,60 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
         return "highest"
     }
 
+    /// Single writer for the nearby-summit pair, keeping candidate and set in
+    /// lockstep.
+    ///
+    /// The `@Observable` macro's setter calls `withMutation` with NO equality
+    /// check, so writing `nil` over `nil` still notifies every observer.
+    /// `MainView.body` reads `nearbySummitCandidate?.id` in an `.onChange` value
+    /// expression, which registers MainView as a dependency — so the
+    /// unconditional write below re-ran `MainView.body` on every GPS fix (~1 Hz,
+    /// all session), rebuilding all four tab child structs on whatever tab the
+    /// user was actually on, including the AR tab.
+    ///
+    /// `MountainInfo` isn't `Equatable`, so compare by `id`. If the bundled
+    /// dataset ever becomes reloadable with updated coordinates, make it
+    /// `Equatable` and compare the value instead.
+    private func setNearbySummit(_ candidate: MountainInfo?) {
+        guard candidate?.id != nearbySummitCandidate?.id else { return }
+        nearbySummitCandidate = candidate
+        nearbySummitSet = candidate.map { summitSet(for: $0) }
+    }
+
     func refreshCloserMountain() {
         guard let loc = self.location else {
             self.closestMountain = nil
-            self.nearbySummitCandidate = nil
-            self.nearbySummitSet = nil
+            setNearbySummit(nil)
             return
         }
         var m: [MountainInfo] = []
         m.append(contentsOf: self.mountainsData?.highest?.mountains ?? [])
         m.append(contentsOf: self.mountainsData?.sevenPeaks?.mountains ?? [])
         m.append(contentsOf: self.mountainsData?.snowLeopardOfRussia?.mountains ?? [])
-        // Drop coordinate-less mountains: without this they collapse to
-        // a phantom (0,0) and can wrongly win the nearest search. Check the
-        // inner latitude/longitude too (both are Optional), so a half-null
-        // coordinate can't still become a phantom (0, y) / (x, 0).
-        m = m.filter { $0.coordinates?.latitude != nil && $0.coordinates?.longitude != nil }
-        if let v = m.min(by: { (a: MountainInfo, b: MountainInfo) -> Bool in
-            loc.distance(from: CLLocation(latitude: a.coordinates?.latitude ?? 0, longitude: a.coordinates?.longitude ?? 0)) < loc.distance(from: CLLocation(latitude: b.coordinates?.latitude ?? 0, longitude: b.coordinates?.longitude ?? 0))
-        }) {
+        // Measure each candidate exactly once instead of inside the comparator.
+        // `min(by:)` invokes its predicate n-1 times, and the old closure built
+        // two `CLLocation` objects and ran two geodesic solves per call — so one
+        // refresh over the 136-peak dataset churned ~270 objects and ~270
+        // distance solves on the main actor, and this runs on EVERY location fix
+        // (~1 Hz, even standing still). Same input order and the same strict `<`,
+        // so ties still resolve to the same peak as before.
+        //
+        // The compactMap also subsumes the old coordinate-less filter: without
+        // it those peaks collapse to a phantom (0,0) and can wrongly win the
+        // nearest search. Both inner latitude/longitude are Optional, so a
+        // half-null coordinate can't sneak through as (0, y) / (x, 0) either.
+        let candidates: [(mountain: MountainInfo, distance: CLLocationDistance)] = m.compactMap {
+            guard let latitude = $0.coordinates?.latitude,
+                  let longitude = $0.coordinates?.longitude else { return nil }
+            return ($0, loc.distance(from: CLLocation(latitude: latitude, longitude: longitude)))
+        }
+        if let best = candidates.min(by: { $0.distance < $1.distance }) {
+            let v = best.mountain
             self.closestMountain = v
-            let distance = loc.distance(from: CLLocation(latitude: v.coordinates?.latitude ?? 0, longitude: v.coordinates?.longitude ?? 0))
+            let distance = best.distance
             self.closestMountainDistance = distance
             // Offer to log the ascent only when genuinely near the summit.
-            if distance < summitProximityRadius {
-                self.nearbySummitCandidate = v
-                self.nearbySummitSet = summitSet(for: v)
-            } else {
-                self.nearbySummitCandidate = nil
-                self.nearbySummitSet = nil
-            }
+            setNearbySummit(distance < summitProximityRadius ? v : nil)
             if let hm = self.highestMountain, let c = hm.coordinates,
                let hLat = c.latitude, let hLon = c.longitude {
                 let distanceH = loc.distance(from: CLLocation(latitude: hLat, longitude: hLon))
@@ -293,8 +405,7 @@ class Location: NSObject, @preconcurrency CLLocationManagerDelegate {
             }
         } else {
             self.closestMountain = nil
-            self.nearbySummitCandidate = nil
-            self.nearbySummitSet = nil
+            setNearbySummit(nil)
         }
     }
 

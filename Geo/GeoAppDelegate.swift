@@ -15,8 +15,8 @@ import UserNotifications
 
 class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
 
-    //Mountains data
-    var mountainsData: MountainData? = nil
+    // Mountains data
+    var mountainsData: MountainData?
 
     // Instance of barometer representation.
     var barometer: Barometer?
@@ -43,6 +43,13 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     // so the AR peaks/skyline keep working on a no-signal summit. Seeds the
     // live peak + elevation caches from the saved packs at launch.
     var offlinePack: OfflinePackManager?
+
+    // Magnetic Conditions — the planetary Kp index from NOAA SWPC plus the
+    // bundled magnetic-coordinate grid. Held here so the Info card, the Info
+    // tab and the scene-phase refresh all share one cache and one fetch gate.
+    // The request carries nothing about the user, and Phase 1 does no
+    // background work at all: it refreshes only while the app is in front.
+    var spaceWeather: SpaceWeatherService?
 
     /// WatchConnectivity bridge — `nil` on devices that don't support it.
     var connectivity: PhoneConnectivityManager?
@@ -77,6 +84,11 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         self.offlinePack = OfflinePackManager()
         self.offlinePack?.location = self.location
 
+        // Magnetic Conditions. Constructing the actor does no I/O and issues
+        // no request — the cache and the correction grid load lazily on first
+        // touch, and the fetch is gated to one Kp bin (3 h).
+        self.spaceWeather = SpaceWeatherService.shared
+
         // Spin up WatchConnectivity. The manager is non-isolated and
         // safe to construct from any thread; we set our own delegate
         // pointer back into the manager so it can route inbound Watch
@@ -97,6 +109,11 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
 
     /// Pushes the latest combined data to the widget.
     /// Delegates to Location which owns the unified data write path.
+    ///
+    /// Both call sites are scene transitions (resign-active and
+    /// become-active), not per-sample updates, so the Watch push here
+    /// bypasses `sendCurrentSnapshot`'s throttle: it is the last sample the
+    /// Watch will see before the foreground sensor streams stop.
     func pushDataToWidget() {
         // Carry the last known GPS altitude / coords forward when there's no
         // live fix, instead of writing a 0 m / null-island sentinel. A
@@ -116,7 +133,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             gpsLongitude: loc?.coordinate.longitude ?? previous?.gpsLongitude ?? 0.0
         )
         SharedSnapshotStore.write(info)
-        connectivity?.sendCurrentSnapshot(info)
+        connectivity?.sendCurrentSnapshot(info, force: true)
         reloadWidgetIfNeeded()
     }
 
@@ -197,7 +214,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             }
         }
     }
-    
+
     /// Request authorization for the local storm-warning notification.
     /// Marked `nonisolated` so it's callable from any context; the
     /// completion handler only logs, so it's thread-agnostic. Calling
@@ -217,28 +234,28 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
         lastWidgetReloadDate = Date()
         WidgetCenter.shared.reloadTimelines(ofKind: "GEO")
     }
-    
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+
         initialize()
-        
+
         registerBackgroundTasks()
-        
-        return true;
+
+        return true
     }
-    
+
     func applicationWillResignActive(_ application: UIApplication) {
         // Push latest data to widget immediately before going to background
         pushDataToWidget()
-        
+
         // Force an immediate widget reload (bypass throttle)
         lastWidgetReloadDate = .distantPast
         reloadWidgetIfNeeded()
-        
+
         // Schedule background tasks for periodic refresh
         self.scheduleBackgroundProcessing()
     }
-    
+
     private func loadMountains() {
         do {
             guard let listPath = Bundle.main.path(forResource: "list", ofType: "json") else {
@@ -250,12 +267,11 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             }
             let decoder = JSONDecoder()
             self.mountainsData = try decoder.decode(MountainData.self, from: jsonData)
-        }
-        catch {
+        } catch {
             self.mountainsData = nil
         }
     }
-    
+
     // Marked `nonisolated` because `BGTaskScheduler` invokes the
     // registered handler closures on a background dispatch queue.
     // Under Swift 6, `GeoAppDelegate` is implicitly `@MainActor`
@@ -291,17 +307,25 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     nonisolated func scheduleBackgroundProcessing() {
         // Schedule the heavy processing task
         let processingRequest = BGProcessingTaskRequest(identifier: backgroundTaskIndentifier_Refresh)
+        // No network required, deliberately — this task exists to capture a
+        // barometer sample, which is exactly what a user needs on a no-signal
+        // summit. Nothing that wants the network may ever be hung off it:
+        // flipping this to `true` so the Kp fetch could ride along would stop
+        // the sample capture on precisely the devices the capture is for. The
+        // one background network call rides the app-refresh task below.
         processingRequest.requiresNetworkConnectivity = false
         processingRequest.requiresExternalPower = false
         processingRequest.earliestBeginDate = Date(timeIntervalSinceNow: 60)
-        
+
         do {
             try BGTaskScheduler.shared.submit(processingRequest)
         } catch {
             AppLog.background.error("Could not schedule background processing: \(String(describing: error))")
         }
 
-        // Schedule the lightweight app refresh task (~every 15 min)
+        // Schedule the lightweight app refresh task (~every 15 min). This is
+        // the only background path allowed to reach the network, and the
+        // aurora check that rides it stays a no-op until the user opts in.
         let refreshRequest = BGAppRefreshTaskRequest(identifier: backgroundTaskIdentifier_AppRefresh)
         refreshRequest.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
 
@@ -311,7 +335,7 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             AppLog.background.error("Could not schedule app refresh: \(String(describing: error))")
         }
     }
-    
+
     nonisolated func handleBackgroundProcessing(task: BGProcessingTask) {
         scheduleBackgroundProcessing()
         runBackgroundRefresh(task: task)
@@ -320,15 +344,28 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
     nonisolated func handleAppRefresh(task: BGAppRefreshTask) {
         // Reschedule immediately so the next one is queued
         scheduleBackgroundProcessing()
-        runBackgroundRefresh(task: task)
+        runBackgroundRefresh(task: task, checkingAuroraAlert: true)
     }
 
     /// Drives the background refresh on a `Task` so the OperationQueue's
     /// main thread stays free. Uses `withTaskCancellationHandler` so the
     /// system's expiration callback can cancel us cleanly.
-    nonisolated private func runBackgroundRefresh(task: BGTask) {
+    ///
+    /// `checkingAuroraAlert` is true on the `BGAppRefreshTask` path and only
+    /// there. The processing task sets `requiresNetworkConnectivity = false`
+    /// on purpose so the barometer capture survives a no-signal summit, so
+    /// putting the Kp fetch on it would mean either flipping that flag — a
+    /// real offline regression for the feature that task exists for — or
+    /// issuing a request that fails on exactly the devices we scheduled it
+    /// for. The app-refresh task is the one the system already only runs when
+    /// it is willing to let us use the network.
+    nonisolated private func runBackgroundRefresh(task: BGTask,
+                                                  checkingAuroraAlert: Bool = false) {
         let work = Task.detached(priority: .utility) {
             await Self.captureBarometerSampleAndPersist()
+            if checkingAuroraAlert {
+                await Self.evaluateAuroraAlert()
+            }
         }
         task.expirationHandler = {
             work.cancel()
@@ -497,4 +534,153 @@ class GeoAppDelegate: NSObject, UIApplicationDelegate, ObservableObject {
             }
         }
     }
+
+    // MARK: - Aurora alert (Phase 2, opt-in)
+
+    /// App-group key for the alerts toggle written by the "What this means"
+    /// sheet on the Magnetic Conditions card. Default OFF, and `bool(forKey:)`
+    /// reads an absent key as false, so an install that never opens that sheet
+    /// never runs a line of the code below.
+    static let auroraAlertsEnabledKey = "AuroraAlertsEnabled"
+
+    /// App-group key holding the last time an aurora notification fired,
+    /// used to enforce the cooldown across BGTask invocations / launches.
+    private static let auroraLastNotifiedKey = "AuroraAlertLastNotifiedAt"
+
+    /// Opt-in aurora alert, reached only from the app-refresh path. The toggle
+    /// is read before anything else, so with alerts off this issues no
+    /// request and reads no position — the background half of the feature
+    /// simply does not exist until the user asks for it.
+    ///
+    /// The decision itself is the pure `AuroraAlert.shouldNotify`, so every
+    /// "don't wake somebody for this" rule is a unit test rather than
+    /// something only a rare storm night could exercise.
+    private static func evaluateAuroraAlert() async {
+        // Same deliberate `?? .standard` fallback as the storm cooldown above:
+        // the toggle and the stamp are read and written only here in the main
+        // app process, so they don't need cross-process sharing — and a nil
+        // store would let the cooldown silently break and re-fire the alert on
+        // every tick.
+        let defaults = UserDefaults(suiteName: SharedSnapshotStore.appGroupID) ?? .standard
+        let enabled = defaults.bool(forKey: auroraAlertsEnabledKey)
+        guard enabled else { return }
+
+        let service = SpaceWeatherService.shared
+        await service.refreshIfStale()
+        let snapshot = await service.snapshot()
+
+        // The system may have expired the task while the request was in
+        // flight; don't go on to post an alert after being told to stop.
+        guard !Task.isCancelled else { return }
+
+        // Last known position, from the shared snapshot the barometer capture
+        // has just refreshed. This path never starts CoreLocation: a 3-hourly
+        // global index does not justify waking the GPS in the background. Null
+        // island is the "no fix ever" sentinel `pushDataToWidget` writes, not
+        // a place anyone is standing, so it is the one coordinate we refuse.
+        guard let fix = SharedSnapshotStore.readCurrent(),
+              fix.gpsLatitude != 0 || fix.gpsLongitude != 0 else { return }
+
+        let now = Date()
+        let conditions = Geomagnetic.conditions(series: snapshot.series,
+                                                latitude: fix.gpsLatitude,
+                                                longitude: fix.gpsLongitude,
+                                                grid: snapshot.grid,
+                                                now: now)
+        let last = defaults.object(forKey: auroraLastNotifiedKey) as? Date
+        guard AuroraAlert.shouldNotify(conditions: conditions,
+                                       enabled: enabled,
+                                       lastNotifiedAt: last,
+                                       now: now) else { return }
+
+        postAuroraNotification(conditions)
+        defaults.set(now, forKey: auroraLastNotifiedKey)
+    }
+
+    /// Deliver the aurora notification, gated on authorization so a denied
+    /// permission no-ops silently (no nag loop). Authorization is asked for
+    /// once in `initialize()`, so turning the toggle on raises no second
+    /// prompt and this path never asks for anything.
+    private static func postAuroraNotification(_ conditions: MagneticConditions) {
+        let body = auroraBody(conditions)
+        // Re-fetch `current()` inside each closure rather than capturing a
+        // local, so no non-Sendable `UNUserNotificationCenter` crosses the
+        // `@Sendable` completion-handler boundary.
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized ||
+                  settings.authorizationStatus == .provisional else { return }
+
+            let content = UNMutableNotificationContent()
+            content.title = "Aurora possible tonight"
+            content.body = body
+            content.sound = .default
+
+            // A fixed identifier coalesces repeat advisories into one entry —
+            // and a DIFFERENT one from the pressure warning's "storm-warning",
+            // because these are two unrelated events and neither may quietly
+            // replace the other in Notification Centre.
+            let request = UNNotificationRequest(identifier: "aurora-alert", content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error {
+                    AppLog.background.error("Failed to post aurora notification: \(String(describing: error))")
+                }
+            }
+        }
+    }
+
+    /// The notification body, in the two forms the alert gate lets through:
+    /// inside the oval, and a glow on the horizon. No brightness adjective and
+    /// no exclamation mark — the model has no brightness term (honesty
+    /// contract item 8) — and the southern hemisphere reads the same sentence
+    /// with "north" swapped for "south".
+    private static func auroraBody(_ conditions: MagneticConditions) -> String {
+        let aurora = conditions.aurora
+        let pole = aurora.isNorthernHemisphere ? "north" : "south"
+        let horizon = aurora.isNorthernHemisphere ? "northern" : "southern"
+
+        // "Kp 6 forecast for 22:00–01:00 UTC. " — thirds notation, never a
+        // decimal (item 13), and the bin in UTC because that is the frame SWPC
+        // publishes in and the only one that means the same to every reader.
+        var lead = ""
+        if let kp = conditions.kpNow {
+            lead = "Kp \(Geomagnetic.kpThirdsLabel(kp)) forecast"
+            if let start = conditions.binStart {
+                let end = start.addingTimeInterval(Geomagnetic.kpBinHours * 3600)
+                lead += " for \(utcTimeFormatter.string(from: start))–\(utcTimeFormatter.string(from: end)) UTC"
+            }
+            lead += ". "
+        }
+
+        // The darkness window is local time: it is the one figure the reader
+        // acts on, and they act on it by looking at their own clock.
+        let from = aurora.windowStart.map { " from \(localTimeFormatter.string(from: $0))" } ?? ""
+
+        // `.ovalReaches` shares the overhead wording on purpose: a margin at
+        // or above zero means the observer is poleward of the oval's
+        // equatorward edge, i.e. inside it. `.horizonGlow` is the only verdict
+        // where the display is somewhere else and the horizon has to be clear.
+        if aurora.visibility == .horizonGlow {
+            return lead + "Possible glow low on the \(horizon) horizon\(from). You'll want a clear, open view \(pole)."
+        }
+        return lead + "From where you are the auroral oval reaches overhead — look \(pole)\(from)."
+    }
+
+    /// UTC, POSIX locale — the Kp bin is published in UTC, and a bin rendered
+    /// in the reader's own zone would silently disagree with the card's footer.
+    private static let utcTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    /// Local clock, `.short`, the same idiom as the card — so the darkness
+    /// time honours the reader's 12/24-hour preference.
+    private static let localTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
 }

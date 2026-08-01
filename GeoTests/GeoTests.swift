@@ -327,3 +327,104 @@ final class AtmosphereCalibrationTests: XCTestCase {
         XCTAssertEqual(Atmosphere.calibrationWeight(ageSeconds: -10), 1.0, accuracy: 1e-9)   // future-dated → fresh
     }
 }
+
+/// Real-time tracking-graph tests: the top "TRACKING ALTITUDE" graph on
+/// the Stat tab keeps its barometer series live when GPS is unavailable by
+/// recording a `.nan` gap for the missing series (rather than collapsing
+/// that line to sea level). Exercises `History.addTrackingInformation`
+/// directly — it's pure in-memory work, no Core Data.
+final class TrackingGraphTests: XCTestCase {
+
+    private let slots = 30   // History.amountOfValuesToShow (private)
+
+    func testBarometerOnlyRecordsGapForGps() {
+        let h = History()
+        h.addTrackingInformation(barometerHeight: 1200, gpsAltitude: nil)
+        let last = try! XCTUnwrap(h.trackingAltitudeDataSet.last)
+        XCTAssertEqual(last.Value[0], 1200, accuracy: 1e-9)   // barometer drawn
+        XCTAssertTrue(last.Value[1].isNaN)                    // GPS = gap
+        // Auto-scale is keyed off the finite barometer sample and ignores NaN.
+        XCTAssertLessThanOrEqual(h.trackingAltitudeDataSetMin, 1200)
+        XCTAssertGreaterThanOrEqual(h.trackingAltitudeDataSetMax, 1200)
+    }
+
+    func testGpsOnlyRecordsGapForBarometer() {
+        let h = History()   // e.g. a device with no barometer
+        h.addTrackingInformation(barometerHeight: nil, gpsAltitude: 800)
+        let last = try! XCTUnwrap(h.trackingAltitudeDataSet.last)
+        XCTAssertTrue(last.Value[0].isNaN)                    // barometer = gap
+        XCTAssertEqual(last.Value[1], 800, accuracy: 1e-9)    // GPS drawn
+    }
+
+    func testBothSeriesRecorded() {
+        let h = History()
+        h.addTrackingInformation(barometerHeight: 1000, gpsAltitude: 1010)
+        let last = try! XCTUnwrap(h.trackingAltitudeDataSet.last)
+        XCTAssertEqual(last.Value[0], 1000, accuracy: 1e-9)
+        XCTAssertEqual(last.Value[1], 1010, accuracy: 1e-9)
+    }
+
+    func testSeedPlaceholdersAreNaN() {
+        let h = History()
+        h.addTrackingInformation(barometerHeight: 500, gpsAltitude: nil)
+        XCTAssertEqual(h.trackingAltitudeDataSet.count, slots)     // seeded to full width
+        // Every slot but the last real sample is a NaN placeholder (drawn as
+        // nothing), so the graph fills from the right instead of showing a
+        // flat sea-level line on launch.
+        let seeds = h.trackingAltitudeDataSet.dropLast()
+        XCTAssertTrue(seeds.allSatisfy { $0.Value[0].isNaN && $0.Value[1].isNaN })
+    }
+
+    func testAllGapSampleKeepsDefaultScale() {
+        let h = History()
+        // No finite sample at all (both series missing): the window falls back
+        // to the default altitude range rather than producing NaN bounds.
+        h.addTrackingInformation(barometerHeight: nil, gpsAltitude: nil)
+        XCTAssertEqual(h.trackingAltitudeDataSetMin, h.altitudeMinDefault)
+        XCTAssertEqual(h.trackingAltitudeDataSetMax, h.altitudeMaxDefault)
+        XCTAssertFalse(h.trackingAltitudeDataSetMin.isNaN)
+        XCTAssertFalse(h.trackingAltitudeDataSetMax.isNaN)
+    }
+
+    func testRingBufferStaysAtWidth() {
+        let h = History()
+        for i in 0..<(slots * 2) {
+            h.addTrackingInformation(barometerHeight: CGFloat(100 + i), gpsAltitude: nil)
+        }
+        XCTAssertEqual(h.trackingAltitudeDataSet.count, slots)     // oldest scrolled off
+        let last = try! XCTUnwrap(h.trackingAltitudeDataSet.last)
+        XCTAssertEqual(last.Value[0], CGFloat(100 + slots * 2 - 1), accuracy: 1e-9)
+    }
+}
+
+/// Horizon-visibility test — the Nature tab only annotates peaks actually above
+/// the Earth's bulge from the observer. Mirrored by Android
+/// `GeoCalculationsTest`'s `isAboveHorizon` cases.
+final class HorizonVisibilityTests: XCTestCase {
+
+    func testTallNearbyPeakIsVisible() {
+        // 3000 m peak 20 km away, observer at 500 m: comfortably over the horizon.
+        XCTAssertTrue(Geometry.isAboveHorizon(observerAltitude: 500, targetAltitude: 3000, distance: 20_000))
+    }
+
+    func testLowFarPeakBelowSeaLevelObserverIsHidden() {
+        // A 200 m hill 120 km away, observer at the shore (0 m): its own horizon
+        // reaches ~54 km, the observer adds ~0 — so at 120 km it's hidden.
+        XCTAssertFalse(Geometry.isAboveHorizon(observerAltitude: 0, targetAltitude: 200, distance: 120_000))
+    }
+
+    func testHeightExtendsVisibility() {
+        // The SAME far hill becomes visible once the observer is high enough that
+        // the two horizon distances together span the gap.
+        XCTAssertFalse(Geometry.isAboveHorizon(observerAltitude: 0, targetAltitude: 500, distance: 150_000))
+        XCTAssertTrue(Geometry.isAboveHorizon(observerAltitude: 3000, targetAltitude: 500, distance: 150_000))
+    }
+
+    func testExactlyAtCombinedHorizonIsVisible() {
+        // At d == √(2R·h_obs)+√(2R·h_peak) the peak just grazes the horizon (≤).
+        let r = Geometry.effectiveEarthRadius
+        let d = (2 * r * 100).squareRoot() + (2 * r * 100).squareRoot()
+        XCTAssertTrue(Geometry.isAboveHorizon(observerAltitude: 100, targetAltitude: 100, distance: d, radius: r))
+        XCTAssertFalse(Geometry.isAboveHorizon(observerAltitude: 100, targetAltitude: 100, distance: d + 1, radius: r))
+    }
+}

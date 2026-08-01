@@ -10,8 +10,12 @@ import MapKit
 import CoreLocation
 
 struct ClosestMountainInformationView: View {
-    @State var location: Location?;
+    @State var location: Location?
     var motion: DeviceMotionManager?
+    /// Magnetic Conditions, published down from the card above so the bearing
+    /// row can warn about a storm-time heading offset. `nil` until that card
+    /// has evaluated once, and in previews.
+    var magnetic: MagneticConditions?
 
     var body: some View {
         ZStack {
@@ -22,7 +26,7 @@ struct ClosestMountainInformationView: View {
                 .padding()
 
             VStack {
-                
+
                 HStack(alignment: .top) {
                     Text("Name")
                         .font(.subheadline)
@@ -36,7 +40,7 @@ struct ClosestMountainInformationView: View {
                     }
                     .padding()
                 }
-                
+
                 HStack(alignment: .top) {
                     Text("Distance")
                         .font(.subheadline)
@@ -53,7 +57,9 @@ struct ClosestMountainInformationView: View {
                     PeakBearingRow(userCoordinate: location?.location?.coordinate,
                                    peakLatitude: location?.closestMountain?.coordinates?.latitude,
                                    peakLongitude: location?.closestMountain?.coordinates?.longitude,
-                                   motion: motion)
+                                   motion: motion,
+                                   gScale: magnetic?.gScale ?? .g0,
+                                   compass: magnetic?.compass ?? .normal)
                 }
 
                 HStack(alignment: .top) {
@@ -72,9 +78,9 @@ struct ClosestMountainInformationView: View {
 
                 HStack(alignment: .top) {
                     Spacer()
-                    Button(action: {
+                    Button {
                         OpenMapForClosestMountain()
-                    }) {
+                    } label: {
                         Text("Directions")
                             .font(.system(size: 12))
                             .padding(6)
@@ -85,7 +91,7 @@ struct ClosestMountainInformationView: View {
                     Spacer()
                         .frame(width: 10)
                 }
-                
+
                 Spacer()
                     .frame(height: 10)
             }
@@ -97,22 +103,22 @@ struct ClosestMountainInformationView: View {
             .padding()
         }
     }
-    
+
     func ClosestMountainName() -> String {
         guard location?.closestMountain != nil else { return "?" }
         return location?.closestMountain?.name ?? "-"
     }
-    
+
     func ClosestMountainAltitude() -> String {
         guard location?.closestMountain != nil else { return "? m" }
         return "\(String(location?.closestMountain?.height ?? 0)) m"
     }
-    
+
     func ClosestMountainDistance() -> String {
         guard location?.closestMountain != nil else { return "? m" }
         return "\(String(format: "%.2f", (location?.closestMountainDistance ?? 0.0) / 1000.0)) km"
     }
-    
+
     func ClosestMountainLocationLatitude() -> String {
         guard location?.closestMountain != nil else { return "? \(String(localized: "unit_latitude"))" }
         return "\(String(format: "%.6f", location?.closestMountain?.coordinates?.latitude ?? 0.0)) \(String(localized: "unit_latitude"))"
@@ -122,10 +128,10 @@ struct ClosestMountainInformationView: View {
         guard location?.closestMountain != nil else { return "? \(String(localized: "unit_longitude"))" }
         return "\(String(format: "%.6f", location?.closestMountain?.coordinates?.longitude ?? 0.0)) \(String(localized: "unit_longitude"))"
     }
-    
+
     func OpenMapForClosestMountain() {
         guard location != nil else { return }
-        
+
         let sourceCoordinate = CLLocationCoordinate2D(
             latitude: location?.location?.coordinate.latitude ?? 0,
             longitude: location?.location?.coordinate.longitude ?? 0
@@ -136,7 +142,7 @@ struct ClosestMountainInformationView: View {
         )
         let source = MKMapItem(location: sourceLocation, address: nil)
         source.name = "Current location"
-        
+
         let destinationCoordinate = CLLocationCoordinate2D(
             latitude: location?.closestMountain?.coordinates?.latitude ?? 0,
             longitude: location?.closestMountain?.coordinates?.longitude ?? 0
@@ -147,7 +153,7 @@ struct ClosestMountainInformationView: View {
         )
         let destination = MKMapItem(location: destinationLocation, address: nil)
         destination.name = location?.closestMountain?.name ?? "Destination"
-        
+
         MKMapItem.openMaps(
             with: [source, destination],
             launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving]
@@ -165,6 +171,10 @@ struct PeakBearingRow: View {
     let peakLatitude: Double?
     let peakLongitude: Double?
     @ObservedObject var motion: DeviceMotionManager
+    /// Current NOAA G level and the banded storm-time declination offset for
+    /// this magnetic latitude. Only used to add a caption at G3 and above.
+    let gScale: GScale
+    let compass: CompassBand
 
     /// True bearing (deg) from observer to peak, or `nil` when either
     /// coordinate is missing or an unset `(0,0)`.
@@ -204,11 +214,42 @@ struct PeakBearingRow: View {
                             .padding([.horizontal, .bottom], 8)
                     }
                 }
+                // Both captions can be up at once: a figure-8 fixes an
+                // uncalibrated compass, and nothing fixes a geomagnetic storm.
+                // They are different problems and the user deserves both.
+                if let storm = Self.stormCaption(gScale: gScale, compass: compass) {
+                    HStack {
+                        Spacer()
+                        Text(verbatim: storm)
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .multilineTextAlignment(.trailing)
+                            .padding([.horizontal, .bottom], 8)
+                    }
+                }
             }
         }
+    }
+
+    /// The G3+ heading caption. Banded rather than a single figure — the
+    /// number never reaches a readout (honesty contract item 9) — and it
+    /// closes by saying plainly that the compass's own error is the bigger
+    /// problem, so nobody reads it as a correction to dial in.
+    private static func stormCaption(gScale: GScale, compass: CompassBand) -> String? {
+        guard gScale.rawValue >= Geomagnetic.compassAdvisoryMinG else { return nil }
+        let band: String
+        switch compass {
+        case .normal:    return nil
+        case .underOne:  band = "under 1°"
+        case .oneToTwo:  band = "1–2°"
+        case .twoToFive: band = "2–5°"
+        case .overFive:  band = "over 5°"
+        }
+        return "Geomagnetic storm (G\(gScale.rawValue)) — roughly \(band) extra heading error here. "
+             + "Your compass's own error is larger."
     }
 }
 
 #Preview {
-    ClosestMountainInformationView(location: nil, motion: nil)
+    ClosestMountainInformationView(location: nil, motion: nil, magnetic: nil)
 }

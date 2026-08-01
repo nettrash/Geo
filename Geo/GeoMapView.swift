@@ -206,6 +206,10 @@ struct GeoMapView: View {
             get: { selectedPack != nil },
             set: { if !$0 { selectedPack = nil } }
         ), titleVisibility: .visible) {
+            Button("Update") {
+                if let pack = selectedPack { Task { await app?.offlinePack?.updatePack(pack) } }
+                selectedPack = nil
+            }
             Button("Rename") {
                 if let pack = selectedPack {
                     nameText = pack.name
@@ -282,11 +286,13 @@ private struct MapOfflineBar: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
             } else if manager.isDownloading {
-                VStack(alignment: .leading, spacing: 6) {
+                // A pack is a single Overpass peak query — no chartable phase — so
+                // an indeterminate spinner, not a 0%-stuck bar.
+                HStack(spacing: 8) {
+                    ProgressView()
                     Text(manager.statusText.isEmpty ? "Downloading…" : manager.statusText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    ProgressView(value: manager.progress)
                 }
             } else {
                 Picker("Radius", selection: $radiusKm) {
