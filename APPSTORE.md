@@ -1,7 +1,8 @@
 # App Store listing copy — Geo
 
 Copy-paste source for App Store Connect. Field limits: Promotional Text ≤ 170
-chars, Description ≤ 4000, What's New ≤ 4000. Current release: **1.2**.
+chars, Description ≤ 4000, What's New ≤ 4000, Keywords ≤ 100. Current release:
+**1.2**.
 
 ---
 
@@ -63,3 +64,106 @@ A new Magnetic Conditions card on the Info tab tells you what a geomagnetic stor
 Easier on the battery, and the widget is stale less often: the home-screen widget and the Watch complication now ask to refresh every 15 minutes instead of every 2 and 5 minutes. iOS only grants a few dozen widget reloads a day, so the old cadence spent that budget early and then left the widget stale for long stretches. Every refresh still takes a live barometer sample, and using the app still updates the widget straight away.
 
 Also fixed: on the Stats tab, the live altitude graph keeps recording the barometer trace when GPS drops, instead of freezing.
+
+---
+
+## Keywords
+
+Comma-separated, no spaces (spaces count against the 100). Singular forms only —
+the App Store matches plurals and combinations itself. Terms already in the app
+name ("Geo") or the subtitle are wasted here. No trademarks: "OpenStreetMap",
+"Apple Watch" and "NOAA" must not appear (2.3.7).
+
+```
+altimeter,barometer,altitude,elevation,peak,summit,mountain,hike,compass,aurora,offline,trail
+```
+
+93 / 100 chars. Seven spare for a seasonal swap — `ascent` (+7) fits exactly.
+Deliberately omitted: "GPS" and "map" (generic, heavily contested, and the
+Description already carries them for search); "AR" (two chars, matched anyway by
+"augmented" in the Description).
+
+---
+
+## App Review Notes
+
+Paste into App Store Connect → App Review Information → Notes. **Section 2 is the
+one that matters** — without it a reviewer indoors sees an apparently empty
+Nature tab, which is correct behaviour but looks broken.
+
+```
+Geo names the mountain peaks in front of the camera, reads altitude from the
+barometer, and reports what a geomagnetic storm is doing to the compass and to
+aurora visibility. This update (1.2) rebuilds the
+Nature view around naming visible peaks and adds the Magnetic Conditions card.
+
+1. ACCESS
+No account, sign-in, registration, in-app purchase or subscription. Every feature
+works the moment the app launches, so no demo credentials exist or are needed.
+
+2. PLEASE READ - WHAT THE NATURE (AR) TAB NEEDS
+The Nature tab overlays the names of real peaks on the live camera. It needs a
+physical device (camera + ARKit; the Simulator has neither) and real mountains
+within ~80 km.
+
+Indoors, or anywhere without nearby named summits, the tab correctly shows the
+horizon line and N/E/S/W compass markers but few or no peak labels. That is
+expected behaviour, not a failure.
+
+To see it working without travelling, set a simulated location from Xcode
+(Debug menu, Simulate Location). Any of these puts large named peaks in view:
+  Chamonix, France      45.9237, 6.8694  (Mont Blanc, 4808 m)
+  Zermatt, Switzerland  46.0207, 7.7491  (Matterhorn, 4478 m)
+  Lauterbrunnen, CH     46.5938, 7.9089  (Jungfrau, Eiger)
+
+Two tabs show the same peak data with no camera and no mountains needed, from any
+location: the Map tab shows nearby peaks as pins, and the Info tab shows "closest
+mountain" and "highest mountain" cards with distance and bearing.
+
+Altitude comes from the barometric sensor; without one the app falls back to
+satellite altitude and says so on screen.
+
+3. WHERE THE NEW THINGS ARE
+Nature tab: peak labels, the minimum-altitude slider, horizontal drag to align
+the overlay, and the shutter button. Info tab: the Magnetic Conditions
+card (its "What this means" sheet holds the explainer and the opt-in aurora-alert
+switch) and "Manage offline areas".
+
+4. NETWORK
+There are no servers of ours. No analytics, advertising, tracking or third-party
+SDKs; the Privacy Nutrition Label answer is "Data Not Collected", and no App
+Tracking Transparency prompt is shown because nothing is tracked.
+
+Three hosts are contacted: OpenStreetMap Overpass (names and positions of nearby
+peaks), Open-Meteo (ground elevation, used to decide which peaks rise above the
+horizon), and the NOAA Space Weather Prediction Center (planetary K index).
+Coordinates sent to the first two are rounded to a ~110 m grid first. The third
+carries none: a fixed URL with no query string, identical for every user. Apple
+MapKit renders the Map tab.
+
+5. PERMISSIONS
+Location (When In Use), at first launch - the Info tab the app opens on is itself
+a live position readout; Always/background location is never requested. Camera -
+the Nature view's labelling and shutter. Motion & Fitness - the barometer, for
+altitude, the pressure trend and the storm warning. Photos, add-only - only if
+the user picks Save Image from the share sheet. Notifications - two local
+advisories: a "pressure falling fast" storm warning, and an aurora alert that is
+off by default, sits behind a switch in the Magnetic Conditions explainer, and
+fires at most once in any 20 hours. Both are scheduled on the device; there is no
+push server and no device token leaves the phone.
+
+6. iCLOUD, CONTENT, ENCRYPTION
+History, trips and the summit log sync through the user's own private CloudKit
+database, visible only to them. Nothing is shared between users, so there is no
+content to moderate. It behaves the same everywhere and is English only.
+
+Magnetic Conditions reports a published index and computes local consequences -
+it does not claim to detect geomagnetic storms, and contains no magnetometer code
+for that purpose, because a phone's magnetometer cannot resolve the signal.
+
+ITSAppUsesNonExemptEncryption is false; the app implements no encryption of its
+own. Minimum system iOS 26 / watchOS 26. An Apple Watch app, widgets and Watch
+complications are included. Source code and privacy policy are public.
+
+Thank you for reviewing.
+```
