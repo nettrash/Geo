@@ -12,6 +12,10 @@
 //  says something useful with the network gone: "you are at 53.3° magnetic
 //  latitude, the aurora needs about Kp 5+ here" never needed the network.
 //
+//  So the card degrades by row, not as a block. The three rows that exist only
+//  because a Kp arrived — Field, Compass, GPS — go together when there is none;
+//  the rows that describe the PLACE stay.
+//
 //  The copy is bound by the honesty contract at the top of `Geomagnetic.swift`.
 //  In particular: no brightness adjective anywhere, no decimal Kp threshold,
 //  no GPS error in metres, no aurora verdict at all when the correction grid
@@ -165,6 +169,19 @@ struct MagneticInformationView: View {
 
     // MARK: - Rows
 
+    /// Whether the storm-derived rows — Field, Compass, GPS — have anything to
+    /// say. All three read off the fetched Kp, so all three go together when
+    /// there is none: `compass` and `gnss` fall back to the `.normal` and
+    /// `.nominal` DEFAULTS on `MagneticConditions`, which read as a verdict
+    /// rather than as the absence of one, and the reader they would reassure is
+    /// the one offline in a G4 storm. The rows that describe the PLACE —
+    /// magnetic latitude, the Kp the aurora needs here, tonight's darkness
+    /// window, the bearing to the pole — never needed the network and stay.
+    /// Android gates the same three rows on the same value.
+    static func showsStormDerivedRows(_ conditions: MagneticConditions) -> Bool {
+        conditions.kpNow != nil
+    }
+
     /// Hidden entirely when there is no Kp. An em dash on a row labelled
     /// "Field" would read as a measurement we failed to take, and there is no
     /// measurement here at all — the number comes from NOAA's ground
@@ -179,14 +196,26 @@ struct MagneticInformationView: View {
         }
     }
 
+    /// Hidden with the Field row. "Compass: Normal" printed above a footer that
+    /// says there is no space-weather data is reassurance from data we do not
+    /// have.
+    @ViewBuilder
     private func compassRow(_ conditions: MagneticConditions) -> some View {
-        row("Compass",
-            Self.compassValue(conditions.compass),
-            caption: Self.compassCaption(conditions.gScale))
+        if Self.showsStormDerivedRows(conditions) {
+            row("Compass",
+                Self.compassValue(conditions.compass),
+                caption: Self.compassCaption(conditions.gScale))
+        }
     }
 
+    /// Hidden with the Field row, and for the same reason: the GNSS advisory
+    /// reads the G scale, which is G0 whenever there is no Kp — so "Nominal"
+    /// offline is the default speaking, not a verdict.
+    @ViewBuilder
     private func gpsRow(_ conditions: MagneticConditions) -> some View {
-        row("GPS", Self.gnssValue(conditions.gnss))
+        if Self.showsStormDerivedRows(conditions) {
+            row("GPS", Self.gnssValue(conditions.gnss))
+        }
     }
 
     @ViewBuilder

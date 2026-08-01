@@ -749,6 +749,32 @@ final class GeomagneticTests: XCTestCase {
         XCTAssertNil(conditions.aurora.marginDeg)
     }
 
+    /// The card's degrade rule, pinned where the values it degrades on are
+    /// made. `compass` and `gnss` carry `.normal` / `.nominal` whether or not
+    /// a Kp ever arrived, so the rows that render them must be gated on the
+    /// Kp and not on their own values — otherwise a user offline in a G4
+    /// storm reads "Compass: Normal · GPS: Nominal" directly above a footer
+    /// that says there is no space-weather data. Android gates the same three
+    /// rows on the same value.
+    func testStormDerivedRowsAreHiddenWithoutAKpButThePlaceRowsStay() throws {
+        let offline = try londonConditions(nil)
+        XCTAssertNil(offline.kpNow)
+        // The defaults that would otherwise be printed as findings.
+        XCTAssertEqual(offline.compass, .normal)
+        XCTAssertEqual(offline.gnss, .nominal)
+        XCTAssertFalse(MagneticInformationView.showsStormDerivedRows(offline))
+        // Everything that is a property of the place survives going offline.
+        XCTAssertEqual(try XCTUnwrap(offline.magneticLatitudeDeg), 47.71, accuracy: 0.5)
+        XCTAssertEqual(try XCTUnwrap(offline.aurora.kpNeededForHorizonGlow), 5.333, accuracy: 1e-3)
+        XCTAssertNotNil(offline.aurora.poleBearingDeg)
+
+        // And with a Kp, all three rows come back — including at G0, where
+        // "Normal" and "Nominal" are a real answer rather than a default.
+        let calm = try londonConditions(series(ageHours: 1, kp: 2))
+        XCTAssertEqual(calm.gScale, .g0)
+        XCTAssertTrue(MagneticInformationView.showsStormDerivedRows(calm))
+    }
+
     func testEmptySeriesIsNoDataAndDoesNotCrash() throws {
         let conditions = try londonConditions(KpSeries(fetchedAt: now, points: []))
         XCTAssertEqual(conditions.freshness, Freshness.none)

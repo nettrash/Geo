@@ -329,7 +329,16 @@ class PeakFinder: ObservableObject {
         return fallback
     }
 
-    /// Find known mountains from app data that are within range
+    /// Find known mountains from app data that are within range.
+    ///
+    /// Bounded by `maxPeakRenderDistance`, not `searchRadius`: this is the one
+    /// source that needs no network at all, and at 5 km it was hidden exactly
+    /// where the summit is in front of you — you are rarely within 5 km of a
+    /// mountain you can see, and never within 5 km of the whole ridge of them.
+    /// The bundled list is 136 entries spread over the whole planet, so the
+    /// widened bound adds at most 26 (the densest spot on Earth, Gasherbrum I)
+    /// and normally none — it cannot meaningfully grow what `searchPeaks`
+    /// feeds to its O(n²) dedupe.
     private func findKnownMountains(near location: CLLocation, mountainsData: MountainData?) -> [NearbyPeak] {
         guard let data = mountainsData else { return [] }
         
@@ -347,7 +356,7 @@ class PeakFinder: ObservableObject {
                 let mountainLocation = CLLocation(latitude: lat, longitude: lon)
                 let distance = location.distance(from: mountainLocation)
                 
-                guard distance <= searchRadius else { continue }
+                guard distance <= maxPeakRenderDistance else { continue }
                 
                 let mountainBearing = Geometry.bearing(from: location.coordinate,
                                                        to: CLLocationCoordinate2D(latitude: lat, longitude: lon))

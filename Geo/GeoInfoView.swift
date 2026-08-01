@@ -85,15 +85,16 @@ struct GeoInfoView: View {
 }
 
 /// Data-source attribution footer for the Info tab. Credits the public data
-/// providers the app depends on (fair-use / attribution courtesy for
-/// Open-Meteo and OpenStreetMap, plus Apple's frameworks).
+/// providers the app depends on (attribution courtesy for Open-Meteo and
+/// Apple's frameworks; for OpenStreetMap it is a licence term, not a
+/// courtesy — the ODbL requires both the credit and the licence name).
 private struct DataSourcesCredit: View {
     var body: some View {
         VStack(spacing: 3) {
             Text("Data sources")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
-            Text("Peaks © OpenStreetMap contributors (Overpass)")
+            Text("Peaks © OpenStreetMap contributors (Overpass, ODbL)")
             Text("Elevation by Open-Meteo")
             Text("Space weather by NOAA SWPC (public domain)")
             Text("Magnetic coordinates from IGRF-14 and AACGM-v2")

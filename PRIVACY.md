@@ -1,7 +1,7 @@
 # Privacy Policy
 
-**Effective date:** 26 July 2026
-**Applies to:** Geo — the iOS app (with Apple Watch companion) published by nettrash on the App Store. This policy is versioned alongside the app's source code; the most recent commit on `main` is authoritative.
+**Effective date:** 1 August 2026
+**Applies to:** Geo — the iOS app (with Apple Watch companion) published by nettrash on the App Store. This policy is versioned alongside the app's source code; the most recent commit on `master` is authoritative.
 
 ## TL;DR
 
@@ -9,17 +9,22 @@ Geo doesn't collect any personal information about you, doesn't create accounts,
 
 ## What the app accesses, and what each access does
 
-**Location — when in use** (`NSLocationWhenInUseUsageDescription`). Granted via the system Location Services prompt the first time you open the Map or Nature tab. Used exclusively to:
+**Location — when in use** (`NSLocationWhenInUseUsageDescription`). Requested via the system Location Services prompt the first time you launch the app, because the Info tab you land on is itself a live position readout. Used exclusively to:
 
 1. Show your current position on the in-app map.
-2. Compute distances and bearings to known peaks for the AR view and the "Nearby" list.
+2. Compute distances and bearings to known peaks for the Nature view and the closest- and highest-mountain cards on the Info tab.
 3. Build the Overpass / elevation queries described below.
+4. Work out your magnetic latitude — and from it the local compass, GPS and aurora consequences shown on the Magnetic Conditions card. That calculation runs on the device and its result is never sent anywhere.
 
 The app uses *when-in-use* only — it does not request "Always" / background location.
 
-**Camera** (`NSCameraUsageDescription`). Used by the AR view to overlay peak names on the camera feed. Frames are processed entirely on-device by ARKit; nothing is recorded or transmitted.
+**Camera** (`NSCameraUsageDescription`). Used by the Nature (AR) view to overlay peak names on the camera feed and, when you tap the shutter, to capture the freeze-frame share image. Frames are processed entirely on-device by ARKit and the live feed itself is never recorded or transmitted. The shutter composites the frozen frame with the peak labels into a single image held in memory and hands it straight to the system share sheet — the app writes no file of its own — so it only leaves the app if you choose a destination there.
 
-**Motion & Fitness** (`NSMotionUsageDescription`). Reads the device's barometer and motion sensors so the app can compute altitude (from atmospheric pressure) and stabilise AR peak labels. Sensor values stay on the device.
+**Photos — add only** (`NSPhotoLibraryAddUsageDescription`). Saving that captured image to Photos is one of the share sheet's destinations. iOS asks for add-only access the first time you pick it, which lets Geo add that one image and never lets it read your library.
+
+**Motion & Fitness** (`NSMotionUsageDescription`). Reads the device's barometer and motion sensors so the app can compute altitude (from atmospheric pressure), drive the trip recorder and storm-warning tendency, and stabilise AR peak labels. Sensor values stay on the device.
+
+**Notifications** (requested at first launch). Geo asks permission to send *local* notifications. There are two. The **storm warning** is a single "pressure falling fast" advisory raised when the barometer drops sharply. The **aurora alert** tells you when the auroral oval could reach your latitude tonight; it is **off by default**, behind a switch in the Magnetic Conditions card's "What this means" sheet — until you turn it on that path issues no request and reads no position — and once on it fires at most once in any 20 hours. The alert is worked out from the last fix the app already recorded, so it starts no background location of its own. Both are scheduled on the device by the app itself: there is no push server, no device token leaves the phone, and denying the permission simply disables the advisories. There are no marketing or remote notifications.
 
 The Apple Watch companion app and Watch widget request only **Motion & Fitness** to read the Watch's barometer.
 
@@ -79,7 +84,7 @@ For data flowing through the third-party services listed above, the respective p
 
 ## Changes to this policy
 
-If a future version of Geo changes any of the above — adds analytics, integrates a third-party SDK, adds a new network endpoint, or starts using a permission for a new purpose — this document will be updated *in the same release* and the *Effective date* will be bumped. Full history: <https://github.com/nettrash/Geo/commits/main/PRIVACY.md>.
+If a future version of Geo changes any of the above — adds analytics, integrates a third-party SDK, adds a new network endpoint, or starts using a permission for a new purpose — this document will be updated *in the same release* and the *Effective date* will be bumped. Full history: <https://github.com/nettrash/Geo/commits/master/PRIVACY.md>.
 
 ## Contact
 

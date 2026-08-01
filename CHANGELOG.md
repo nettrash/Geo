@@ -6,12 +6,13 @@ All notable changes to Geo are documented here. Format loosely follows
 
 ## [Unreleased]
 
-## [1.2] — 2026-07-26
+## [1.2] — 2026-08-01
 
 A Nature-view rebuild focused on one thing — naming the peaks you can see — a
 new **Magnetic Conditions** card telling you what a geomagnetic storm is doing
 to your compass, to your GPS and to your chances of seeing the aurora from
-exactly where you're standing, plus a Stats-tab tracking fix.
+exactly where you're standing, a battery pass over the widget, the Watch
+complications, GPS and the camera view, plus a Stats-tab tracking fix.
 
 ### Added
 - **Magnetic Conditions.** A new Info-tab card reads the planetary K index
@@ -84,8 +85,39 @@ exactly where you're standing, plus a Stats-tab tracking fix.
   existing calibrate-compass hint with roughly how much extra heading error
   the storm is worth at your magnetic latitude — and the reminder that your
   compass's own error is larger than that.
-- **Data sources credit** now names NOAA SWPC (public domain) and the IGRF-14
-  and AACGM-v2 magnetic coordinate models.
+- **The famous summits are visible from where you can actually see them.** The
+  136 mountains bundled with the app — the Seven Summits, the Snow Leopard
+  peaks — were only ever labelled within 5 km, which is nowhere near far
+  enough to see one. They now carry to the same ~80 km the rest of the Nature
+  view uses, and they need no signal at all.
+- **Data sources credit** now names NOAA SWPC (public domain), the IGRF-14
+  and AACGM-v2 magnetic coordinate models, and the ODbL licence the
+  OpenStreetMap peak data is published under.
+- **Easier on the battery — and the widget is stale less often, not more.**
+  The home-screen widget's timeline policy asked to reload every 120 s and
+  the Watch complication every 300 s; both now ask every 15 minutes
+  (`fallbackRefreshInterval = 15 * 60`), matching the `BGAppRefreshTask`
+  cadence that already takes a sample and requests a reload. WidgetKit meters
+  reloads to a few dozen a day, so the old asks could never be granted in
+  full — they spent the day's budget early and left the surface stale for
+  long stretches afterwards. What is shown does not change: both providers
+  still take a live barometer sample on every request, and every app-driven
+  trigger is untouched (the 30 s foreground throttle, the forced reload on
+  resign-active, the background task).
+- **Less foreground power draw, with nothing switched off.**
+  `kCLLocationAccuracyBest` is no longer latched for the whole foreground
+  session on every tab: it is raised only while the Satellite card — the one
+  consumer that renders 6-dp coordinates and 0.1 m/s speed — is on screen,
+  and drops back to `kCLLocationAccuracyNearestTenMeters` otherwise.
+  (`distanceFilter` is deliberately left at `kCLDistanceFilterNone`;
+  filtering *delivery* rather than accuracy class would freeze the Satellite
+  speed readout and punch deliberate gaps into the Stat graph while you stand
+  still.) The Nature view now starts CoreMotion heading-only, because it
+  never reads pitch or roll, instead of running the 30 Hz attitude stream.
+  And the Watch's ~1 Hz altimeter handler no longer pushes a live message
+  *and* an application-context update on every tick — outbound sends are
+  spaced by 0.1 kPa of movement or 30 s, which are precisely the ones the
+  phone's inbound handler was already discarding.
 
 ### Fixed
 - **A peak's name card can no longer detach from its line.** Each marker —
@@ -267,4 +299,5 @@ tap-to-identify; plus dozens of verified bug fixes and improvements.
 - (Android-only, tracked in that repo) the committed Google Maps API key was
   removed; not applicable to iOS, which uses MapKit.
 
+[1.2]: https://github.com/nettrash/Geo
 [1.1]: https://github.com/nettrash/Geo

@@ -8,15 +8,15 @@
 		<string>me.nettrash.Geo.background.apprefresh</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Camera is used for augmented reality to show nearby mountain peaks around you.</string>
+	<string>Geo uses the camera in the Nature view to draw the name and altitude of each visible mountain peak over the live view, and to capture that view when you press the shutter.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Location is used to find nearby mountain peaks and show your position on the map.</string>
+	<string>Geo uses your location while the app is open to show your position and altitude, name the mountain peaks around you, and work out what the current magnetic conditions mean at your latitude. Geo never asks for background location.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Motion data is used for barometer altitude readings and AR peak positioning.</string>
+	<string>Geo uses the barometer to measure your altitude and the air pressure around you, and device motion to keep the peak labels in the Nature view lined up with the camera as you turn.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Save the captured peak photo to your photo library.</string>
+	<string>Geo adds an image to your library only when you choose Save Image after capturing the Nature view or sharing a summit card. It never reads the photos already there.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>
