@@ -33,23 +33,27 @@ actor TerrainElevationService {
     /// entries once we exceed `cacheCap`.
     private var lruOrder: [String] = []
 
-    /// Cells from downloaded **offline expedition packs**, keyed exactly
-    /// like `cache`. Consulted on every cache miss and *never* LRU-evicted,
-    /// so a prefetched area's terrain skyline keeps resolving from cache
-    /// with no signal. Rebuilt wholesale from the saved packs by
-    /// `OfflinePackManager` at launch and whenever a pack is added/removed.
-    /// Total memory is bounded because each pack caps its cell count at
-    /// `SkylineCalculator.offlineMaxDEMCells` (≈ cap × number of saved packs).
-    private var pinned: [String: Double] = [:]
+    // NOTE: this service used to also hold *pinned* DEM layers (a fine ~110 m
+    // core plus ~550 m / ~2.2 km far-terrain rings) seeded from offline
+    // expedition packs, so the terrain skyline could resolve a full 200 km
+    // panorama with no signal. The skyline was removed from the Nature tab, and
+    // with it the pinned layers, `setPinned(...)` and the pack DEM prefetch.
+    //
+    // What remains is what `PeakFinder` actually needs: resolve the altitude of
+    // an OSM peak node that carries no `ele` tag. That's a bounded, on-demand
+    // lookup (one point per peak), served by the LRU cache below.
 
     /// The persisted cache is loaded lazily on the first query — an actor's
     /// `init` is nonisolated and cannot touch isolated state under Swift 6.
     private var didLoad = false
 
     /// LRU cap. Each entry is a ~110 m grid cell at ~24 bytes on disk,
-    /// so 8000 entries (~a 100×100 km coverage envelope) stays trivially
-    /// small while surviving plenty of cold starts.
-    private let cacheCap = 8000
+    /// so even 50 000 entries is ~1.2 MB. The cap must comfortably hold
+    /// several full skyline passes: one pass is now ~8 500 distinct
+    /// cells (dense schedule + refinement round), and a cap smaller
+    /// than a few passes would make the LRU evict its own working set —
+    /// every recompute would re-fetch everything.
+    private let cacheCap = 50_000
 
     /// On-disk location of the persisted cache. `nil` only if the system
     /// can't hand us a Caches directory, in which case persistence is
@@ -98,9 +102,6 @@ actor TerrainElevationService {
             if let cached = cache[k] {
                 touchLRU(k)
                 results[i] = cached
-            } else if let pin = pinned[k] {
-                // Offline-pack cell — durable, never LRU-evicted.
-                results[i] = pin
             } else {
                 pending.append((i, p))
             }
@@ -170,14 +171,6 @@ actor TerrainElevationService {
         if let url = cacheURL {
             try? FileManager.default.removeItem(at: url)
         }
-    }
-
-    /// Replace the set of *pinned* cells (grid-cell → elevation) from the
-    /// downloaded offline packs. Pinned cells are consulted on every cache
-    /// miss and never evicted. Rebuilt wholesale by `OfflinePackManager`,
-    /// so passing the union of all packs' cells is the whole contract.
-    func setPinned(_ cells: [String: Double]) {
-        pinned = cells
     }
 
     // MARK: - HTTP
@@ -345,9 +338,9 @@ actor TerrainElevationService {
         )
     }
 
-    /// Canonical cache/pinned key for a coordinate: the ~110 m quantised
-    /// "lat,lon" string. Exposed so `OfflinePackManager` builds pack-cell
-    /// keys that line up byte-for-byte with the live lookups.
+    /// Canonical cache key for a coordinate: the ~110 m quantised "lat,lon"
+    /// string. The quantisation doubles as the privacy grid — a coordinate is
+    /// rounded to ~110 m before it is ever sent to the elevation API.
     static func gridKey(_ p: CLLocationCoordinate2D) -> String {
         let q = quantise(p)
         return "\(q.latitude),\(q.longitude)"

@@ -3,18 +3,20 @@
 //  Geo
 //
 //  Owns the offline-expedition-pack state: the saved packs, the live
-//  download progress, and the seeding of the prefetched data back into
-//  the two live caches so the AR view works with no signal:
+//  download progress, and the seeding of the prefetched peaks back into
+//  `PeakFinder` (via `combinedPeaks`), so the AR view can still name the
+//  mountains around you on a summit with no signal.
 //
-//   • PeakFinder merges `combinedPeaks` (so named peaks / markers /
-//     ridge labels appear area-wide offline), and
-//   • TerrainElevationService pins the packs' DEM cells (so the terrain
-//     skyline resolves from cache instead of going empty offline).
+//  Packs are PEAKS ONLY. They used to also prefetch an area DEM grid (a
+//  ~110 m core plus far-terrain rings out to 200 km) to feed the terrain
+//  skyline; that skyline was removed — the modelled ridge rarely matched
+//  the real one on camera — and the grid prefetch went with it. Peak
+//  altitudes are still DEM-resolved at download time inside
+//  `PeakFinder.fetchOSMPeaks`, which is one bounded lookup per peak.
 //
 //  Download reuses the app's existing throttled, retry-backed public-API
-//  paths (`PeakFinder.fetchOSMPeaks` / `TerrainElevationService`), so the
-//  bounding-box prefetch is automatically polite to Overpass and
-//  Open-Elevation. Owned by `GeoAppDelegate`.
+//  path (`PeakFinder.fetchOSMPeaks`), so the bounding-box prefetch is
+//  automatically polite to Overpass. Owned by `GeoAppDelegate`.
 //
 
 import Foundation
@@ -31,11 +33,12 @@ final class OfflinePackManager: ObservableObject {
     /// disables a second concurrent download).
     @Published private(set) var isDownloading = false
 
-    /// 0…1 across the DEM prefetch (the long phase).
-    @Published private(set) var progress: Double = 0
-
-    /// Short human-readable phase ("Finding peaks…", "Caching terrain…").
+    /// Short human-readable phase ("Finding peaks…", "Updating…").
     @Published private(set) var statusText = ""
+
+    /// The pack currently being re-downloaded by `updatePack`, or `nil`. Lets the
+    /// management list show a per-row spinner on exactly the pack being refreshed.
+    @Published private(set) var updatingPackID: UUID?
 
     /// Union of every pack's peaks, deduped — handed to `PeakFinder` so
     /// the area's peaks show offline. Distance/bearing are placeholders;
@@ -70,12 +73,10 @@ final class OfflinePackManager: ObservableObject {
     func createPack(name: String, center: CLLocationCoordinate2D, radiusKm: Double) async {
         guard !isDownloading else { return }
         isDownloading = true
-        progress = 0
         statusText = "Finding peaks…"
         defer {
             isDownloading = false
             statusText = ""
-            progress = 0
         }
 
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -91,38 +92,17 @@ final class OfflinePackManager: ObservableObject {
 
         if Task.isCancelled { return }
 
-        // 2. DEM: a regular ~110 m area grid over the whole pack bounding box
-        //    (centre ± radius), fetched in chunks so we can show progress;
-        //    each chunk goes through the elevation service's own 200 ms
-        //    throttle + retry. An area grid (not a single-observer fan) is
-        //    what lets the offline skyline resolve from *any* point in the
-        //    area, not only when standing at the pack centre.
-        statusText = "Caching terrain…"
-        // Build the area grid off the main actor — it's pure arithmetic and
-        // would otherwise run on the main thread during the download.
-        let coords = await Task.detached {
-            SkylineCalculator.offlinePrefetchCoordinates(center: center, radiusKm: radiusKm)
-        }.value
-        var cells: [String: Double] = [:]
-        let chunkSize = 300
-        var processed = 0
-        var index = 0
-        while index < coords.count {
-            if Task.isCancelled { return }
-            let end = min(index + chunkSize, coords.count)
-            let slice = Array(coords[index..<end])
-            let elevs = await TerrainElevationService.shared.elevations(at: slice)
-            for (coord, elev) in zip(slice, elevs) {
-                if let elev { cells[TerrainElevationService.gridKey(coord)] = elev }
-            }
-            processed += slice.count
-            progress = Double(processed) / Double(coords.count)
-            index = end
-        }
+        // Note: `fetchOSMPeaks` already resolves the altitude of every peak whose
+        // OSM node carries no `ele` tag, via one batched `TerrainElevationService`
+        // lookup — that's a bounded number of DEM points (one per peak) and it
+        // MUST stay, because a peak with no altitude gets dropped. What used to
+        // live here on top of that was an *area DEM grid* prefetch (a ~110 m core
+        // plus ~550 m / ~2.2 km far-terrain rings out to 200 km — tens of
+        // thousands of Open-Elevation points) that existed solely to feed the
+        // terrain skyline. The skyline is gone, so the grid prefetch is too: packs
+        // are now just peaks, which makes them small and quick.
 
-        if Task.isCancelled { return }
-
-        // 3. Persist + register.
+        // 2. Persist + register.
         let id = UUID()
         let data = OfflinePackData(
             peaks: peaks.map {
@@ -130,8 +110,7 @@ final class OfflinePackManager: ObservableObject {
                                      lat: $0.coordinate.latitude,
                                      lon: $0.coordinate.longitude,
                                      altitude: $0.altitude)
-            },
-            cells: cells
+            }
         )
         // Don't register a pack whose data file didn't persist (disk full /
         // permission error) — that would leave a phantom entry in the list that
@@ -141,7 +120,7 @@ final class OfflinePackManager: ObservableObject {
         let meta = OfflinePack(id: id, name: packName,
                                centerLat: center.latitude, centerLon: center.longitude,
                                radiusKm: radiusKm, createdAt: Date(),
-                               peakCount: peaks.count, cellCount: cells.count)
+                               peakCount: peaks.count)
         packs.insert(meta, at: 0)
         store.saveIndex(packs)
         await reseedConsumers()
@@ -158,6 +137,47 @@ final class OfflinePackManager: ObservableObject {
         store.saveIndex(packs)
     }
 
+    /// Re-fetch a saved pack's peaks for its ORIGINAL centre + radius and replace
+    /// its stored data in place (same id / name / created date). Use it to pick
+    /// up new OpenStreetMap peaks, or to complete a download that was partial.
+    ///
+    /// A failed or empty fetch (offline, Overpass down) is IGNORED — an empty
+    /// result almost always means the request didn't get through, not that a
+    /// once-populated area is suddenly peakless, so an update attempt can never
+    /// wipe a good pack.
+    func updatePack(_ pack: OfflinePack) async {
+        guard !isDownloading else { return }
+        isDownloading = true
+        updatingPackID = pack.id
+        statusText = "Updating…"
+        defer {
+            isDownloading = false
+            updatingPackID = nil
+            statusText = ""
+        }
+
+        let osmPeaks = await PeakFinder.fetchOSMPeaks(center: pack.center,
+                                                      radiusMeters: pack.radiusKm * 1000)
+        let peaks = Array(osmPeaks.sorted { $0.distance < $1.distance }.prefix(maxPackPeaks))
+        if Task.isCancelled { return }
+        guard !peaks.isEmpty else { return }   // never overwrite a good pack with nothing
+
+        let data = OfflinePackData(
+            peaks: peaks.map {
+                OfflinePackData.Peak(name: $0.name,
+                                     lat: $0.coordinate.latitude,
+                                     lon: $0.coordinate.longitude,
+                                     altitude: $0.altitude)
+            }
+        )
+        guard store.saveData(pack.id, data) else { return }
+        if let i = packs.firstIndex(where: { $0.id == pack.id }) {
+            packs[i].peakCount = peaks.count
+            store.saveIndex(packs)
+        }
+        await reseedConsumers()
+    }
+
     /// Delete a saved pack and re-seed the live caches without it.
     func delete(_ pack: OfflinePack) {
         store.deleteData(pack.id)
@@ -168,41 +188,35 @@ final class OfflinePackManager: ObservableObject {
 
     // MARK: - Seeding the live caches
 
-    /// Rebuild `combinedPeaks` and the elevation service's pinned cells
-    /// from every saved pack. Called at launch and after any pack change.
+    /// Rebuild `combinedPeaks` from every saved pack. Called at launch and after
+    /// any pack change.
     private func reseedConsumers() async {
         // All disk reads + JSON decoding happen OFF the main actor (the store is
-        // a non-isolated struct); only the published-state assignments and the
-        // actor-isolated `setPinned` run back on the main actor.
+        // a non-isolated struct); only the published-state assignments run back
+        // on the main actor.
         let store = self.store
         let loaded = await Task.detached { OfflinePackManager.loadAll(store: store) }.value
-        await TerrainElevationService.shared.setPinned(loaded.cells)
         packs = loaded.metas
         combinedPeaks = loaded.peaks
     }
 
-    /// Read the index + every pack's payload from disk and assemble the union
-    /// of pinned cells + deduped peaks. `nonisolated` so it runs off the main
-    /// actor when invoked from a detached task.
+    /// Read the index + every pack's payload from disk and assemble the deduped
+    /// peak union. `nonisolated` so it runs off the main actor when invoked from
+    /// a detached task.
     nonisolated static func loadAll(store: OfflinePackStore)
-        -> (metas: [OfflinePack], cells: [String: Double], peaks: [NearbyPeak]) {
+        -> (metas: [OfflinePack], peaks: [NearbyPeak]) {
         let metas = store.loadIndex().sorted { $0.createdAt > $1.createdAt }
         let datas = metas.compactMap { store.loadData($0.id) }
-        let seed = assembleSeed(from: datas)
-        return (metas, seed.cells, seed.peaks)
+        return (metas, assembleSeed(from: datas))
     }
 
-    /// Pure assembly of the live-cache seed from loaded pack payloads: union the
-    /// DEM cells (later packs win on key collision) and dedupe peaks by their
-    /// coordinate-derived id. Pure + `nonisolated` so it's unit-testable
-    /// without disk or the shared elevation-service singleton.
-    nonisolated static func assembleSeed(from datas: [OfflinePackData])
-        -> (cells: [String: Double], peaks: [NearbyPeak]) {
-        var cells: [String: Double] = [:]
+    /// Pure assembly of the live-cache seed from loaded pack payloads: dedupe
+    /// peaks by their coordinate-derived id. Pure + `nonisolated` so it's
+    /// unit-testable without disk.
+    nonisolated static func assembleSeed(from datas: [OfflinePackData]) -> [NearbyPeak] {
         var peaks: [NearbyPeak] = []
         var seen = Set<UUID>()
         for data in datas {
-            for (k, v) in data.cells { cells[k] = v }
             for p in data.peaks {
                 let peak = NearbyPeak(
                     name: p.name,
@@ -214,7 +228,7 @@ final class OfflinePackManager: ObservableObject {
                 if seen.insert(peak.id).inserted { peaks.append(peak) }
             }
         }
-        return (cells, peaks)
+        return peaks
     }
 
     // MARK: - Helpers

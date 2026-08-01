@@ -48,10 +48,47 @@ jobs:
         id: sim
         # Use the scheme's own eligible destinations (correct iOS-26 runtime),
         # not `simctl list` which also returns older-OS sims the app can't target.
+        #
+        # Two failure modes are guarded here, both of which produced an EMPTY id
+        # and therefore `-destination "platform=iOS Simulator,id="` — which
+        # xcodebuild answers with its usage text and exit 64, hiding the cause.
+        #
+        #  1. The first `xcodebuild` invocation on a cold runner can return no
+        #     destinations at all; a second call succeeds. Hence the retry.
+        #  2. The runner image ships Xcode 26 but not necessarily the iOS 26
+        #     *simulator runtime*. The app targets iOS 26, so without it the
+        #     scheme has no eligible destination. Downloading it is several GB,
+        #     so it is a last resort, attempted only after the retry.
+        # NB: GitHub runs this with `bash -e`. `set -o pipefail` must NOT be used
+        # here — `head -1` closes the pipe, upstream grep takes SIGPIPE, and the
+        # combination aborts the step before any of the fallbacks below can run.
+        # Every pick is therefore guarded with `|| true`; emptiness, not exit
+        # status, is what we branch on.
         run: |
-          id=$(xcodebuild -showdestinations -project Geo.xcodeproj -scheme Geo 2>/dev/null \
-            | grep 'platform:iOS Simulator' | grep -v placeholder \
-            | grep -oE 'id:[0-9A-F-]{36}' | head -1 | cut -d: -f2)
+          set -u
+          pick() {
+            xcodebuild -showdestinations -project Geo.xcodeproj -scheme Geo 2>>/tmp/dst.err \
+              | grep 'platform:iOS Simulator' | grep -v placeholder \
+              | grep -oE 'id:[0-9A-Fa-f-]{36}' | head -1 | cut -d: -f2
+          }
+          id=$(pick || true)
+          if [ -z "$id" ]; then
+            echo "No destinations on the first call (cold start); retrying…"
+            sleep 5
+            id=$(pick || true)
+          fi
+          if [ -z "$id" ]; then
+            echo "Still none; installing the iOS simulator runtime…"
+            xcodebuild -downloadPlatform iOS || true
+            id=$(pick || true)
+          fi
+          if [ -z "$id" ]; then
+            echo "::error::No eligible iOS Simulator destination for scheme Geo."
+            echo "--- xcodebuild stderr ---"; cat /tmp/dst.err || true
+            echo "--- destinations ---"; xcodebuild -showdestinations -project Geo.xcodeproj -scheme Geo || true
+            echo "--- installed runtimes ---"; xcrun simctl list runtimes || true
+            exit 1
+          fi
           echo "Using simulator destination id: $id"
           echo "id=$id" >> "$GITHUB_OUTPUT"
       - name: Test (GeoTests)

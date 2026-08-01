@@ -11,12 +11,14 @@ import CoreLocation
 import os
 
 /// UIViewRepresentable wrapper for ARSCNView to show the camera feed.
-/// When a LiDAR sensor is available, enables scene reconstruction so the
-/// `AROcclusionManager` can hide markers behind real-world surfaces (walls, etc.).
+///
+/// The session is deliberately minimal: world tracking with `.gravityAndHeading`
+/// alignment, and nothing else. It exists purely to give us (a) a camera image
+/// and (b) a gravity- and north-aligned camera transform to project peaks and
+/// the horizon line through. There is no scene reconstruction, no plane
+/// detection and no depth — the Nature tab identifies mountains kilometres away,
+/// so scanning the room around you bought nothing but battery drain.
 struct ARCameraView: UIViewRepresentable {
-
-    /// Shared occlusion manager — receives mesh anchors from the AR session
-    var occlusionManager: AROcclusionManager?
 
     /// Shared session manager — publishes camera matrices every frame for overlay projection
     var sessionManager: ARSessionManager?
@@ -24,7 +26,7 @@ struct ARCameraView: UIViewRepresentable {
     /// When `false`, the AR session is paused. SwiftUI keeps tab views
     /// alive even when they're not visible, so the parent toggles this
     /// off as soon as the Nature tab disappears (or the app goes into
-    /// the background) to stop draining battery on the camera/IMU/LiDAR.
+    /// the background) to stop draining battery on the camera/IMU.
     var isActive: Bool = true
 
     func makeUIView(context: Context) -> ARSCNView {
@@ -40,14 +42,13 @@ struct ARCameraView: UIViewRepresentable {
 
         // Store the ARSCNView in the coordinator so we can read its bounds
         context.coordinator.arView = arView
-        // Expose it to the session manager for the freeze-frame snapshot.
+        // Expose it to the session manager for the freeze-frame shutter.
         sessionManager?.sceneView = arView
 
         return arView
     }
 
     func updateUIView(_ uiView: ARSCNView, context: Context) {
-        context.coordinator.occlusionManager = occlusionManager
         context.coordinator.sessionManager = sessionManager
         sessionManager?.sceneView = uiView
 
@@ -65,42 +66,25 @@ struct ARCameraView: UIViewRepresentable {
     }
 
     /// Centralised session configuration so `makeUIView` and `updateUIView`
-    /// stay in sync.
+    /// stay in sync. `.gravityAndHeading` is the only thing we actually need:
+    /// it aligns ARKit's world axes to +X = East, +Y = Up, −Z = North, which is
+    /// what every overlay projection assumes.
     private static func makeConfig() -> ARWorldTrackingConfiguration {
         let config = ARWorldTrackingConfiguration()
         config.worldAlignment = .gravityAndHeading
-        // Detect BOTH plane alignments: the occlusion manager hides markers
-        // behind detected vertical planes (walls) indoors and uses horizontal
-        // planes for floor/ceiling distance. Horizontal-only left the
-        // vertical-plane occlusion path permanently unreachable.
-        config.planeDetection = [.horizontal, .vertical]
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
-            config.sceneReconstruction = .mesh
-        }
-        // Request scene depth so the LiDAR centre-depth readout and the
-        // depth-based wall distance actually populate — ARKit only delivers
-        // ARFrame.sceneDepth / smoothedSceneDepth when the matching frame
-        // semantic is requested. Gated on device support; non-LiDAR devices
-        // skip it and fall back to the raycast distance.
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
-            config.frameSemantics.insert(.smoothedSceneDepth)
-        } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
-            config.frameSemantics.insert(.sceneDepth)
-        }
         return config
     }
-    
+
     func makeCoordinator() -> Coordinator {
-        Coordinator(occlusionManager: occlusionManager, sessionManager: sessionManager)
+        Coordinator(sessionManager: sessionManager)
     }
-    
+
     static func dismantleUIView(_ uiView: ARSCNView, coordinator: Coordinator) {
         uiView.session.pause()
     }
-    
+
     @MainActor
     class Coordinator: NSObject, ARSessionDelegate {
-        var occlusionManager: AROcclusionManager?
         var sessionManager: ARSessionManager?
         weak var arView: ARSCNView?
         /// Tracks whether `session.run(...)` has been called more
@@ -116,71 +100,14 @@ struct ARCameraView: UIViewRepresentable {
         /// skipped (the overlay just refreshes a frame later). Sendable +
         /// `let`, so the nonisolated delegate can touch it.
         nonisolated let framePending = OSAllocatedUnfairLock(initialState: false)
-        
-        init(occlusionManager: AROcclusionManager?, sessionManager: ARSessionManager?) {
-            self.occlusionManager = occlusionManager
+
+        init(sessionManager: ARSessionManager?) {
             self.sessionManager = sessionManager
         }
-        
-        // MARK: - ARSessionDelegate
-        
-        nonisolated func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
-            let meshAnchors = anchors.compactMap { $0 as? ARMeshAnchor }
-            let planeAnchors = anchors.compactMap { $0 as? ARPlaneAnchor }
-            guard !meshAnchors.isEmpty || !planeAnchors.isEmpty else { return }
-            let allAnchors = session.currentFrame?.anchors ?? []
-            let allMesh = allAnchors.compactMap { $0 as? ARMeshAnchor }
-            let allPlanes = allAnchors.compactMap { $0 as? ARPlaneAnchor }
-            Task { @MainActor [weak self] in
-                if !meshAnchors.isEmpty { self?.occlusionManager?.updateMeshAnchors(allMesh) }
-                if !planeAnchors.isEmpty { self?.occlusionManager?.updatePlaneAnchors(allPlanes) }
-            }
-        }
-        
-        nonisolated func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
-            let meshAnchors = anchors.compactMap { $0 as? ARMeshAnchor }
-            let planeAnchors = anchors.compactMap { $0 as? ARPlaneAnchor }
-            guard !meshAnchors.isEmpty || !planeAnchors.isEmpty else { return }
-            let allAnchors = session.currentFrame?.anchors ?? []
-            let allMesh = allAnchors.compactMap { $0 as? ARMeshAnchor }
-            let allPlanes = allAnchors.compactMap { $0 as? ARPlaneAnchor }
-            Task { @MainActor [weak self] in
-                if !meshAnchors.isEmpty { self?.occlusionManager?.updateMeshAnchors(allMesh) }
-                if !planeAnchors.isEmpty { self?.occlusionManager?.updatePlaneAnchors(allPlanes) }
-            }
-        }
-        
-        nonisolated func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
-            let meshAnchors = anchors.compactMap { $0 as? ARMeshAnchor }
-            let planeAnchors = anchors.compactMap { $0 as? ARPlaneAnchor }
-            guard !meshAnchors.isEmpty || !planeAnchors.isEmpty else { return }
-            Task { @MainActor [weak self] in
-                if !meshAnchors.isEmpty { self?.occlusionManager?.removeMeshAnchors(meshAnchors) }
-                if !planeAnchors.isEmpty { self?.occlusionManager?.removePlaneAnchors(planeAnchors) }
-            }
-        }
-        
-        nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
-            let transform = frame.camera.transform
-            
-            // Raycast from camera center to find nearest surface (runs on AR thread, fast)
-            let camPos = simd_float3(transform.columns.3.x,
-                                      transform.columns.3.y,
-                                      transform.columns.3.z)
-            let forward = -simd_normalize(simd_float3(transform.columns.2.x,
-                                                       transform.columns.2.y,
-                                                       transform.columns.2.z))
-            let query = ARRaycastQuery(origin: camPos,
-                                       direction: forward,
-                                       allowing: .estimatedPlane,
-                                       alignment: .any)
-            let rayDist: Float? = session.raycast(query).first.map { result in
-                let hitPos = simd_float3(result.worldTransform.columns.3.x,
-                                          result.worldTransform.columns.3.y,
-                                          result.worldTransform.columns.3.z)
-                return simd_distance(camPos, hitPos)
-            }
 
+        // MARK: - ARSessionDelegate
+
+        nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
             // Skip this frame's overlay update if the previous one is still
             // draining on the main actor — otherwise we'd capture (retain)
             // another ARFrame behind it. Bounds in-flight frames to one.
@@ -193,9 +120,7 @@ struct ARCameraView: UIViewRepresentable {
 
             Task { @MainActor [weak self, framePending] in
                 defer { framePending.withLock { $0 = false } }
-                self?.occlusionManager?.updateCameraTransform(transform)
-                self?.sessionManager?.raycastDistance = rayDist
-                
+
                 // Feed session manager with camera matrices for overlay projection
                 if let arView = self?.arView {
                     let viewportSize = arView.bounds.size

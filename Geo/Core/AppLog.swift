@@ -25,4 +25,7 @@ enum AppLog {
     static let ar           = Logger(subsystem: subsystem, category: "ar")
     static let history      = Logger(subsystem: subsystem, category: "history")
     static let background   = Logger(subsystem: subsystem, category: "background")
+    /// The NOAA SWPC planetary-Kp fetch and its cache. Nothing logged here
+    /// ever carries a coordinate — the request itself carries none either.
+    static let spaceWeather = Logger(subsystem: subsystem, category: "space-weather")
 }
