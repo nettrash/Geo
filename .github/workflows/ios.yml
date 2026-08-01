@@ -59,23 +59,28 @@ jobs:
         #     *simulator runtime*. The app targets iOS 26, so without it the
         #     scheme has no eligible destination. Downloading it is several GB,
         #     so it is a last resort, attempted only after the retry.
+        # NB: GitHub runs this with `bash -e`. `set -o pipefail` must NOT be used
+        # here — `head -1` closes the pipe, upstream grep takes SIGPIPE, and the
+        # combination aborts the step before any of the fallbacks below can run.
+        # Every pick is therefore guarded with `|| true`; emptiness, not exit
+        # status, is what we branch on.
         run: |
-          set -uo pipefail
+          set -u
           pick() {
             xcodebuild -showdestinations -project Geo.xcodeproj -scheme Geo 2>>/tmp/dst.err \
               | grep 'platform:iOS Simulator' | grep -v placeholder \
               | grep -oE 'id:[0-9A-Fa-f-]{36}' | head -1 | cut -d: -f2
           }
-          id=$(pick)
+          id=$(pick || true)
           if [ -z "$id" ]; then
             echo "No destinations on the first call (cold start); retrying…"
             sleep 5
-            id=$(pick)
+            id=$(pick || true)
           fi
           if [ -z "$id" ]; then
             echo "Still none; installing the iOS simulator runtime…"
-            xcodebuild -downloadPlatform iOS
-            id=$(pick)
+            xcodebuild -downloadPlatform iOS || true
+            id=$(pick || true)
           fi
           if [ -z "$id" ]; then
             echo "::error::No eligible iOS Simulator destination for scheme Geo."
