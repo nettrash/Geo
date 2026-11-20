@@ -83,6 +83,10 @@
 // MARK: - AR Nature view
 "Scanning" = "Scanning";
 "About the Nature view" = "About the Nature view";
+# The peaks on screen came from disk or from before a failed refresh (#26).
+"possibly outdated" = "possibly outdated";
+# One-tap reset when the persisted minimum-altitude floor hides everything (#25).
+"Show all" = "Show all";
 "The Nature view shows nearby mountain peaks overlaid on the camera. Continue to choose whether to grant camera access." = "The Nature view shows nearby mountain peaks overlaid on the camera. Continue to choose whether to grant camera access.";
 "The Nature view shows nearby mountain peaks overlaid on the camera. Camera access is currently turned off for Geo. You can re-enable it in iOS Settings and return to this tab." = "The Nature view shows nearby mountain peaks overlaid on the camera. Camera access is currently turned off for Geo. You can re-enable it in iOS Settings and return to this tab.";
 "Continue" = "Continue";

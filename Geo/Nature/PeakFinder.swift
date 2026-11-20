@@ -8,6 +8,31 @@
 import Foundation
 import CoreLocation
 
+// MARK: - Peak search outcomes
+
+/// Outcome of a live `natural=peak` fetch, which distinguishes "the server
+/// answered and there are no peaks here" (`.success([])`) from "we never got an
+/// answer" (`.failure`). Collapsing those two is what turned a loaded Overpass
+/// mirror into a silently empty Nature tab that then refused to retry: the
+/// failure was stored as if it were a result.
+enum PeakFetchOutcome: Sendable {
+    case success([NearbyPeak])
+    case failure(String)
+
+    /// The reason a search failed, for logging and for `lastSearchError`.
+    var failureSummary: String? {
+        if case .failure(let reason) = self { return reason }
+        return nil
+    }
+}
+
+/// Result of trying ONE Overpass mirror. Private to the failover loop: a
+/// rejected attempt is a reason to try the next mirror, never an answer.
+private enum OverpassAttempt: Sendable {
+    case peaks([NearbyPeak])
+    case rejected(String)
+}
+
 /// Searches for nearby peaks using the OpenStreetMap Overpass API
 /// (community-curated `natural=peak` nodes) and merges with known
 /// mountains from the app's bundled `MountainData`.
@@ -25,6 +50,18 @@ import CoreLocation
 class PeakFinder: ObservableObject {
     
     @Published var peaks: [NearbyPeak] = []
+
+    /// `true` when the peaks on screen are only what we happen to have, not a
+    /// confirmed-current answer: restored from disk after a relaunch, or kept
+    /// alive through a failed search. The Nature view labels the count
+    /// "possibly outdated" instead of letting an old horizon look like a live
+    /// one (and instead of showing `0`, which looked identical to a failure).
+    @Published var peaksAreStale = false
+
+    /// One-line summary of the last failed search (e.g.
+    /// `"overpass-api.de: HTTP 502; overpass.kumi.systems: timed out"`), kept
+    /// for the console. Cleared by the next success.
+    @Published var lastSearchError: String?
 
     private let searchRadius: CLLocationDistance = 5000 // 5 km
     private var lastSearchLocation: CLLocation?
@@ -53,7 +90,50 @@ class PeakFinder: ObservableObject {
     /// gets dropped, even if the user hasn't moved. Stops stale results
     /// from accumulating if the user sits in one place for hours.
     private let peakTTL: TimeInterval = 60 * 60
-    
+
+    /// A previous result may be reused for at most this long. Distance alone is
+    /// not a validity rule: standing still used to pin `lastSearchLocation`
+    /// forever — and iOS pauses the location stream after 15 s of no movement
+    /// (`GeoAppDelegate.locationManagerDidPauseLocationUpdates`), so the fix it
+    /// was compared against stopped updating too — which made the "no movement"
+    /// fast path hit forever and a failed search never retry. Age makes a
+    /// stationary user ask again.
+    private let maxCacheAge: TimeInterval = 15 * 60
+
+    /// After a failed search, wait this long before asking Overpass again. The
+    /// Nature view asks every 5 s; without a backoff a loaded shared mirror
+    /// gets hammered for the entire outage.
+    private let retryBackoff: TimeInterval = 60
+
+    /// How long a result loaded from disk may still be shown. Peaks are static
+    /// geography, so a clearly-marked week-old set beats an empty horizon while
+    /// Overpass is unhealthy.
+    private let persistedMaxAge: TimeInterval = 7 * 24 * 60 * 60
+
+    /// Only reuse the persisted set when it was cached within this distance of
+    /// the current position: peaks 60 km away in another valley are not
+    /// "nearby peaks".
+    private let persistedReuseDistance: CLLocationDistance = 50_000
+
+    private var lastSuccessAt: Date?
+    private var lastFailureAt: Date?
+
+    /// Guards against overlapping searches: the view asks every 5 s while a
+    /// failover search can take tens of seconds, and concurrent searches would
+    /// multiply the load on a shared public endpoint.
+    private var isSearching = false
+
+    /// The persisted snapshot is read once, lazily, on the first search — only
+    /// then do we know a location to judge "is this snapshot even for here?".
+    private var didLoadPersisted = false
+
+    /// Where the last successful result is persisted. Same Caches directory the
+    /// terrain cache uses: derived data, not user data, safe to lose.
+    private static let cacheURL: URL? = {
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        return dir?.appendingPathComponent("NearbyPeaksCache.json")
+    }()
+
     /// Search for peaks near the given location. Network source (OSM)
     /// is awaited first, then merged with the local bundled list.
     func searchPeaks(near location: CLLocation, mountainsData: MountainData?,
@@ -64,19 +144,27 @@ class PeakFinder: ObservableObject {
         // or garbage-low, which would wrongly hide visible peaks. Falls back to
         // the fix's altitude.
         let obsAlt = observerAltitude ?? location.altitude
-        // Don't re-search if we haven't moved much. We still age out
-        // stale peaks though: prune the existing set by TTL + drop-radius
-        // against the current location so a stationary user's stale peaks
-        // don't accumulate (the whole point of `peakTTL`), instead of a
-        // bare `return` that skips eviction entirely.
-        if let last = lastSearchLocation,
+        loadPersistedIfNeeded(near: location)
+
+        // Don't re-search if we haven't moved much AND the previous result is
+        // still young enough to trust. We still age out stale peaks though:
+        // prune the existing set by TTL + drop-radius against the current
+        // location so a stationary user's stale peaks don't accumulate (the
+        // whole point of `peakTTL`), instead of a bare `return` that skips
+        // eviction entirely.
+        if !isSearching,
+           let last = lastSearchLocation,
            last.distance(from: location) < minimumSearchDistance,
-           !peaks.isEmpty {
+           !peaks.isEmpty,
+           canReuseLastResult(at: Date()) {
             peaks = pruneAndRecompute(peaks, from: location, observerAltitude: obsAlt)
             return
         }
 
-        lastSearchLocation = location
+        // A search is about to hit the network; the `defer` matters because the
+        // failure path below returns early.
+        isSearching = true
+        defer { isSearching = false }
 
         // OSM is now the only network-backed source; bundled
         // `MountainData` and `offlinePeaks` are local. Apple Maps was
@@ -87,8 +175,36 @@ class PeakFinder: ObservableObject {
         // so they can't drop AR frames during the ~5 s live refresh. Only
         // the @Published `peaks` assignment below hops back onto the main
         // actor.
-        let osmResults = await Self.fetchOSMPeaks(center: location.coordinate,
+        let outcome = await Self.fetchPeakOutcome(center: location.coordinate,
                                                   radiusMeters: searchRadius)
+        guard case .success(let osmResults) = outcome else {
+            // A failed search is NOT a result. Keep showing what we already
+            // have (live peaks, or the snapshot restored from disk), age their
+            // geometry against the current fix, and mark them stale.
+            //
+            // Previously this fell through to the merge below with an empty OSM
+            // set: `peakTTL` then dropped everything the failed search could
+            // not re-confirm — downloaded offline-pack peaks included — so
+            // waiting made it strictly worse. It also stamped
+            // `lastSearchLocation`, which put the *failure* on the cache path
+            // and stopped any retry until the user walked 500 m. Both are why
+            // an Overpass outage used to look like "there are no peaks here".
+            let now = Date()
+            lastFailureAt = now
+            lastSearchError = outcome.failureSummary
+            peaksAreStale = !peaks.isEmpty
+            AppLog.ar.error("Nearby peaks: search failed (\(outcome.failureSummary ?? "unknown"))")
+            peaks = pruneAndRecompute(peaks, from: location, observerAltitude: obsAlt)
+            return
+        }
+
+        // Only a confirmed answer is allowed to populate the cache.
+        lastSearchLocation = location
+        lastSuccessAt = Date()
+        lastFailureAt = nil
+        lastSearchError = nil
+        peaksAreStale = false
+
         let knownPeaks = findKnownMountains(near: location, mountainsData: mountainsData)
 
         // 1. Start with the OSM-curated peaks.
@@ -119,7 +235,9 @@ class PeakFinder: ObservableObject {
         for p in peaks { byID[p.id] = p }
         for p in foundPeaks { byID[p.id] = p } // fresh data wins on duplicates
 
-        peaks = pruneAndRecompute(Array(byID.values), from: location, observerAltitude: obsAlt)
+        let merged = pruneAndRecompute(Array(byID.values), from: location, observerAltitude: obsAlt)
+        peaks = merged
+        persist(merged, center: location.coordinate)
     }
 
     /// Prune a peak set against the current user location and recompute
@@ -164,7 +282,98 @@ class PeakFinder: ObservableObject {
 
         return recomputed
     }
-    
+
+    // MARK: - Result freshness & persistence
+    //
+    // Three pieces make "the network failed" stop looking like "there are no
+    // peaks here": a pure reuse decision the no-move path consults, a snapshot
+    // written on success only, and that snapshot restored (marked stale) on the
+    // next launch.
+
+    /// Pure reuse decision, extracted so the cache rules are unit-testable
+    /// without a network or a location. A result is reusable while it is young;
+    /// once it is stale it is still reused only while the retry backoff from a
+    /// failed attempt is running, so a loaded mirror is not hammered on every
+    /// refresh tick and the peaks on screen are never dropped for nothing.
+    nonisolated static func canReuseResult(now: Date, lastSuccessAt: Date?, lastFailureAt: Date?,
+                                           maxCacheAge: TimeInterval,
+                                           retryBackoff: TimeInterval) -> Bool {
+        guard let lastSuccessAt else { return false }
+        if now.timeIntervalSince(lastSuccessAt) <= maxCacheAge { return true }
+        guard let lastFailureAt else { return false }
+        return now.timeIntervalSince(lastFailureAt) < retryBackoff
+    }
+
+    private func canReuseLastResult(at now: Date) -> Bool {
+        Self.canReuseResult(now: now,
+                            lastSuccessAt: lastSuccessAt,
+                            lastFailureAt: lastFailureAt,
+                            maxCacheAge: maxCacheAge,
+                            retryBackoff: retryBackoff)
+    }
+
+    /// On-disk form of the last successful search. `distance` / `bearing` are
+    /// derived against the live fix, so only identity and altitude are stored.
+    private struct PeakSnapshot: Codable {
+        struct Entry: Codable {
+            let name: String
+            let latitude: Double
+            let longitude: Double
+            let altitude: Double
+        }
+        let centerLatitude: Double
+        let centerLongitude: Double
+        let savedAt: Date
+        let entries: [Entry]
+    }
+
+    /// Restore the persisted snapshot on the first search, if it is recent
+    /// enough and near enough to be about *here*. `lastSeenAt` is re-stamped on
+    /// load — those peaks were not "failing to be re-confirmed", they were on
+    /// disk — and `peaksAreStale` is what tells the user they may be out of date.
+    private func loadPersistedIfNeeded(near location: CLLocation) {
+        guard !didLoadPersisted else { return }
+        didLoadPersisted = true
+        guard let url = Self.cacheURL,
+              let data = try? Data(contentsOf: url),
+              let snapshot = try? JSONDecoder().decode(PeakSnapshot.self, from: data),
+              Date().timeIntervalSince(snapshot.savedAt) <= persistedMaxAge else { return }
+        let cachedCenter = CLLocation(latitude: snapshot.centerLatitude,
+                                      longitude: snapshot.centerLongitude)
+        guard cachedCenter.distance(from: location) <= persistedReuseDistance else { return }
+        let now = Date()
+        peaks = snapshot.entries.map {
+            NearbyPeak(name: $0.name,
+                       coordinate: CLLocationCoordinate2D(latitude: $0.latitude,
+                                                          longitude: $0.longitude),
+                       altitude: $0.altitude, distance: 0, bearing: 0, lastSeenAt: now)
+        }
+        peaksAreStale = !peaks.isEmpty
+        let restoredCount = peaks.count
+        let ageMinutes = Int(Date().timeIntervalSince(snapshot.savedAt) / 60)
+        // `Logger` interpolations are autoclosures, so read the state into
+        // locals rather than capture `self` inside the log statement.
+        AppLog.ar.notice("Restored \(restoredCount) nearby peaks from disk (\(ageMinutes) min old)")
+    }
+
+    /// Write the last good result. Called on success only, so a failed search
+    /// can never overwrite a usable snapshot with an empty one.
+    private func persist(_ peaks: [NearbyPeak], center: CLLocationCoordinate2D) {
+        guard let url = Self.cacheURL else { return }
+        let snapshot = PeakSnapshot(
+            centerLatitude: center.latitude,
+            centerLongitude: center.longitude,
+            savedAt: Date(),
+            entries: peaks.map {
+                PeakSnapshot.Entry(name: $0.name,
+                                   latitude: $0.coordinate.latitude,
+                                   longitude: $0.coordinate.longitude,
+                                   altitude: $0.altitude)
+            })
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
     /// Check if a peak is a duplicate of any existing peak (within 200m)
     private func isDuplicate(_ peak: NearbyPeak, in existing: [NearbyPeak]) -> Bool {
         existing.contains { other in
@@ -176,52 +385,138 @@ class PeakFinder: ObservableObject {
         }
     }
     
+    /// Public Overpass mirrors, in preference order.
+    ///
+    /// `overpass-api.de` is the canonical instance and the one the app used to
+    /// have hardcoded — it is also the first to answer `502 "This Overpass API
+    /// server is currently at capacity"`, `429`, or nothing at all when a busy
+    /// shared IP exhausts its quota. The mirrors below routinely serve the
+    /// identical query, so one unhealthy instance no longer means an empty
+    /// Nature tab. Exposed for tests; keep in step with Android
+    /// `PeakFinder.overpassEndpoints`.
+    nonisolated static let overpassEndpoints: [String] = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.openstreetmap.fr/api/interpreter",
+        "https://overpass.osm.ch/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    ]
+
+    /// Per-mirror transport wait. Shorter than the old single-host 10 s because
+    /// the budget is now shared across mirrors; `fetchDeadline` bounds the lot.
+    nonisolated private static let endpointTimeout: TimeInterval = 8
+
+    /// Stop trying mirrors once this much time has passed, so a total outage
+    /// costs one bounded search instead of five sequential timeouts.
+    nonisolated private static let fetchDeadline: TimeInterval = 30
+
+    nonisolated private static let userAgent = "me.nettrash.Geo/1.0 (+https://nettrash.me)"
+
+    /// Rotate the starting mirror so a fleet of phones (or the second half of a
+    /// retry) does not keep leading with the same overloaded instance.
+    nonisolated static func rotatedEndpoints(startingAt start: Int) -> [String] {
+        let count = overpassEndpoints.count
+        guard count > 0 else { return [] }
+        let offset = ((start % count) + count) % count
+        return Array(overpassEndpoints[offset...] + overpassEndpoints[..<offset])
+    }
+
     /// Fetch OpenStreetMap `natural=peak` nodes within `radiusMeters` of
-    /// `center` via the Overpass API. Free, no API key, excellent worldwide
-    /// coverage. Privacy: lat/lon are rounded to ~3 decimals (~110 m) before
-    /// being sent; the radius dwarfs that quantisation error.
+    /// `center`, failing over across `overpassEndpoints`.
     ///
-    /// Peaks whose OSM record carries an `ele` tag use it directly; the rest
-    /// get their altitude resolved via `TerrainElevationService` (the same
-    /// DEM the skyline uses) in one batched call. Peaks neither source can
-    /// supply an altitude for are dropped — a placeholder height would just
-    /// put a fake-looking marker on the AR horizon.
+    /// Free, no API key, excellent worldwide coverage. Privacy: lat/lon are
+    /// rounded to ~3 decimals (~110 m) before being sent; the radius dwarfs
+    /// that quantisation error.
     ///
-    /// `nonisolated static` so it runs entirely off the main actor and is
-    /// reusable by both the live 5 km refresh and the offline-pack prefetch
-    /// (which passes a much larger radius). Touches no main-actor state and
-    /// returns `Sendable` values, so it's safe to await from any actor.
-    nonisolated static func fetchOSMPeaks(center: CLLocationCoordinate2D,
-                                          radiusMeters: Double) async -> [NearbyPeak] {
+    /// Returns `.success([])` when the query genuinely found nothing and
+    /// `.failure(reason)` when no mirror answered. The caller must treat those
+    /// differently — replace the peaks vs. keep them — which is exactly the
+    /// distinction the old `return []` on every non-200 destroyed.
+    nonisolated static func fetchPeakOutcome(center: CLLocationCoordinate2D,
+                                             radiusMeters: Double) async -> PeakFetchOutcome {
         // Same ~110 m (3-decimal) grid the elevation cache uses, so the
         // Overpass query and the DEM lookups round identically.
         let qLat = TerrainElevationService.quantise(center.latitude)
         let qLon = TerrainElevationService.quantise(center.longitude)
-        let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
 
         let query = """
         [out:json][timeout:10];
         node["natural"="peak"](around:\(Int(radiusMeters)),\(qLat),\(qLon));
         out body;
         """
-
-        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://overpass-api.de/api/interpreter?data=\(encodedQuery)") else {
-            return []
+        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return .failure("query could not be percent-encoded")
         }
 
-        // Identify ourselves per the Overpass usage policy and cap the
-        // client-side transport wait at 10 s (matching the in-query budget)
-        // rather than URLSession's 60 s default.
-        var req = URLRequest(url: url, timeoutInterval: 10)
-        req.setValue("me.nettrash.Geo/1.0 (+https://nettrash.me)", forHTTPHeaderField: "User-Agent")
+        var reasons: [String] = []
+        let deadline = Date().addingTimeInterval(fetchDeadline)
+        let start = await OverpassThrottle.shared.nextEndpointIndex(count: overpassEndpoints.count)
+        for endpoint in rotatedEndpoints(startingAt: start) {
+            let host = URL(string: endpoint)?.host ?? endpoint
+            if Date() >= deadline {
+                reasons.append("\(host): skipped (search deadline)")
+                break
+            }
+            switch await attemptPeakFetch(endpoint: endpoint, encodedQuery: encodedQuery,
+                                          center: center, radiusMeters: radiusMeters) {
+            case .peaks(let peaks):
+                return .success(peaks)
+            case .rejected(let reason):
+                reasons.append("\(host): \(reason)")
+            }
+        }
+        let summary = reasons.isEmpty ? "no Overpass endpoint reachable"
+                                      : reasons.joined(separator: "; ")
+        AppLog.ar.error("Overpass peak search failed on all \(overpassEndpoints.count) endpoints — \(summary)")
+        return .failure(summary)
+    }
+
+    /// Convenience wrapper for callers that only want the peaks and treat a
+    /// failure as "nothing found" — the offline-pack prefetch already ignores an
+    /// empty fetch and rebuilds the pack later.
+    nonisolated static func fetchOSMPeaks(center: CLLocationCoordinate2D,
+                                          radiusMeters: Double) async -> [NearbyPeak] {
+        if case .success(let peaks) = await fetchPeakOutcome(center: center,
+                                                            radiusMeters: radiusMeters) {
+            return peaks
+        }
+        return []
+    }
+
+    /// Try ONE mirror. Everything that used to be a silent `return []` is now a
+    /// logged `.rejected(reason)`, so the failover loop can move on and the
+    /// failure summary names the instance that actually let us down.
+    ///
+    /// Peaks whose OSM record carries an `ele` tag use it directly; the rest get
+    /// their altitude resolved via `TerrainElevationService` (the same DEM the
+    /// skyline uses) in one batched call. Peaks neither source can supply an
+    /// altitude for are dropped — a placeholder height would just put a
+    /// fake-looking marker on the AR horizon.
+    nonisolated private static func attemptPeakFetch(endpoint: String,
+                                                     encodedQuery: String,
+                                                     center: CLLocationCoordinate2D,
+                                                     radiusMeters: Double) async -> OverpassAttempt {
+        let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+        let host = URL(string: endpoint)?.host ?? endpoint
+        guard let url = URL(string: "\(endpoint)?data=\(encodedQuery)") else {
+            return .rejected("invalid request URL")
+        }
+
+        // Identify ourselves per the Overpass usage policy: a descriptive
+        // User-Agent is what keeps us out of their bot block (unidentified
+        // clients get `406 Not Acceptable`).
+        var req = URLRequest(url: url, timeoutInterval: endpointTimeout)
+        req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
         do {
             let (data, response) = try await sendWithRetry(req)
 
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
-                return []
+            guard let http = response as? HTTPURLResponse else {
+                return .rejected("no HTTP response")
+            }
+            guard http.statusCode == 200 else {
+                AppLog.ar.warning("Overpass \(host) returned HTTP \(http.statusCode)")
+                return .rejected("HTTP \(http.statusCode)")
             }
 
             let result = try JSONDecoder().decode(OverpassResponse.self, from: data)
@@ -272,7 +567,7 @@ class PeakFinder: ObservableObject {
 
             // Drop peaks whose altitude we couldn't resolve from either
             // OSM tags or the DEM service (no fake placeholder heights).
-            return partials.compactMap { p in
+            return .peaks(partials.compactMap { p in
                 guard let alt = p.altitude else { return nil }
                 return NearbyPeak(
                     name: p.name,
@@ -281,10 +576,10 @@ class PeakFinder: ObservableObject {
                     distance: p.distance,
                     bearing: p.bearing
                 )
-            }
+            })
         } catch {
-            AppLog.ar.error("OpenStreetMap peak search error: \(String(describing: error))")
-            return []
+            AppLog.ar.warning("Overpass \(host) failed: \(String(describing: error))")
+            return .rejected(String(describing: error))
         }
     }
 
@@ -387,6 +682,9 @@ private actor OverpassThrottle {
 
     private var lastRequestDate: Date?
     private var slotCount = 0
+    /// Rotating index into `PeakFinder.overpassEndpoints`, owned here because
+    /// the fetch is `nonisolated static` and cannot hold mutable state itself.
+    private var endpointCursor = 0
 
     /// Sleep just long enough that this request lands at least
     /// `minInterval` after the previous one, then stamp `now` and return
@@ -403,6 +701,14 @@ private actor OverpassThrottle {
         lastRequestDate = Date()
         slotCount &+= 1
         return slotCount
+    }
+
+    /// Next mirror index to start from, advancing the cursor. Round-robin means
+    /// a repeatedly-failing first choice is not retried first forever.
+    func nextEndpointIndex(count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        defer { endpointCursor = (endpointCursor + 1) % count }
+        return endpointCursor
     }
 }
 
