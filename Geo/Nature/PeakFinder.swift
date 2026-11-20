@@ -152,18 +152,32 @@ class PeakFinder: ObservableObject {
         // location so a stationary user's stale peaks don't accumulate (the
         // whole point of `peakTTL`), instead of a bare `return` that skips
         // eviction entirely.
-        if !isSearching,
-           let last = lastSearchLocation,
+        if isSearching {
+            // A failover search can outlive the 5 s refresh tick. Fold the
+            // duplicate request into the one in flight instead of stacking a
+            // second search onto an already-loaded shared endpoint.
+            peaks = pruneAndRecompute(peaks, from: location, observerAltitude: obsAlt)
+            return
+        }
+
+        // Reuse the previous result while it is still trustworthy: no movement
+        // AND an answer young enough to keep. Deliberately no `!peaks.isEmpty`
+        // here — during an outage the set can legitimately be empty, and "we
+        // asked a few seconds ago and it refused" is exactly when NOT to ask
+        // again.
+        if let last = lastSearchLocation,
            last.distance(from: location) < minimumSearchDistance,
-           !peaks.isEmpty,
            canReuseLastResult(at: Date()) {
             peaks = pruneAndRecompute(peaks, from: location, observerAltitude: obsAlt)
             return
         }
 
         // A search is about to hit the network; the `defer` matters because the
-        // failure path below returns early.
+        // failure path below returns early. The location is stamped BEFORE the
+        // request, so a tick that lands inside the retry backoff takes the
+        // reuse path above instead of firing another request at a loaded mirror.
         isSearching = true
+        lastSearchLocation = location
         defer { isSearching = false }
 
         // OSM is now the only network-backed source; bundled
@@ -198,8 +212,9 @@ class PeakFinder: ObservableObject {
             return
         }
 
-        // Only a confirmed answer is allowed to populate the cache.
-        lastSearchLocation = location
+        // Only a confirmed answer counts as fresh. (The search *location* was
+        // stamped before the request, to pace retries; the *result* only ages
+        // from a success, so a failure never becomes the thing we serve.)
         lastSuccessAt = Date()
         lastFailureAt = nil
         lastSearchError = nil
@@ -298,8 +313,10 @@ class PeakFinder: ObservableObject {
     nonisolated static func canReuseResult(now: Date, lastSuccessAt: Date?, lastFailureAt: Date?,
                                            maxCacheAge: TimeInterval,
                                            retryBackoff: TimeInterval) -> Bool {
-        guard let lastSuccessAt else { return false }
-        if now.timeIntervalSince(lastSuccessAt) <= maxCacheAge { return true }
+        // A confirmed result is reusable while it is young.
+        if let lastSuccessAt, now.timeIntervalSince(lastSuccessAt) <= maxCacheAge { return true }
+        // Otherwise — stale, or never succeeded at all — keep showing what we
+        // have only while the retry backoff from a failed attempt is running.
         guard let lastFailureAt else { return false }
         return now.timeIntervalSince(lastFailureAt) < retryBackoff
     }

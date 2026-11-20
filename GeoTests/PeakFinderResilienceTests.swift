@@ -55,6 +55,16 @@ final class PeakFinderResilienceTests: XCTestCase {
         XCTAssertFalse(canReuse(successAge: -2 * maxCacheAge, failureAge: -2 * retryBackoff))
     }
 
+    /// Nothing has ever loaded and the last attempt failed seconds ago: the
+    /// screen stays as it is instead of firing another request at a loaded
+    /// mirror on every 5 s tick. The next attempt happens when the backoff
+    /// expires — which is the only thing standing between an outage and a
+    /// client that DDoSes a shared public endpoint.
+    func testFailedSearchIsNotRetriedUntilBackoffExpiresWithNothingOnScreen() {
+        XCTAssertTrue(canReuse(successAge: nil, failureAge: -retryBackoff / 2))
+        XCTAssertFalse(canReuse(successAge: nil, failureAge: -2 * retryBackoff))
+    }
+
     func testSearchFailsOverAcrossDistinctMirrors() {
         XCTAssertGreaterThanOrEqual(PeakFinder.overpassEndpoints.count, 3,
                                     "a single Overpass host is the outage we are fixing")
