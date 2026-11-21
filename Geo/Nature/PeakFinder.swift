@@ -56,6 +56,9 @@ class PeakFinder: ObservableObject {
     /// alive through a failed search. The Nature view labels the count
     /// "possibly outdated" instead of letting an old horizon look like a live
     /// one (and instead of showing `0`, which looked identical to a failure).
+    /// Never set while a downloaded offline pack covers here (the pack IS the
+    /// offline answer), cleared by a success, and left alone by the reuse and
+    /// in-flight paths, which confirm nothing.
     @Published var peaksAreStale = false
 
     /// One-line summary of the last failed search (e.g.
@@ -89,6 +92,12 @@ class PeakFinder: ObservableObject {
     /// Time after which a peak that has not been re-confirmed by a search
     /// gets dropped, even if the user hasn't moved. Stops stale results
     /// from accumulating if the user sits in one place for hours.
+    ///
+    /// Applied ONLY right after a confirmed answer (the success-path merge):
+    /// a peak is "not re-confirmed" only when a search could have confirmed
+    /// it. During an outage nothing can be, and cutting by age there emptied
+    /// the horizon an hour into it — carried-over peaks and the restored
+    /// snapshot included.
     private let peakTTL: TimeInterval = 60 * 60
 
     /// A previous result may be reused for at most this long. Distance alone is
@@ -118,6 +127,13 @@ class PeakFinder: ObservableObject {
     private var lastSuccessAt: Date?
     private var lastFailureAt: Date?
 
+    /// The clock every freshness decision reads: the reuse / backoff check, the
+    /// `lastSeenAt` stamps, the TTL cut and the snapshot age. A seam so tests
+    /// can sit through an hour-long outage without waiting for one; the app
+    /// never replaces it. (The per-search fetch deadline is wall-clock time
+    /// inside the `nonisolated` fetch and does not read this.)
+    var now: () -> Date = { Date() }
+
     /// Guards against overlapping searches: the view asks every 5 s while a
     /// failover search can take tens of seconds, and concurrent searches would
     /// multiply the load on a shared public endpoint.
@@ -128,14 +144,18 @@ class PeakFinder: ObservableObject {
     private var didLoadPersisted = false
 
     /// Where the last successful result is persisted. Same Caches directory the
-    /// terrain cache uses: derived data, not user data, safe to lose.
-    private static let cacheURL: URL? = {
+    /// terrain cache uses: derived data, not user data, safe to lose. Exposed
+    /// for tests.
+    nonisolated static let cacheURL: URL? = {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         return dir?.appendingPathComponent("NearbyPeaksCache.json")
     }()
 
-    /// Search for peaks near the given location. Network source (OSM)
-    /// is awaited first, then merged with the local bundled list.
+    /// Search for peaks near the given location. The local sources — bundled
+    /// known mountains and the downloaded offline-pack peaks — are merged and
+    /// published BEFORE the network is awaited, so they are on screen at once
+    /// and stay there whatever the network does; the OSM answer is merged in
+    /// when it arrives.
     func searchPeaks(near location: CLLocation, mountainsData: MountainData?,
                      offlinePeaks: [NearbyPeak] = [],
                      observerAltitude: Double? = nil) async {
@@ -144,14 +164,16 @@ class PeakFinder: ObservableObject {
         // or garbage-low, which would wrongly hide visible peaks. Falls back to
         // the fix's altitude.
         let obsAlt = observerAltitude ?? location.altitude
-        loadPersistedIfNeeded(near: location)
+        loadPersistedIfNeeded(near: location, observerAltitude: obsAlt, offlinePeaks: offlinePeaks)
 
         // Don't re-search if we haven't moved much AND the previous result is
-        // still young enough to trust. We still age out stale peaks though:
-        // prune the existing set by TTL + drop-radius against the current
-        // location so a stationary user's stale peaks don't accumulate (the
-        // whole point of `peakTTL`), instead of a bare `return` that skips
-        // eviction entirely.
+        // still young enough to trust, or while a search is already in flight.
+        // Both fast paths still refresh the existing set against the current
+        // location (drop radius, horizon, cap) instead of a bare `return` — but
+        // they confirm nothing, so they neither expire peaks by `peakTTL` nor
+        // touch `peaksAreStale` / `lastSearchError`. A stationary user's stale
+        // peaks still age out, at the next confirmed answer: the cache age
+        // makes one happen at least every 15 min.
         if isSearching {
             // A failover search can outlive the 5 s refresh tick. Fold the
             // duplicate request into the one in flight instead of stacking a
@@ -167,7 +189,7 @@ class PeakFinder: ObservableObject {
         // again.
         if let last = lastSearchLocation,
            last.distance(from: location) < minimumSearchDistance,
-           canReuseLastResult(at: Date()) {
+           canReuseLastResult(at: now()) {
             peaks = pruneAndRecompute(peaks, from: location, observerAltitude: obsAlt)
             return
         }
@@ -180,21 +202,49 @@ class PeakFinder: ObservableObject {
         lastSearchLocation = location
         defer { isSearching = false }
 
+        // Local sources first, published before the `await`. Bundled known
+        // mountains (out to the render distance) and the downloaded
+        // offline-pack peaks need no network, so they go on screen now instead
+        // of after a failover that can take ~25 s — and a failed search keeps
+        // them, where it used to return without them (which is how a
+        // downloaded pack showed 0 peaks with no signal). Offline peaks are
+        // stamped fresh; the same 200 m rule as the merge below keeps a local
+        // copy of a peak already on screen from doubling it. `shownIDs` only
+        // short-cuts that scan for a peak already on screen (an identical
+        // coordinate is always within 200 m) — every carried-over pack peak —
+        // so a large pack is not a quadratic scan on every search.
+        let previousPeaks = peaks
+        let knownPeaks = findKnownMountains(near: location, mountainsData: mountainsData)
+        var workingPeaks = previousPeaks
+        for knownPeak in knownPeaks where !isDuplicate(knownPeak, in: workingPeaks) {
+            workingPeaks.append(knownPeak)
+        }
+        let shownIDs = Set(workingPeaks.map(\.id))
+        let mergedAt = now()
+        for var offline in offlinePeaks
+        where !shownIDs.contains(offline.id) && !isDuplicate(offline, in: workingPeaks) {
+            offline.lastSeenAt = mergedAt
+            workingPeaks.append(offline)
+        }
+        peaks = pruneAndRecompute(workingPeaks, from: location, observerAltitude: obsAlt)
+
         // OSM is now the only network-backed source; bundled
         // `MountainData` and `offlinePeaks` are local. Apple Maps was
         // removed — see the class-level comment for why.
         //
-        // `fetchOSMPeaks` is `nonisolated static`: the fetch, JSON decode
+        // `fetchPeakOutcome` is `nonisolated static`: the fetch, JSON decode
         // and per-peak geometry/elevation recompute run off the main actor
         // so they can't drop AR frames during the ~5 s live refresh. Only
-        // the @Published `peaks` assignment below hops back onto the main
-        // actor.
+        // the @Published `peaks` assignments hop back onto the main actor.
         let outcome = await Self.fetchPeakOutcome(center: location.coordinate,
                                                   radiusMeters: searchRadius)
         guard case .success(let osmResults) = outcome else {
-            // A failed search is NOT a result. Keep showing what we already
-            // have (live peaks, or the snapshot restored from disk), age their
-            // geometry against the current fix, and mark them stale.
+            // A failed search is NOT a result. Keep showing the working set —
+            // what we already had (live peaks, or the snapshot restored from
+            // disk) plus the local sources merged above — with its geometry
+            // refreshed against the current fix, and mark it stale unless a
+            // downloaded pack covers here. Nothing is aged out by `peakTTL`:
+            // an outage re-confirms nothing, so it may expire nothing either.
             //
             // Previously this fell through to the merge below with an empty OSM
             // set: `peakTTL` then dropped everything the failed search could
@@ -203,27 +253,30 @@ class PeakFinder: ObservableObject {
             // `lastSearchLocation`, which put the *failure* on the cache path
             // and stopped any retry until the user walked 500 m. Both are why
             // an Overpass outage used to look like "there are no peaks here".
-            let now = Date()
-            lastFailureAt = now
+            //
+            // Stamped when the failure ARRIVED, after the `await`: the retry
+            // backoff runs from the end of a failover that can take ~30 s, not
+            // from its start.
+            lastFailureAt = now()
             lastSearchError = outcome.failureSummary
-            peaksAreStale = !peaks.isEmpty
             AppLog.ar.error("Nearby peaks: search failed (\(outcome.failureSummary ?? "unknown"))")
             peaks = pruneAndRecompute(peaks, from: location, observerAltitude: obsAlt)
+            peaksAreStale = !peaks.isEmpty && !offlinePackCovers(location, offlinePeaks: offlinePeaks)
             return
         }
 
         // Only a confirmed answer counts as fresh. (The search *location* was
         // stamped before the request, to pace retries; the *result* only ages
         // from a success, so a failure never becomes the thing we serve.)
-        lastSuccessAt = Date()
+        let answeredAt = now()
+        lastSuccessAt = answeredAt
         lastFailureAt = nil
         lastSearchError = nil
         peaksAreStale = false
 
-        let knownPeaks = findKnownMountains(near: location, mountainsData: mountainsData)
-
-        // 1. Start with the OSM-curated peaks.
-        var foundPeaks: [NearbyPeak] = osmResults
+        // 1. Start with the OSM-curated peaks, stamped with the answer's
+        //    arrival on the same clock the TTL cut below reads.
+        var foundPeaks: [NearbyPeak] = osmResults.map { var p = $0; p.lastSeenAt = answeredAt; return p }
 
         // 2. Merge known mountains from bundled data, de-duplicating
         //    against anything OSM already returned at the same spot.
@@ -233,38 +286,47 @@ class PeakFinder: ObservableObject {
             }
         }
 
-        // 3. Merge peaks from downloaded offline packs so the area's named
-        //    peaks show even with NO signal (and complement the live 5 km
-        //    query when online). Stamp them fresh so the TTL prune in
+        // 3. Merge peaks from downloaded offline packs so they complement the
+        //    live 5 km query (with NO signal they come from the merge before
+        //    the `await`). Stamp them fresh so the TTL cut in
         //    `pruneAndRecompute` doesn't drop them the instant they merge;
         //    the drop-radius hysteresis still removes any too far to see.
-        let now = Date()
         for var offline in offlinePeaks where !isDuplicate(offline, in: foundPeaks) {
-            offline.lastSeenAt = now
+            offline.lastSeenAt = answeredAt
             foundPeaks.append(offline)
         }
 
         // Merge with the previous result set so a transient empty / partial
-        // response from Overpass doesn't wipe peaks that are still valid.
+        // response from Overpass doesn't wipe peaks that are still valid. The
+        // previous set is the one from BEFORE the local merge above: steps 2
+        // and 3 re-add the local sources deduped against the OSM answer, and
+        // a bundled summit carried in from the pre-network set would stand
+        // next to the OSM node for the same mountain.
         var byID: [UUID: NearbyPeak] = [:]
-        for p in peaks { byID[p.id] = p }
+        for p in previousPeaks { byID[p.id] = p }
         for p in foundPeaks { byID[p.id] = p } // fresh data wins on duplicates
 
-        let merged = pruneAndRecompute(Array(byID.values), from: location, observerAltitude: obsAlt)
+        // The one place `peakTTL` applies: right after a confirmed answer.
+        let merged = pruneAndRecompute(Array(byID.values), from: location, observerAltitude: obsAlt,
+                                       confirmedAt: answeredAt)
         peaks = merged
         persist(merged, center: location.coordinate)
     }
 
     /// Prune a peak set against the current user location and recompute
     /// its geometry: drop entries we've moved well past (drop-radius
-    /// hysteresis) or that haven't been re-confirmed within `peakTTL`,
-    /// recompute distance/bearing for the survivors, and cap the total.
-    /// Shared by the move path and the stationary no-move path so stale
-    /// peaks age out in both cases.
+    /// hysteresis) or that sit below the horizon from here, recompute
+    /// distance/bearing for the survivors, and cap the total. Every path
+    /// that publishes `peaks` goes through here.
+    ///
+    /// `confirmedAt` is passed by the success-path merge ONLY, right after a
+    /// confirmed answer, and also drops entries that answer did not
+    /// re-confirm within `peakTTL`. The reuse, in-flight, pre-network,
+    /// failure and restore paths confirm nothing, so they expire nothing.
     private func pruneAndRecompute(_ input: [NearbyPeak], from location: CLLocation,
-                                   observerAltitude: Double) -> [NearbyPeak] {
+                                   observerAltitude: Double,
+                                   confirmedAt: Date? = nil) -> [NearbyPeak] {
         let dropRadius = maxPeakRenderDistance // keep distant offline-pack peaks visible
-        let now = Date()
         let ttl = peakTTL
 
         // Recompute distance/bearing for *every* surviving peak against
@@ -275,10 +337,10 @@ class PeakFinder: ObservableObject {
             let pl = CLLocation(latitude: peak.coordinate.latitude,
                                 longitude: peak.coordinate.longitude)
             let d = location.distance(from: pl)
-            // Drop entries we've moved well past, or that haven't been
-            // re-confirmed by a search within the TTL window.
+            // Drop entries we've moved well past, or — right after a confirmed
+            // answer — that it did not re-confirm within the TTL window.
             guard d <= dropRadius else { continue }
-            guard now.timeIntervalSince(peak.lastSeenAt) <= ttl else { continue }
+            if let confirmedAt, confirmedAt.timeIntervalSince(peak.lastSeenAt) > ttl { continue }
             // Drop peaks hidden below the Earth's bulge from here — only keep the
             // ones actually above the visible horizon (what you can really see).
             guard Geometry.isAboveHorizon(observerAltitude: observerAltitude,
@@ -302,8 +364,8 @@ class PeakFinder: ObservableObject {
     //
     // Three pieces make "the network failed" stop looking like "there are no
     // peaks here": a pure reuse decision the no-move path consults, a snapshot
-    // written on success only, and that snapshot restored (marked stale) on the
-    // next launch.
+    // written on success only, and that snapshot restored (marked stale, unless
+    // a downloaded pack covers here) on the next launch.
 
     /// Pure reuse decision, extracted so the cache rules are unit-testable
     /// without a network or a location. A result is reusable while it is young;
@@ -329,8 +391,21 @@ class PeakFinder: ObservableObject {
                             retryBackoff: retryBackoff)
     }
 
+    /// `true` when a downloaded offline pack covers `location`: one of the pack
+    /// peaks passed in lies within the render distance. A pack is the explicit
+    /// offline answer, so what is shown under one is never labelled "possibly
+    /// outdated" — in the no-signal case packs exist for, that label would be
+    /// wrong, and v1.3 never showed it there.
+    private func offlinePackCovers(_ location: CLLocation, offlinePeaks: [NearbyPeak]) -> Bool {
+        offlinePeaks.contains { peak in
+            location.distance(from: CLLocation(latitude: peak.coordinate.latitude,
+                                               longitude: peak.coordinate.longitude)) <= maxPeakRenderDistance
+        }
+    }
+
     /// On-disk form of the last successful search. `distance` / `bearing` are
-    /// derived against the live fix, so only identity and altitude are stored.
+    /// derived against the live fix, so only identity and altitude are stored —
+    /// and the centre only to 2 decimals (~1 km).
     private struct PeakSnapshot: Codable {
         struct Entry: Codable {
             let name: String
@@ -347,27 +422,33 @@ class PeakFinder: ObservableObject {
     /// Restore the persisted snapshot on the first search, if it is recent
     /// enough and near enough to be about *here*. `lastSeenAt` is re-stamped on
     /// load — those peaks were not "failing to be re-confirmed", they were on
-    /// disk — and `peaksAreStale` is what tells the user they may be out of date.
-    private func loadPersistedIfNeeded(near location: CLLocation) {
+    /// disk — and `peaksAreStale` is what tells the user they may be out of date
+    /// (unless a downloaded pack covers here, see `offlinePackCovers`).
+    private func loadPersistedIfNeeded(near location: CLLocation, observerAltitude: Double,
+                                       offlinePeaks: [NearbyPeak]) {
         guard !didLoadPersisted else { return }
         didLoadPersisted = true
         guard let url = Self.cacheURL,
               let data = try? Data(contentsOf: url),
               let snapshot = try? JSONDecoder().decode(PeakSnapshot.self, from: data),
-              Date().timeIntervalSince(snapshot.savedAt) <= persistedMaxAge else { return }
+              now().timeIntervalSince(snapshot.savedAt) <= persistedMaxAge else { return }
         let cachedCenter = CLLocation(latitude: snapshot.centerLatitude,
                                       longitude: snapshot.centerLongitude)
         guard cachedCenter.distance(from: location) <= persistedReuseDistance else { return }
-        let now = Date()
-        peaks = snapshot.entries.map {
+        let restoredAt = now()
+        let restored = snapshot.entries.map {
             NearbyPeak(name: $0.name,
                        coordinate: CLLocationCoordinate2D(latitude: $0.latitude,
                                                           longitude: $0.longitude),
-                       altitude: $0.altitude, distance: 0, bearing: 0, lastSeenAt: now)
+                       altitude: $0.altitude, distance: 0, bearing: 0, lastSeenAt: restoredAt)
         }
-        peaksAreStale = !peaks.isEmpty
+        // Derive distance / bearing against the live fix BEFORE publishing: the
+        // overlay fades and scales markers by `distance`, so the 0 placeholders
+        // drew every restored peak at full size until the next 5 s tick.
+        peaks = pruneAndRecompute(restored, from: location, observerAltitude: observerAltitude)
+        peaksAreStale = !peaks.isEmpty && !offlinePackCovers(location, offlinePeaks: offlinePeaks)
         let restoredCount = peaks.count
-        let ageMinutes = Int(Date().timeIntervalSince(snapshot.savedAt) / 60)
+        let ageMinutes = Int(restoredAt.timeIntervalSince(snapshot.savedAt) / 60)
         // `Logger` interpolations are autoclosures, so read the state into
         // locals rather than capture `self` inside the log statement.
         AppLog.ar.notice("Restored \(restoredCount) nearby peaks from disk (\(ageMinutes) min old)")
@@ -378,9 +459,12 @@ class PeakFinder: ObservableObject {
     private func persist(_ peaks: [NearbyPeak], center: CLLocationCoordinate2D) {
         guard let url = Self.cacheURL else { return }
         let snapshot = PeakSnapshot(
-            centerLatitude: center.latitude,
-            centerLongitude: center.longitude,
-            savedAt: Date(),
+            // The centre's only use is the 50 km "is this snapshot for here?"
+            // check, so ~1 km (2 decimals) is plenty — and the cache file does
+            // not keep the user's precise position.
+            centerLatitude: (center.latitude * 100).rounded() / 100,
+            centerLongitude: (center.longitude * 100).rounded() / 100,
+            savedAt: now(),
             entries: peaks.map {
                 PeakSnapshot.Entry(name: $0.name,
                                    latitude: $0.coordinate.latitude,
@@ -678,7 +762,8 @@ class PeakFinder: ObservableObject {
                     coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
                     altitude: Double(mountain.height ?? 0),
                     distance: distance,
-                    bearing: mountainBearing
+                    bearing: mountainBearing,
+                    lastSeenAt: now()
                 ))
             }
         }
