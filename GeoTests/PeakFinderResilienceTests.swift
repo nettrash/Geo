@@ -11,6 +11,8 @@
 //    injected clock: local peaks shown at once and through an outage, nothing
 //    aged out while nothing can be confirmed, the "possibly outdated" flag,
 //    runtime-error answers, the retry backoff and the restored snapshot.
+//  • `NatureLabelTests` — the floor pill's wording and the English strings
+//    table the Nature labels are looked up in (#25).
 //
 //  NO test touches the real network: `OverpassStub` answers every Overpass
 //  request (and fails any elevation lookup), and every stubbed peak carries an
@@ -575,6 +577,30 @@ final class PeakFinderOutageTests: XCTestCase {
         let entries = try XCTUnwrap(snapshot["entries"] as? [[String: Any]])
         XCTAssertEqual(entries.compactMap { $0["latitude"] as? Double }, [45.92],
                        "peak entries keep their exact position")
+    }
+}
+
+// MARK: - Nature labels (#25)
+
+final class NatureLabelTests: XCTestCase {
+
+    func testFloorPillCountsOnePeakInTheSingular() {
+        XCTAssertEqual(minAltitudeFloorPillText(floorMetres: 600, hiddenCount: 1), "600 m floor hides 1 peak")
+        XCTAssertEqual(minAltitudeFloorPillText(floorMetres: 600, hiddenCount: 2), "600 m floor hides all 2 peaks")
+        XCTAssertEqual(minAltitudeFloorPillText(floorMetres: 2500, hiddenCount: 41), "2500 m floor hides all 41 peaks")
+    }
+
+    /// CoreFoundation's `.strings` parser stops at a `#` comment line and drops
+    /// every key after it (88 keys became 59) while `plutil -lint` still says
+    /// OK — so read the table the app actually ships.
+    func testEnglishStringsTableLoadsEveryKeyPastTheNatureSection() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "Localizable", withExtension: "strings",
+                                                subdirectory: nil, localization: "en"))
+        let table = try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+        for key in ["possibly outdated", "Show all", "Continue", "Open Settings",
+                    "Location access required", "Expedition pack", "Download here", "Dismiss", "Save"] {
+            XCTAssertEqual(table[key], key, "\"\(key)\" is missing from the shipped table")
+        }
     }
 }
 
