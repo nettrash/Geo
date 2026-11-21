@@ -580,18 +580,6 @@ class PeakFinder: ObservableObject {
         return .failure(summary)
     }
 
-    /// Convenience wrapper for callers that only want the peaks and treat a
-    /// failure as "nothing found" — the offline-pack prefetch already ignores an
-    /// empty fetch and rebuilds the pack later.
-    nonisolated static func fetchOSMPeaks(center: CLLocationCoordinate2D,
-                                          radiusMeters: Double) async -> [NearbyPeak] {
-        if case .success(let peaks) = await fetchPeakOutcome(center: center,
-                                                            radiusMeters: radiusMeters) {
-            return peaks
-        }
-        return []
-    }
-
     /// Try ONE mirror. Everything that used to be a silent `return []` is now a
     /// logged `.rejected(reason)`, so the failover loop can move on and the
     /// failure summary names the instance that actually let us down.

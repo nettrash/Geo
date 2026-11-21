@@ -276,6 +276,12 @@ private struct MapOfflineBar: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            // A download or update that saved nothing says so. It stays until
+            // dismissed or the next one starts: the choose-area controls a
+            // download was started from fold away as soon as it ends.
+            if let error = manager.downloadError {
+                OfflinePackErrorRow(message: error) { manager.clearDownloadError() }
+            }
             if !chooseAreaMode {
                 Button {
                     chooseAreaMode = true
