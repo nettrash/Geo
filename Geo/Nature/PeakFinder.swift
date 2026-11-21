@@ -62,7 +62,7 @@ class PeakFinder: ObservableObject {
     @Published var peaksAreStale = false
 
     /// One-line summary of the last failed search (e.g.
-    /// `"overpass-api.de: HTTP 502; overpass.kumi.systems: timed out"`), kept
+    /// `"overpass-api.de: HTTP 502; overpass.private.coffee: timed out"`), kept
     /// for the console. Cleared by the next success.
     @Published var lastSearchError: String?
 
@@ -495,12 +495,17 @@ class PeakFinder: ObservableObject {
     /// identical query, so one unhealthy instance no longer means an empty
     /// Nature tab. Exposed for tests; keep in step with Android
     /// `PeakFinder.overpassEndpoints`.
+    ///
+    /// Only instances with GLOBAL data may be listed. A regional instance
+    /// answers HTTP 200 with zero peaks everywhere outside its region, and
+    /// that empty answer is indistinguishable from "there are no peaks here" —
+    /// it is cached as a confirmed result (`overpass.osm.ch` holds Switzerland
+    /// only: Mont Blanc came back with 0 peaks instead of 83, Fuji 0 instead
+    /// of 11).
     nonisolated static let overpassEndpoints: [String] = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-        "https://overpass.openstreetmap.fr/api/interpreter",
-        "https://overpass.osm.ch/api/interpreter",
-        "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+        "https://overpass-api.de/api/interpreter",            // FOSSGIS e.V., the main instance
+        "https://overpass.private.coffee/api/interpreter",    // Private.coffee (formerly overpass.kumi.systems)
+        "https://overpass.openstreetmap.fr/api/interpreter"   // OpenStreetMap France
     ]
 
     /// Per-mirror transport wait. Shorter than the old single-host 10 s because
@@ -508,7 +513,8 @@ class PeakFinder: ObservableObject {
     nonisolated private static let endpointTimeout: TimeInterval = 8
 
     /// Stop trying mirrors once this much time has passed, so a total outage
-    /// costs one bounded search instead of five sequential timeouts.
+    /// costs one bounded search, not a full timeout (and retry) on every
+    /// mirror in turn.
     nonisolated private static let fetchDeadline: TimeInterval = 30
 
     nonisolated private static let userAgent = "me.nettrash.Geo/1.0 (+https://nettrash.me)"
@@ -530,9 +536,11 @@ class PeakFinder: ObservableObject {
     /// that quantisation error.
     ///
     /// Returns `.success([])` when the query genuinely found nothing and
-    /// `.failure(reason)` when no mirror answered. The caller must treat those
-    /// differently — replace the peaks vs. keep them — which is exactly the
-    /// distinction the old `return []` on every non-200 destroyed.
+    /// `.failure(reason)` when no mirror answered — and a mirror whose answer
+    /// carries an Overpass `runtime error` remark has not answered. The caller
+    /// must treat those differently — replace the peaks vs. keep them — which
+    /// is exactly the distinction the old `return []` on every non-200
+    /// destroyed.
     nonisolated static func fetchPeakOutcome(center: CLLocationCoordinate2D,
                                              radiusMeters: Double) async -> PeakFetchOutcome {
         // Same ~110 m (3-decimal) grid the elevation cache uses, so the
@@ -621,6 +629,20 @@ class PeakFinder: ObservableObject {
             }
 
             let result = try JSONDecoder().decode(OverpassResponse.self, from: data)
+
+            // An overloaded instance answers HTTP 200 with `elements: []` and a
+            // remark such as "runtime error: Query ran out of memory …" or
+            // "… Query timed out …". That is the server failing, not an empty
+            // area: taken as `.peaks([])` it was a confirmed "no peaks here" —
+            // cached for 15 min, the stale label cleared, the snapshot
+            // overwritten, an empty offline pack saved. Reject it so the next
+            // mirror is tried. Any other remark is still an answer.
+            if let remark = result.remark,
+               remark.range(of: "runtime error", options: .caseInsensitive) != nil {
+                let reason = String(remark.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+                AppLog.ar.warning("Overpass \(host) answered a runtime error: \(reason)")
+                return .rejected(reason)
+            }
 
             // Pass 1: filter by radius, parse name / coords / bearing,
             // and capture the `ele` tag when present.
@@ -818,6 +840,10 @@ private actor OverpassThrottle {
 
 private struct OverpassResponse: Decodable {
     let elements: [OverpassElement]
+    /// Set when the query did not complete on the server — e.g. `"runtime
+    /// error: Query timed out in "query" at line 2 after 10 seconds."` — which
+    /// still arrives as HTTP 200 with an empty `elements`.
+    let remark: String?
 }
 
 private struct OverpassElement: Decodable {

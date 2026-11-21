@@ -10,7 +10,7 @@
 //  • `PeakFinderOutageTests` — whole searches against a stubbed Overpass and an
 //    injected clock: local peaks shown at once and through an outage, nothing
 //    aged out while nothing can be confirmed, the "possibly outdated" flag,
-//    the retry backoff and the restored snapshot.
+//    runtime-error answers, the retry backoff and the restored snapshot.
 //
 //  NO test touches the real network: `OverpassStub` answers every Overpass
 //  request (and fails any elevation lookup), and every stubbed peak carries an
@@ -73,13 +73,16 @@ final class PeakFinderResilienceTests: XCTestCase {
         XCTAssertFalse(canReuse(successAge: nil, failureAge: -2 * retryBackoff))
     }
 
-    func testSearchFailsOverAcrossDistinctMirrors() {
-        XCTAssertGreaterThanOrEqual(PeakFinder.overpassEndpoints.count, 3,
-                                    "a single Overpass host is the outage we are fixing")
-        let hosts = Set(PeakFinder.overpassEndpoints.compactMap { URL(string: $0)?.host })
-        XCTAssertEqual(hosts.count, PeakFinder.overpassEndpoints.count,
-                       "mirrors must be different hosts, not the same box twice")
-        XCTAssertTrue(PeakFinder.overpassEndpoints.allSatisfy { $0.hasSuffix("/api/interpreter") })
+    /// Exactly the instances that carry the GLOBAL planet. A regional instance
+    /// answers HTTP 200 with zero peaks outside its region — `overpass.osm.ch`
+    /// (Switzerland only) gave Mont Blanc 0 peaks instead of 83 and Fuji 0
+    /// instead of 11 — and an empty answer reads as "there are no peaks here".
+    func testMirrorListIsExactlyTheThreeGlobalInstances() {
+        XCTAssertEqual(PeakFinder.overpassEndpoints, [
+            "https://overpass-api.de/api/interpreter",
+            "https://overpass.private.coffee/api/interpreter",
+            "https://overpass.openstreetmap.fr/api/interpreter"
+        ])
     }
 
     func testRotationVisitsEveryMirrorExactlyOnce() {
@@ -126,6 +129,9 @@ final class PeakFinderOutageTests: XCTestCase {
         ("Snap One", 45.93, 7.58, 3200),
         ("Snap Two", 45.87, 7.65, 3000)
     ]
+
+    /// Verified live on `overpass.openstreetmap.fr`: HTTP 200, JSON, no peaks.
+    private let outOfMemoryRemark = "runtime error: Query ran out of memory in \"query\" at line 1. It would need at least 2 MB of RAM to continue."
 
     override func setUp() {
         super.setUp()
@@ -426,6 +432,86 @@ final class PeakFinderOutageTests: XCTestCase {
         await search(finder, offline: [packPeak])
         XCTAssertEqual(names(finder), ["Pack Peak", "Snap One", "Snap Two"])
         XCTAssertFalse(finder.peaksAreStale)
+    }
+
+    // MARK: Overpass runtime errors are failures
+
+    /// Verified live: an overloaded instance answers HTTP 200 with
+    /// `"elements": []` and `"remark": "runtime error: …"`. That is the server
+    /// failing, not an empty area, so the next mirror must be asked.
+    @MainActor
+    func testRuntimeErrorRemarkFailsOverToTheNextMirror() async {
+        let finder = makeFinder(TestClock())
+        let refusal = OverpassStub.answer([], remark: outOfMemoryRemark)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, index in .body(index == 0 ? refusal : answer) }
+        await search(finder)
+
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"])
+        let hosts = OverpassStub.requestedHosts
+        XCTAssertEqual(hosts.count, 2, "the remarking mirror must not end the search")
+        XCTAssertNotEqual(hosts.first, hosts.last, "the answer came from another mirror")
+        XCTAssertNil(finder.lastSearchError)
+        XCTAssertFalse(finder.peaksAreStale)
+    }
+
+    @MainActor
+    func testRuntimeErrorsOnEveryMirrorKeepThePeaksAndMarkThemStale() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)
+
+        clock.advance(by: 16 * 60)
+        let refusal = OverpassStub.answer([], remark: outOfMemoryRemark)
+        OverpassStub.reply { _, _ in .body(refusal) }
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"])
+        XCTAssertTrue(finder.peaksAreStale, "no mirror confirmed anything")
+        XCTAssertTrue(finder.lastSearchError?.contains("runtime error: Query ran out of memory") == true,
+                      finder.lastSearchError ?? "no error recorded")
+    }
+
+    func testEveryMirrorRemarkingARuntimeErrorIsAFailure() async {
+        let remark = "runtime error: Query timed out in \"query\" at line 2 after 10 seconds."
+        let refusal = OverpassStub.answer([], remark: remark)
+        OverpassStub.reply { _, _ in .body(refusal) }
+        let outcome = await PeakFinder.fetchPeakOutcome(center: here.coordinate, radiusMeters: 5000)
+        guard case .failure(let summary) = outcome else {
+            return XCTFail("a runtime error must never read as \"no peaks here\": \(outcome)")
+        }
+        XCTAssertEqual(OverpassStub.requestCount, PeakFinder.overpassEndpoints.count)
+        XCTAssertTrue(summary.contains(remark), summary)
+    }
+
+    func testRuntimeErrorReasonIsTrimmedTo120Characters() async {
+        let refusal = OverpassStub.answer([], remark: "  runtime error: " + String(repeating: "x", count: 300))
+        OverpassStub.reply { _, _ in .body(refusal) }
+        let outcome = await PeakFinder.fetchPeakOutcome(center: here.coordinate, radiusMeters: 5000)
+        guard case .failure(let summary) = outcome else {
+            return XCTFail("a runtime error must never read as \"no peaks here\": \(outcome)")
+        }
+        let segments = summary.components(separatedBy: "; ")
+        for host in PeakFinder.overpassEndpoints.compactMap({ URL(string: $0)?.host }) {
+            guard let segment = segments.first(where: { $0.hasPrefix("\(host): ") }) else {
+                XCTFail("\(host) is missing from \(summary)")
+                continue
+            }
+            let reason = segment.dropFirst(host.count + 2)
+            XCTAssertLessThanOrEqual(reason.count, 120, String(reason))
+            XCTAssertTrue(reason.hasPrefix("runtime error: xxx"), String(reason))
+        }
+    }
+
+    /// Only a runtime error is a refusal; any other remark is still an answer.
+    func testAnyOtherRemarkIsStillAnAnswer() async {
+        let answer = OverpassStub.answer([alpha], remark: "Notice: answered from a test fixture.")
+        OverpassStub.reply { _, _ in .body(answer) }
+        let outcome = await PeakFinder.fetchPeakOutcome(center: here.coordinate, radiusMeters: 5000)
+        guard case .success(let peaks) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(peaks.map(\.name), ["Stub Alpha"])
+        XCTAssertEqual(OverpassStub.requestCount, 1)
     }
 
     // MARK: The retry backoff runs from completion
