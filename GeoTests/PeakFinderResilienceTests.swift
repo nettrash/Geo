@@ -387,6 +387,57 @@ final class PeakFinderOutageTests: XCTestCase {
         XCTAssertTrue(finder.peaksAreStale)
     }
 
+    /// Most ticks of an outage never reach the network: inside the 60 s retry
+    /// backoff they take the reuse path. It confirms nothing, so it must expire
+    /// nothing either — also once the last answer is more than an hour old.
+    @MainActor
+    func testReuseTickPastTheTTLKeepsTheCarriedOverPeaks() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)                     // the last confirmed answer
+
+        OverpassStub.reply { _, _ in .failure(.notConnectedToInternet) }
+        clock.advance(by: 59 * 60 + 30)          // past the cache age, not yet the TTL
+        await search(finder)                     // fails: the retry backoff starts
+        XCTAssertNotNil(finder.lastSearchError)
+
+        let asked = OverpassStub.requestCount
+        clock.advance(by: 45)                    // past the TTL, still inside the backoff
+        await search(finder)
+        XCTAssertEqual(OverpassStub.requestCount, asked, "the tick took the reuse path")
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"],
+                       "a reuse tick confirms nothing, so it may expire nothing")
+    }
+
+    /// The same for a tick that lands while a search is still in flight: a
+    /// failover can take ~30 s, so one can straddle the TTL.
+    @MainActor
+    func testInFlightTickPastTheTTLKeepsTheCarriedOverPeaks() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)                     // the last confirmed answer
+
+        clock.advance(by: 59 * 60 + 30)          // past the cache age, not yet the TTL
+        let first = OverpassStub.requestCount
+        OverpassStub.reply { _, index in index == first ? .hold : .failure(.notConnectedToInternet) }
+        let retry = startSearch(finder)
+        await waitUntil("the retry holds a request") { OverpassStub.heldCount == 1 }
+
+        clock.advance(by: 45)                    // still in flight, now past the TTL
+        await search(finder)                     // a refresh tick lands mid-search
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"],
+                       "an in-flight tick confirms nothing, so it may expire nothing")
+
+        OverpassStub.releaseHeld(with: .failure(.timedOut))
+        await retry.value
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"])
+        XCTAssertTrue(finder.peaksAreStale)
+    }
+
     /// The other half of the rule: a CONFIRMED answer still expires what it no
     /// longer returns, so peaks do not accumulate for ever.
     @MainActor
@@ -489,14 +540,29 @@ final class PeakFinderOutageTests: XCTestCase {
         XCTAssertTrue(finder.peaksAreStale)
     }
 
+    /// Checked while the network is still being asked as well as after the
+    /// failover gives up: the restore itself must not raise the label, or it
+    /// would show under a covering pack for up to ~30 s.
     @MainActor
     func testRestoredSnapshotUnderAnOfflinePackIsNotPossiblyOutdated() async throws {
         let clock = TestClock()
         try writeSnapshot(savedAt: clock.now.addingTimeInterval(-10 * 60))
         let finder = makeFinder(clock)
-        await search(finder, offline: [packPeak])
+        var flags: [Bool] = []
+        let subscription = finder.$peaksAreStale.sink { flags.append($0) }
+        OverpassStub.reply { _, index in index == 0 ? .hold : .failure(.notConnectedToInternet) }
+        let search = startSearch(finder, offline: [packPeak])
+        await waitUntil("the search reaches the network") { OverpassStub.heldCount == 1 }
+
+        XCTAssertEqual(names(finder), ["Pack Peak", "Snap One", "Snap Two"])
+        XCTAssertFalse(finder.peaksAreStale, "restored under a pack, the network not answered yet")
+
+        OverpassStub.releaseHeld(with: .failure(.notConnectedToInternet))
+        await search.value
+        subscription.cancel()
         XCTAssertEqual(names(finder), ["Pack Peak", "Snap One", "Snap Two"])
         XCTAssertFalse(finder.peaksAreStale)
+        XCTAssertFalse(flags.contains(true), "the label must never come on under a pack: \(flags)")
     }
 
     // MARK: Overpass runtime errors are failures
