@@ -8,9 +8,10 @@
 //  • `PeakFinderResilienceTests` — the pure rules: when a previous nearby-peak
 //    result may be reused, and the mirror list a search fails over across.
 //  • `PeakFinderOutageTests` — whole searches against a stubbed Overpass and an
-//    injected clock: local peaks shown at once and through an outage, nothing
-//    aged out while nothing can be confirmed, the "possibly outdated" flag,
-//    runtime-error answers, the retry backoff and the restored snapshot.
+//    injected clock: local peaks shown at once and through an outage (and
+//    deduped by the 200 m rule), nothing aged out while nothing can be
+//    confirmed, the "possibly outdated" flag, runtime-error answers, the retry
+//    backoff and the restored snapshot.
 //  • `NatureLabelTests` — the floor pill's wording and the English strings
 //    table the Nature labels are looked up in (#25).
 //
@@ -280,6 +281,68 @@ final class PeakFinderOutageTests: XCTestCase {
         OverpassStub.releaseHeld(with: .failure(.timedOut))
         await search.value
         XCTAssertEqual(names(finder), ["Known Summit", "Pack Peak"])
+    }
+
+    // MARK: The local merge's duplicate check
+
+    /// The merge before the `await` checks every pack peak (up to 4000 a pack,
+    /// on every network search) against everything merged before it through a
+    /// latitude-band index, not a scan of the whole set. It must keep exactly
+    /// what the 200 m rule, applied pair by pair, keeps: here a pack dense with
+    /// near duplicates that straddles the equator, where band numbers change
+    /// sign, after a second pack 111 km east that shares its bands.
+    @MainActor
+    func testTheLocalMergeKeepsExactlyWhatThe200mRuleKeeps() async {
+        var random = SplitMix64(seed: 26)
+        let origin = CLLocation(coordinate: CLLocationCoordinate2D(latitude: -0.0005, longitude: 37.0),
+                                altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: Date())
+        func scatter(_ prefix: String, _ count: Int, longitude: Double) -> [StubPeak] {
+            (0..<count).map { i in
+                StubPeak(name: "\(prefix) \(i)",
+                         lat: origin.coordinate.latitude + Double.random(in: -0.015...0.015, using: &random),
+                         lon: longitude + Double.random(in: -0.015...0.015, using: &random),
+                         ele: 3000)
+            }
+        }
+        let live = scatter("Current", 20, longitude: origin.coordinate.longitude)
+        let pack = (scatter("Far", 300, longitude: origin.coordinate.longitude + 1)
+                    + scatter("Near", 1500, longitude: origin.coordinate.longitude)).map {
+            NearbyPeak(name: $0.name, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon),
+                       altitude: Double($0.ele), distance: 0, bearing: 0)
+        }
+
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer(live)
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder, at: origin)
+        let current = finder.peaks               // as decoded, for the rule below
+        XCTAssertEqual(current.count, live.count)
+
+        OverpassStub.reply { _, _ in .failure(.notConnectedToInternet) }
+        clock.advance(by: 16 * 60)               // older than the cache age: ask again
+        await search(finder, offline: pack, at: origin)
+        XCTAssertNotNil(finder.lastSearchError, "every mirror failed")
+
+        func metres(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationDistance {
+            CLLocation(latitude: a.latitude, longitude: a.longitude)
+                .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        }
+        var kept = current.map { (name: $0.name, coordinate: $0.coordinate) }
+        for peak in pack where !kept.contains(where: { metres($0.coordinate, peak.coordinate) < 200 }) {
+            kept.append((name: peak.name, coordinate: peak.coordinate))
+        }
+        let expected = kept
+            .map { (name: $0.name, distance: metres(origin.coordinate, $0.coordinate)) }
+            .filter { $0.distance <= 80_000 }
+            .sorted { $0.distance < $1.distance }
+            .map(\.name)
+        // Dense enough that most of the pack is dropped, and under the 300 cap,
+        // so every peak the rule keeps is compared.
+        XCTAssertGreaterThanOrEqual(expected.count, 100)
+        XCTAssertLessThan(expected.count, 300)
+        XCTAssertEqual(finder.peaks.count, expected.count)
+        XCTAssertEqual(finder.peaks.map(\.name), expected)
     }
 
     // MARK: Nothing expires during an outage
@@ -733,6 +796,21 @@ final class OverpassStub: URLProtocol, @unchecked Sendable {
         case .hold:
             Self.lock.withLock { Self.held.append(self) }
         }
+    }
+}
+
+/// A seeded generator, so a randomised test replays the same data every run.
+struct SplitMix64: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) { state = seed }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }
 

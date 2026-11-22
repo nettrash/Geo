@@ -209,22 +209,26 @@ class PeakFinder: ObservableObject {
         // them, where it used to return without them (which is how a
         // downloaded pack showed 0 peaks with no signal). Offline peaks are
         // stamped fresh; the same 200 m rule as the merge below keeps a local
-        // copy of a peak already on screen from doubling it. `shownIDs` only
-        // short-cuts that scan for a peak already on screen (an identical
-        // coordinate is always within 200 m) — every carried-over pack peak —
-        // so a large pack is not a quadratic scan on every search.
+        // copy of a peak already on screen from doubling it. It is checked
+        // through a `DuplicateIndex`, not a scan of everything merged so far:
+        // this merge runs on the main actor on every network search — each
+        // retry of an outage included — over every pack's peaks (up to 4000
+        // a pack), and the scan made it quadratic in them.
         let previousPeaks = peaks
         let knownPeaks = findKnownMountains(near: location, mountainsData: mountainsData)
         var workingPeaks = previousPeaks
-        for knownPeak in knownPeaks where !isDuplicate(knownPeak, in: workingPeaks) {
+        var workingIndex = DuplicateIndex(workingPeaks)
+        for knownPeak in knownPeaks
+        where !isDuplicate(knownPeak, in: workingIndex.neighbourhood(of: knownPeak)) {
             workingPeaks.append(knownPeak)
+            workingIndex.add(knownPeak)
         }
-        let shownIDs = Set(workingPeaks.map(\.id))
         let mergedAt = now()
         for var offline in offlinePeaks
-        where !shownIDs.contains(offline.id) && !isDuplicate(offline, in: workingPeaks) {
+        where !isDuplicate(offline, in: workingIndex.neighbourhood(of: offline)) {
             offline.lastSeenAt = mergedAt
             workingPeaks.append(offline)
+            workingIndex.add(offline)
         }
         peaks = pruneAndRecompute(workingPeaks, from: location, observerAltitude: obsAlt)
 
@@ -234,8 +238,9 @@ class PeakFinder: ObservableObject {
         //
         // `fetchPeakOutcome` is `nonisolated static`: the fetch, JSON decode
         // and per-peak geometry/elevation recompute run off the main actor
-        // so they can't drop AR frames during the ~5 s live refresh. Only
-        // the @Published `peaks` assignments hop back onto the main actor.
+        // so they can't drop AR frames during the ~5 s live refresh. The
+        // merges on either side of the `await` run on the main actor, as do
+        // the @Published `peaks` assignments.
         let outcome = await Self.fetchPeakOutcome(center: location.coordinate,
                                                   radiusMeters: searchRadius)
         guard case .success(let osmResults) = outcome else {
@@ -483,6 +488,40 @@ class PeakFinder: ObservableObject {
             let peakLoc = CLLocation(latitude: peak.coordinate.latitude,
                                      longitude: peak.coordinate.longitude)
             return otherLoc.distance(from: peakLoc) < 200
+        }
+    }
+
+    /// `isDuplicate` for a set that grows one peak at a time, without a scan of
+    /// the whole set per peak. Peaks are kept in latitude bands of 0.002°
+    /// (~222 m). A great-circle distance is never shorter than its north–south
+    /// part, so two peaks less than 200 m apart are at most ~0.0018° of
+    /// latitude apart, and only a peak's own band and the two beside it can
+    /// hold its duplicate. Those get the exact `isDuplicate` test, so the
+    /// answer is the same as the whole-set scan's. Mirrors Android
+    /// `PeakFinder.DuplicateIndex`.
+    private struct DuplicateIndex {
+        private static let bandDegrees = 0.002
+        private var bands: [Int: [NearbyPeak]] = [:]
+
+        init(_ peaks: [NearbyPeak]) {
+            for peak in peaks { add(peak) }
+        }
+
+        mutating func add(_ peak: NearbyPeak) {
+            bands[Self.band(of: peak), default: []].append(peak)
+        }
+
+        /// Every indexed peak that can lie within 200 m of `peak`.
+        func neighbourhood(of peak: NearbyPeak) -> [NearbyPeak] {
+            let band = Self.band(of: peak)
+            return (band - 1 ... band + 1).flatMap { bands[$0] ?? [] }
+        }
+
+        private static func band(of peak: NearbyPeak) -> Int {
+            let latitude = peak.coordinate.latitude
+            // Never trap the `Int` conversion on a latitude no real peak has.
+            guard (-90...90).contains(latitude) else { return 0 }
+            return Int((latitude / bandDegrees).rounded(.down))
         }
     }
     
