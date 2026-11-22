@@ -192,6 +192,24 @@ final class PeakFinderOutageTests: XCTestCase {
         return data
     }
 
+    /// Bundled-data stand-in holding exactly `peaks`, in order.
+    private func bundledMountains(_ peaks: [StubPeak]) -> MountainData {
+        let list = MountainList()
+        list.mountains = peaks.map { peak in
+            let coordinates = MountainCoordinates()
+            coordinates.latitude = peak.lat
+            coordinates.longitude = peak.lon
+            let mountain = MountainInfo()
+            mountain.name = peak.name
+            mountain.height = peak.ele
+            mountain.coordinates = coordinates
+            return mountain
+        }
+        let data = MountainData()
+        data.highest = list
+        return data
+    }
+
     @MainActor
     private func makeFinder(_ clock: TestClock) -> PeakFinder {
         let finder = PeakFinder()
@@ -341,6 +359,73 @@ final class PeakFinderOutageTests: XCTestCase {
         // so every peak the rule keeps is compared.
         XCTAssertGreaterThanOrEqual(expected.count, 100)
         XCTAssertLessThan(expected.count, 300)
+        XCTAssertEqual(finder.peaks.count, expected.count)
+        XCTAssertEqual(finder.peaks.map(\.name), expected)
+    }
+
+    /// The merge after a confirmed answer starts from the OSM nodes, which are
+    /// never deduped against each other, then adds every bundled summit and
+    /// every pack peak that lies 200 m or more from everything accepted before
+    /// it. It runs on the main actor after every answer, over every pack's
+    /// peaks, so it checks through the same latitude-band index as the merge
+    /// before the `await`. It must keep exactly what the 200 m rule, applied
+    /// pair by pair, keeps: here an answer, a bundled list and a pack, all
+    /// dense with near duplicates that straddle the equator, where band numbers
+    /// change sign, and a second pack 111 km east that shares their bands.
+    @MainActor
+    func testTheConfirmedMergeKeepsExactlyWhatThe200mRuleKeeps() async {
+        var random = SplitMix64(seed: 2611)
+        let origin = CLLocation(coordinate: CLLocationCoordinate2D(latitude: -0.0005, longitude: 37.0),
+                                altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: Date())
+        func scatter(_ prefix: String, _ count: Int, longitude: Double) -> [StubPeak] {
+            (0..<count).map { i in
+                StubPeak(name: "\(prefix) \(i)",
+                         lat: origin.coordinate.latitude + Double.random(in: -0.015...0.015, using: &random),
+                         lon: longitude + Double.random(in: -0.015...0.015, using: &random),
+                         ele: 3000)
+            }
+        }
+        func nearbyPeaks(_ stubs: [StubPeak]) -> [NearbyPeak] {
+            stubs.map {
+                NearbyPeak(name: $0.name, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon),
+                           altitude: Double($0.ele), distance: 0, bearing: 0)
+            }
+        }
+        let live = scatter("Live", 40, longitude: origin.coordinate.longitude)
+        let bundled = scatter("Bundled", 150, longitude: origin.coordinate.longitude)
+        let pack = nearbyPeaks(scatter("Far", 300, longitude: origin.coordinate.longitude + 1)
+                               + scatter("Near", 1500, longitude: origin.coordinate.longitude))
+
+        let answer = OverpassStub.answer(live)
+        OverpassStub.reply { _, _ in .body(answer) }
+        // The answer as a search decodes it, for the rule below.
+        let outcome = await PeakFinder.fetchPeakOutcome(center: origin.coordinate, radiusMeters: 5000)
+        guard case .success(let osm) = outcome else { return XCTFail("the stub's answer was refused: \(outcome)") }
+        XCTAssertEqual(osm.count, live.count, "every node lies inside the 5 km query")
+
+        let finder = makeFinder(TestClock())
+        await search(finder, offline: pack, known: bundledMountains(bundled), at: origin)
+        XCTAssertNil(finder.lastSearchError, "the search was answered")
+
+        func metres(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationDistance {
+            CLLocation(latitude: a.latitude, longitude: a.longitude)
+                .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        }
+        var kept = osm.map { (name: $0.name, coordinate: $0.coordinate) }
+        for peak in nearbyPeaks(bundled) + pack
+        where !kept.contains(where: { metres($0.coordinate, peak.coordinate) < 200 }) {
+            kept.append((name: peak.name, coordinate: peak.coordinate))
+        }
+        let expected = kept
+            .map { (name: $0.name, distance: metres(origin.coordinate, $0.coordinate)) }
+            .filter { $0.distance <= 80_000 }
+            .sorted { $0.distance < $1.distance }
+            .map(\.name)
+        // Dense enough that most of the bundled list and the pack is dropped,
+        // and under the 300 cap, so every peak the rule keeps is compared.
+        XCTAssertGreaterThanOrEqual(expected.count, 100)
+        XCTAssertLessThan(expected.count, 300)
+        XCTAssertGreaterThan(expected.filter { $0.hasPrefix("Bundled") }.count, 0, "a bundled summit is kept")
         XCTAssertEqual(finder.peaks.count, expected.count)
         XCTAssertEqual(finder.peaks.map(\.name), expected)
     }

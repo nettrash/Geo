@@ -280,15 +280,20 @@ class PeakFinder: ObservableObject {
         peaksAreStale = false
 
         // 1. Start with the OSM-curated peaks, stamped with the answer's
-        //    arrival on the same clock the TTL cut below reads.
+        //    arrival on the same clock the TTL cut below reads. Steps 2 and 3
+        //    check each local peak against everything accepted before it
+        //    through a `DuplicateIndex`, as the merge before the `await` does
+        //    and for the same reason: this merge, too, runs on the main actor
+        //    over every pack's peaks, after every answer.
         var foundPeaks: [NearbyPeak] = osmResults.map { var p = $0; p.lastSeenAt = answeredAt; return p }
+        var foundIndex = DuplicateIndex(foundPeaks)
 
         // 2. Merge known mountains from bundled data, de-duplicating
         //    against anything OSM already returned at the same spot.
-        for knownPeak in knownPeaks {
-            if !isDuplicate(knownPeak, in: foundPeaks) {
-                foundPeaks.append(knownPeak)
-            }
+        for knownPeak in knownPeaks
+        where !isDuplicate(knownPeak, in: foundIndex.neighbourhood(of: knownPeak)) {
+            foundPeaks.append(knownPeak)
+            foundIndex.add(knownPeak)
         }
 
         // 3. Merge peaks from downloaded offline packs so they complement the
@@ -296,9 +301,11 @@ class PeakFinder: ObservableObject {
         //    the `await`). Stamp them fresh so the TTL cut in
         //    `pruneAndRecompute` doesn't drop them the instant they merge;
         //    the drop-radius hysteresis still removes any too far to see.
-        for var offline in offlinePeaks where !isDuplicate(offline, in: foundPeaks) {
+        for var offline in offlinePeaks
+        where !isDuplicate(offline, in: foundIndex.neighbourhood(of: offline)) {
             offline.lastSeenAt = answeredAt
             foundPeaks.append(offline)
+            foundIndex.add(offline)
         }
 
         // Merge with the previous result set so a transient empty / partial
@@ -788,7 +795,7 @@ class PeakFinder: ObservableObject {
     /// The bundled list is 136 entries spread over the whole planet, so the
     /// widened bound adds at most 26 (the densest spot on Earth, Gasherbrum I)
     /// and normally none — it cannot meaningfully grow what `searchPeaks`
-    /// feeds to its O(n²) dedupe.
+    /// dedupes.
     private func findKnownMountains(near location: CLLocation, mountainsData: MountainData?) -> [NearbyPeak] {
         guard let data = mountainsData else { return [] }
         
