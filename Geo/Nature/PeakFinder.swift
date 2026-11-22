@@ -306,7 +306,12 @@ class PeakFinder: ObservableObject {
         // previous set is the one from BEFORE the local merge above: steps 2
         // and 3 re-add the local sources deduped against the OSM answer, and
         // a bundled summit carried in from the pre-network set would stand
-        // next to the OSM node for the same mountain.
+        // next to the OSM node for the same mountain. That holds within one
+        // search only. A bundled summit already on screen from an EARLIER
+        // one — a failed search, or one made before the summit's OSM node came
+        // inside the 5 km query — is a previous peak like any other, merged by
+        // id, so it can stand next to that node until `peakTTL` drops it, as
+        // in v1.3 and on Android.
         var byID: [UUID: NearbyPeak] = [:]
         for p in previousPeaks { byID[p.id] = p }
         for p in foundPeaks { byID[p.id] = p } // fresh data wins on duplicates
@@ -742,10 +747,10 @@ class PeakFinder: ObservableObject {
     /// Overpass requests and retrying ONCE on a throttling / transient
     /// server response (HTTP 429 or 5xx). Honours a `Retry-After` header
     /// when present (seconds), else a short fixed backoff. The final
-    /// response — success or not — is returned, preserving the existing
-    /// graceful empty-result fallback. `nonisolated` and Sendable-safe so
-    /// it stays callable from the off-main-actor `searchOpenStreetMap`;
-    /// the `Task.sleep` calls suspend without blocking a thread.
+    /// response — success or not — is returned for `attemptPeakFetch` to
+    /// accept or reject. `nonisolated` and Sendable-safe so it stays
+    /// callable from the off-main-actor `attemptPeakFetch`; the
+    /// `Task.sleep` calls suspend without blocking a thread.
     nonisolated private static func sendWithRetry(_ req: URLRequest) async throws -> (Data, URLResponse) {
         let slot = await OverpassThrottle.shared.waitForSlot(minInterval: minOverpassInterval)
         var (data, response) = try await URLSession.shared.data(for: req)
@@ -824,7 +829,7 @@ class PeakFinder: ObservableObject {
 }
 
 /// Process-wide rate limiter for the shared public Overpass endpoint.
-/// `PeakFinder.searchOpenStreetMap` is `nonisolated` and main-actor-free,
+/// `PeakFinder.fetchPeakOutcome` is `nonisolated` and main-actor-free,
 /// so the `lastRequestDate` it needs to throttle against can't live on the
 /// (main-actor) `PeakFinder` instance — this tiny actor owns it instead,
 /// serialising concurrent live-refresh searches behind one gate.
