@@ -134,12 +134,12 @@ There are no servers of ours. No analytics, advertising, tracking or third-party
 SDKs; the Privacy Nutrition Label answer is "Data Not Collected", and no App
 Tracking Transparency prompt is shown because nothing is tracked.
 
-Three hosts are contacted: OpenStreetMap Overpass (names and positions of nearby
-peaks), Open-Meteo (ground elevation, used to decide which peaks rise above the
-horizon), and the NOAA Space Weather Prediction Center (planetary K index).
-Coordinates sent to the first two are rounded to a ~110 m grid first. The third
-carries none: a fixed URL with no query string, identical for every user. Apple
-MapKit renders the Map tab.
+Three services are contacted: OpenStreetMap Overpass (nearby peaks, from one of
+three public servers), Open-Meteo (ground elevation, to tell which peaks rise
+above the horizon), and the NOAA Space Weather Prediction Center (planetary K
+index). Coordinates sent to the first two are rounded to a ~110 m grid. The
+third carries none: a fixed URL with no query string, identical for every user.
+Apple MapKit renders the Map tab.
 
 5. PERMISSIONS
 Location (When In Use), at first launch - the Info tab the app opens on is itself
