@@ -54,14 +54,17 @@ private struct OfflinePackCardBody: View {
                             Text(verbatim: "Downloading…")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
-                        } else if manager.downloadError != nil {
-                            // The sheet says why; the card only says it happened.
-                            Text(verbatim: "Download failed")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
                         }
                     }
                     .padding()
+                }
+
+                // A download or update that saved nothing says why here as
+                // well, the same row the sheet and the Map tab's bar show, and
+                // can be dismissed without opening the sheet.
+                if let error = manager.downloadError {
+                    OfflinePackErrorRow(message: error) { manager.clearDownloadError() }
+                        .padding(.horizontal)
                 }
 
                 Button {
@@ -88,8 +91,8 @@ private struct OfflinePackCardBody: View {
 }
 
 /// Why a pack download or update saved nothing, with a dismiss button. Shared
-/// by the management sheet and the Map tab's download bar; the manager also
-/// clears it when the next download / update starts.
+/// by the Info card, the management sheet and the Map tab's download bar; the
+/// manager also clears it when the next download / update starts.
 struct OfflinePackErrorRow: View {
     let message: String
     let onDismiss: () -> Void
