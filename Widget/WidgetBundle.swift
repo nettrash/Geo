@@ -2,7 +2,7 @@
 //  WidgetBundle.swift
 //  Widget
 //
-//  Created by Ivan Alekseev on 23/01/2025.
+//  Created by nettrash on 23/01/2025.
 //
 
 import WidgetKit

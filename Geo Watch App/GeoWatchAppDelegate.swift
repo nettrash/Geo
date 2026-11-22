@@ -2,7 +2,7 @@
 //  GeoWatchAppDelegate.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 25/04/2025.
+//  Created by nettrash on 25/04/2025.
 //
 
 import WatchKit

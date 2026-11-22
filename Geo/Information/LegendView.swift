@@ -2,7 +2,7 @@
 //  LegendView.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 21/04/2025.
+//  Created by nettrash on 21/04/2025.
 //
 
 import SwiftUI

@@ -2,7 +2,7 @@
 //  MountainInfo.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 02/01/2025.
+//  Created by nettrash on 02/01/2025.
 //
 
 import Foundation

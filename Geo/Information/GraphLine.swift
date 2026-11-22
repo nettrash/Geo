@@ -2,7 +2,7 @@
 //  GraphLine.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 03/01/2025.
+//  Created by nettrash on 03/01/2025.
 //
 
 import SwiftUI

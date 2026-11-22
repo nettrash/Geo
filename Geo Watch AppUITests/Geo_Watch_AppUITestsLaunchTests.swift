@@ -2,7 +2,7 @@
 //  Geo_Watch_AppUITestsLaunchTests.swift
 //  Geo Watch AppUITests
 //
-//  Created by Ivan Alekseev on 24/01/2025.
+//  Created by nettrash on 24/01/2025.
 //
 
 import XCTest

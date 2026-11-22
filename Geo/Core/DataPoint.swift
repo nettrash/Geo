@@ -2,7 +2,7 @@
 //  DataPoint.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 22/04/2025.
+//  Created by nettrash on 22/04/2025.
 //
 
 import Foundation

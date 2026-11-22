@@ -2,7 +2,7 @@
 //  SolarInformationView.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 14/06/2026.
+//  Created by nettrash on 14/06/2026.
 //
 
 import SwiftUI
