@@ -157,15 +157,17 @@ final class PeakFinderOutageTests: XCTestCase {
         if let url = PeakFinder.cacheURL { try? FileManager.default.removeItem(at: url) }
     }
 
-    /// Write a snapshot in `PeakFinder`'s on-disk format, as a previous run would.
-    private func writeSnapshot(savedAt: Date) throws {
+    /// Write a snapshot in `PeakFinder`'s on-disk format, as a previous run would:
+    /// centred on `here`, holding `entries` (by default `snapshotEntries`).
+    private func writeSnapshot(savedAt: Date,
+                               entries: [(name: String, lat: Double, lon: Double, alt: Double)]? = nil) throws {
         let url = try XCTUnwrap(PeakFinder.cacheURL)
         let object: [String: Any] = [
             "centerLatitude": 45.9,
             "centerLongitude": 7.6,
             // `JSONEncoder`'s default `Date` strategy: seconds since 2001-01-01.
             "savedAt": savedAt.timeIntervalSinceReferenceDate,
-            "entries": snapshotEntries.map {
+            "entries": (entries ?? snapshotEntries).map {
                 ["name": $0.name, "latitude": $0.lat, "longitude": $0.lon, "altitude": $0.alt] as [String: Any]
             }
         ]
@@ -721,6 +723,32 @@ final class PeakFinderOutageTests: XCTestCase {
         XCTAssertFalse(flags.contains(true), "the label must never come on under a pack: \(flags)")
     }
 
+    /// The label is about what is on screen. A restored snapshot whose only
+    /// entry lies beyond the 80 km render distance puts nothing there, so the
+    /// bundled summit published while the network is still being asked is not
+    /// "possibly outdated".
+    @MainActor
+    func testRestoredSnapshotWithNothingInRangeLeavesTheFirstPublishUnlabelled() async throws {
+        let clock = TestClock()
+        try writeSnapshot(savedAt: clock.now.addingTimeInterval(-10 * 60),
+                          entries: [("Snap Far", 46.7, 7.6, 3000)])   // ~89 km north of here
+        let finder = makeFinder(clock)
+        var published: [(names: [String], stale: Bool)] = []
+        let subscription = Publishers.CombineLatest(finder.$peaks, finder.$peaksAreStale)
+            .sink { published.append((names: $0.map(\.name).sorted(), stale: $1)) }
+        OverpassStub.reply { _, index in index == 0 ? .hold : .failure(.notConnectedToInternet) }
+        let search = startSearch(finder, known: knownMountains())
+        await waitUntil("the search reaches the network") { OverpassStub.heldCount == 1 }
+
+        let first = published.first { !$0.names.isEmpty }
+        XCTAssertEqual(first?.names, ["Known Summit"], "the far snapshot entry is not shown")
+        XCTAssertEqual(first?.stale, false, "nothing restored is on screen: \(published)")
+
+        OverpassStub.releaseHeld(with: .failure(.notConnectedToInternet))
+        await search.value
+        subscription.cancel()
+    }
+
     // MARK: Overpass runtime errors are failures
 
     /// Verified live: an overloaded instance answers HTTP 200 with
@@ -742,13 +770,18 @@ final class PeakFinderOutageTests: XCTestCase {
         XCTAssertFalse(finder.peaksAreStale)
     }
 
+    /// No mirror answered: the peaks stay on screen, marked stale, and the
+    /// snapshot on disk stays exactly as the last answer wrote it.
     @MainActor
-    func testRuntimeErrorsOnEveryMirrorKeepThePeaksAndMarkThemStale() async {
+    func testRuntimeErrorsOnEveryMirrorKeepThePeaksAndMarkThemStale() async throws {
         let clock = TestClock()
         let finder = makeFinder(clock)
         let answer = OverpassStub.answer([alpha, beta])
         OverpassStub.reply { _, _ in .body(answer) }
         await search(finder)
+        let saved = try readSnapshot()
+        let savedEntries = try XCTUnwrap(saved["entries"] as? [[String: Any]])
+        XCTAssertEqual(savedEntries.compactMap { $0["name"] as? String }.sorted(), ["Stub Alpha", "Stub Beta"])
 
         clock.advance(by: 16 * 60)
         let refusal = OverpassStub.answer([], remark: outOfMemoryRemark)
@@ -758,10 +791,16 @@ final class PeakFinderOutageTests: XCTestCase {
         XCTAssertTrue(finder.peaksAreStale, "no mirror confirmed anything")
         XCTAssertTrue(finder.lastSearchError?.contains("runtime error: Query ran out of memory") == true,
                       finder.lastSearchError ?? "no error recorded")
+
+        let after = try readSnapshot()
+        XCTAssertEqual(try XCTUnwrap(after["savedAt"] as? Double), try XCTUnwrap(saved["savedAt"] as? Double),
+                       "a failed search must not rewrite the snapshot")
+        XCTAssertEqual(after["entries"] as? NSArray, savedEntries as NSArray)
     }
 
+    /// Capitalised here: the remark is matched whatever its case.
     func testEveryMirrorRemarkingARuntimeErrorIsAFailure() async {
-        let remark = "runtime error: Query timed out in \"query\" at line 2 after 10 seconds."
+        let remark = "Runtime error: Query timed out in \"query\" at line 2 after 10 seconds."
         let refusal = OverpassStub.answer([], remark: remark)
         OverpassStub.reply { _, _ in .body(refusal) }
         let outcome = await PeakFinder.fetchPeakOutcome(center: here.coordinate, radiusMeters: 5000)
@@ -862,6 +901,18 @@ final class PeakFinderOutageTests: XCTestCase {
         let entries = try XCTUnwrap(snapshot["entries"] as? [[String: Any]])
         XCTAssertEqual(entries.compactMap { $0["latitude"] as? Double }, [45.92],
                        "peak entries keep their exact position")
+
+        // A tie rounds away from zero, as Swift's `rounded()` does: -122.125
+        // is stored as -122.13, not -122.12.
+        let empty = OverpassStub.answer([])
+        OverpassStub.reply { _, _ in .body(empty) }
+        let tie = CLLocation(coordinate: CLLocationCoordinate2D(latitude: 46.85, longitude: -122.125),
+                             altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: Date())
+        await search(finder, at: tie)
+
+        let tied = try readSnapshot()
+        XCTAssertEqual(try XCTUnwrap(tied["centerLatitude"] as? Double), 46.85, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(tied["centerLongitude"] as? Double), -122.13, accuracy: 1e-9)
     }
 }
 

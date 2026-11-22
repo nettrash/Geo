@@ -147,6 +147,17 @@ final class OfflinePackDownloadTests: XCTestCase {
         OfflinePackStore().loadIndex().first { $0.name == name }
     }
 
+    /// Never throws: a test that holds a request open must still release it and
+    /// await its download.
+    @MainActor
+    private func waitUntil(_ what: String, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(10)
+        while !condition() {
+            guard Date() < deadline else { return XCTFail("timed out waiting until \(what)") }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
     @MainActor
     func testFailedDownloadSavesNoPackAndSaysWhy() async {
         let manager = OfflinePackManager()
@@ -159,6 +170,8 @@ final class OfflinePackDownloadTests: XCTestCase {
                        "Couldn't download peaks — no peak server answered. Try again later.")
     }
 
+    /// The next download's request is held open: the error is cleared when that
+    /// download STARTS, not when it succeeds.
     @MainActor
     func testConfirmedEmptyAreaIsSavedAndTheNextDownloadClearsTheError() async throws {
         let manager = OfflinePackManager()
@@ -166,14 +179,23 @@ final class OfflinePackDownloadTests: XCTestCase {
         XCTAssertNotNil(manager.downloadError)
 
         let empty = OverpassStub.answer([])
-        OverpassStub.reply { _, _ in .body(empty) }
+        let first = OverpassStub.requestCount
+        OverpassStub.reply { _, index in index == first ? .hold : .body(empty) }
         let name = Self.namePrefix + UUID().uuidString
-        await manager.createPack(name: name, center: center, radiusKm: 5)
+        let areaCenter = center
+        let download = Task { @MainActor in
+            await manager.createPack(name: name, center: areaCenter, radiusKm: 5)
+        }
+        await waitUntil("the download holds its request") { OverpassStub.heldCount == 1 }
+        XCTAssertTrue(manager.isDownloading)
+        XCTAssertNil(manager.downloadError, "starting the next download clears the error")
 
+        OverpassStub.releaseHeld(with: .body(empty))
+        await download.value
         let pack = try XCTUnwrap(savedPack(named: name), "a server that answered \"no peaks\" is a real answer")
         XCTAssertEqual(pack.peakCount, 0)
         XCTAssertTrue(manager.packs.contains { $0.id == pack.id })
-        XCTAssertNil(manager.downloadError, "starting the next download clears the error")
+        XCTAssertNil(manager.downloadError)
     }
 
     @MainActor
