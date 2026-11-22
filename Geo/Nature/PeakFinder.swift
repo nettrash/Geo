@@ -311,17 +311,22 @@ class PeakFinder: ObservableObject {
         // Merge with the previous result set so a transient empty / partial
         // response from Overpass doesn't wipe peaks that are still valid. The
         // previous set is the one from BEFORE the local merge above: steps 2
-        // and 3 re-add the local sources deduped against the OSM answer, and
-        // a bundled summit carried in from the pre-network set would stand
-        // next to the OSM node for the same mountain. That holds within one
-        // search only. A bundled summit already on screen from an EARLIER
-        // one — a failed search, or one made before the summit's OSM node came
-        // inside the 5 km query — is a previous peak like any other, merged by
-        // id, so it can stand next to that node until `peakTTL` drops it, as
-        // in v1.3 and on Android.
+        // and 3 re-add the local sources, deduped against the OSM answer.
+        //
+        // A previous peak is carried over only while no fresh peak lies within
+        // 200 m of it. One that has a fresh peak there is replaced by that
+        // peak, whatever its id: by its own fresh copy, or by the OSM node for
+        // a bundled summit an EARLIER search left on screen — a failed search,
+        // or one made before the summit's node came inside the 5 km query.
+        // Carried over by id instead, as in v1.3, that summit stood next to
+        // the node until `peakTTL` dropped it, up to an hour. The fresh peaks
+        // then go in by id; the nodes of one answer are never deduped against
+        // each other.
         var byID: [UUID: NearbyPeak] = [:]
-        for p in previousPeaks { byID[p.id] = p }
-        for p in foundPeaks { byID[p.id] = p } // fresh data wins on duplicates
+        for p in previousPeaks where !isDuplicate(p, in: foundIndex.neighbourhood(of: p)) {
+            byID[p.id] = p
+        }
+        for p in foundPeaks { byID[p.id] = p }
 
         // The one place `peakTTL` applies: right after a confirmed answer.
         let merged = pruneAndRecompute(Array(byID.values), from: location, observerAltitude: obsAlt,

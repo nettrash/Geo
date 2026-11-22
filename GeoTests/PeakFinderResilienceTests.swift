@@ -10,8 +10,9 @@
 //  • `PeakFinderOutageTests` — whole searches against a stubbed Overpass and an
 //    injected clock: local peaks shown at once and through an outage (and
 //    deduped by the 200 m rule), nothing aged out while nothing can be
-//    confirmed, the "possibly outdated" flag, runtime-error answers, the retry
-//    backoff and the restored snapshot.
+//    confirmed, the carried-over peaks a confirmed answer replaces, the
+//    "possibly outdated" flag, runtime-error answers, the retry backoff and
+//    the restored snapshot.
 //  • `NatureLabelTests` — the floor pill's wording and the English strings
 //    table the Nature labels are looked up in (#25).
 //
@@ -539,6 +540,76 @@ final class PeakFinderOutageTests: XCTestCase {
         await search(finder)
         XCTAssertEqual(names(finder), ["Stub Gamma"])
         XCTAssertFalse(finder.peaksAreStale)
+    }
+
+    // MARK: What a confirmed answer replaces
+
+    /// A failed search leaves the bundled summit on screen. The next answer
+    /// brings the OSM node for the same mountain, ~68 m away under its OSM
+    /// name, so with another id. Carried over by id, the summit stood next to
+    /// the node until `peakTTL` dropped it, up to an hour; a confirmed answer
+    /// replaces any carried-over peak within 200 m of one it returns.
+    @MainActor
+    func testAConfirmedAnswerReplacesACarriedOverPeakWithin200m() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        // ~1.4 km from the bundled summit, so its OSM node is inside the 5 km query.
+        let belowTheSummit = CLLocation(coordinate: CLLocationCoordinate2D(latitude: 45.86, longitude: 7.74),
+                                        altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5,
+                                        timestamp: Date())
+        await search(finder, known: knownMountains(), at: belowTheSummit)
+        XCTAssertNotNil(finder.lastSearchError, "no signal")
+        XCTAssertEqual(names(finder), ["Known Summit"])
+
+        let node = StubPeak(name: "Known Summit (OSM)", lat: 45.8506, lon: 7.7502, ele: 4000)
+        let answer = OverpassStub.answer([node])
+        OverpassStub.reply { _, _ in .body(answer) }
+        clock.advance(by: 61)                    // the retry backoff has run out
+        await search(finder, known: knownMountains(), at: belowTheSummit)
+        XCTAssertNil(finder.lastSearchError, "the search was answered")
+        XCTAssertEqual(names(finder), ["Known Summit (OSM)"],
+                       "the node replaces the summit a failed search left on screen")
+
+        clock.advance(by: 16 * 60)               // older than the cache age: ask again
+        await search(finder, known: knownMountains(), at: belowTheSummit)
+        XCTAssertEqual(names(finder), ["Known Summit (OSM)"], "and the summit does not come back")
+    }
+
+    /// Only a fresh peak within 200 m replaces a carried-over one: one ~250 m
+    /// from everything the answer returns is still carried over.
+    @MainActor
+    func testAConfirmedAnswerCarriesOverAPeak250mFromEveryFreshPeak() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let first = OverpassStub.answer([alpha])
+        OverpassStub.reply { _, _ in .body(first) }
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha"])
+
+        let north = StubPeak(name: "Stub Alpha North", lat: alpha.lat + 0.00225, lon: alpha.lon, ele: 3050)
+        let second = OverpassStub.answer([north, beta])
+        OverpassStub.reply { _, _ in .body(second) }
+        clock.advance(by: 16 * 60)               // older than the cache age, well inside the TTL
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Alpha North", "Stub Beta"],
+                       "a peak ~250 m from every fresh one is carried over")
+    }
+
+    /// The nodes of one answer are never deduped against each other: two OSM
+    /// nodes ~150 m apart are two summits, also once both are carried over.
+    @MainActor
+    func testTwoNodes150mApartInOneAnswerAreBothKept() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let twin = StubPeak(name: "Stub Alpha Twin", lat: alpha.lat + 0.00135, lon: alpha.lon, ele: 3080)
+        let answer = OverpassStub.answer([alpha, twin])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Alpha Twin"])
+
+        clock.advance(by: 16 * 60)               // older than the cache age: ask again
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Alpha Twin"])
     }
 
     // MARK: The "possibly outdated" flag
