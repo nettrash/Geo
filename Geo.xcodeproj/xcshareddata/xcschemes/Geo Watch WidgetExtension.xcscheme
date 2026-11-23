@@ -94,7 +94,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E5A22D642DBFEA39008DB127"
             BuildableName = "Geo Watch WidgetExtension.appex"
-            BlueprintName = "Geo Watch WidgetExtension"
             ReferencedContainer = "container:Geo.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -137,7 +136,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E5A22D642DBFEA39008DB127"
             BuildableName = "Geo Watch WidgetExtension.appex"
-            BlueprintName = "Geo Watch WidgetExtension"
             ReferencedContainer = "container:Geo.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

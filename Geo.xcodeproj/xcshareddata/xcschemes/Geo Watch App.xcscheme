@@ -102,7 +102,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E56AC78B2D43E0BE00300854"
             BuildableName = "Geo Watch App.app"
-            BlueprintName = "Geo Watch App"
             ReferencedContainer = "container:Geo.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -119,7 +118,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E56AC78B2D43E0BE00300854"
             BuildableName = "Geo Watch App.app"
-            BlueprintName = "Geo Watch App"
             ReferencedContainer = "container:Geo.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
