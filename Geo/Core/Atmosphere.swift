@@ -2,7 +2,7 @@
 //  Atmosphere.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 13/06/2026.
+//  Created by nettrash on 13/06/2026.
 //  Copyright © 2026 NETTRASH. All rights reserved.
 //
 

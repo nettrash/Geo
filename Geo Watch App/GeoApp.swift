@@ -2,7 +2,7 @@
 //  GeoApp.swift
 //  Geo Watch App
 //
-//  Created by Ivan Alekseev on 24/01/2025.
+//  Created by nettrash on 24/01/2025.
 //
 
 import SwiftUI

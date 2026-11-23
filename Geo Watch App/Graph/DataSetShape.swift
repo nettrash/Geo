@@ -2,7 +2,7 @@
 //  DataSetShape.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 24/04/2025.
+//  Created by nettrash on 24/04/2025.
 //
 
 import SwiftUI

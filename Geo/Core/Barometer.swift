@@ -2,7 +2,7 @@
 //  Barometer.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 24/05/2019.
+//  Created by nettrash on 24/05/2019.
 //  Copyright © 2019 NETTRASH. All rights reserved.
 //
 

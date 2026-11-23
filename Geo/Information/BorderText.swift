@@ -2,7 +2,7 @@
 //  BorderText.swift
 //  Geo
 //
-//  Created by Ivan Alekseev on 27/12/2024.
+//  Created by nettrash on 27/12/2024.
 //
 
 import SwiftUI

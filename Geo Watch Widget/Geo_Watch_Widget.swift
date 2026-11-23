@@ -2,7 +2,7 @@
 //  Geo_Watch_Widget.swift
 //  Geo Watch Widget
 //
-//  Created by Ivan Alekseev on 28/04/2025.
+//  Created by nettrash on 28/04/2025.
 //
 
 import WidgetKit
