@@ -2,7 +2,7 @@
 
 Copy-paste source for App Store Connect. Field limits: Promotional Text ≤ 170
 chars, Description ≤ 4000, What's New ≤ 4000, Keywords ≤ 100. Current release:
-**1.2**.
+**1.3**.
 
 ---
 
@@ -41,29 +41,16 @@ Requires an iPhone with a barometric sensor for altitude readings; the Nature vi
 
 ---
 
-## What's New in This Version (1.2)
+## What's New in This Version (1.3)
 
-The Nature view is rebuilt around one job: naming the peaks you can actually see.
+Nearby peaks you can rely on, even when the map server is struggling.
 
-• A clean horizon with N / E / S / W compass markers, and a clear label on every visible summit — pinned to the real mountain, not a modelled silhouette.
-• Peaks hidden below your horizon are no longer shown, so the view isn't cluttered with summits you couldn't possibly see.
-• A new minimum-altitude slider hides the small hills; your setting is remembered next time.
-• A shutter button captures the camera view with the peak labels drawn on, ready to share or save to Photos.
-• Offline areas are peaks-only now: smaller and faster to download, and they show peaks in the camera out to ~80 km with no signal. A downloaded area can be updated in place.
-• Drag sideways to nudge the whole overlay onto the real mountains when the compass is a few degrees off.
-
-A new Magnetic Conditions card on the Info tab tells you what a geomagnetic storm is doing to your compass, to your GPS and to your chances of seeing the aurora — from exactly where you're standing.
-
-• It reads the planetary K index published by NOAA's Space Weather Prediction Center — measured by ground observatories, not by your phone — and works out the local consequences on the device: the storm level on the G scale, how far a storm can push your compass beyond its normal error, whether GPS may degrade at your latitude, and whether the auroral oval reaches you tonight.
-• Your magnetic latitude, and the Kp the aurora would need to become visible from it ("needs about Kp 5+"), with tonight's darkness window and the bearing to look along.
-• Aurora alerts are opt-in and off by default. Switch them on for a notification on nights the aurora could be visible from where you are, capped at one a night.
-• Space weather without telling anyone where you are: the request is a fixed URL with no parameters — no coordinates, no identifiers, nothing about you at all — and every local figure is worked out on the phone from that one published number.
-• With no signal the card keeps the half that never needed the network — magnetic latitude, the Kp threshold, the darkness window, the bearing — and says plainly that it has no space-weather data.
-• A "What this means" sheet covers what a storm really does to a compass and to GPS, and why local iron — vehicles, rebar, a case magnet — routinely beats any storm.
-
-Easier on the battery, and the widget is stale less often: the home-screen widget and the Watch complication now ask to refresh every 15 minutes instead of every 2 and 5 minutes. iOS only grants a few dozen widget reloads a day, so the old cadence spent that budget early and then left the widget stale for long stretches. Every refresh still takes a live barometer sample, and using the app still updates the widget straight away.
-
-Also fixed: on the Stats tab, the live altitude graph keeps recording the barometer trace when GPS drops, instead of freezing.
+• Geo now asks three OpenStreetMap servers for nearby peaks instead of one, and moves on when a server is busy or slow. A busy server's empty reply is no longer mistaken for "there are no peaks here".
+• The peaks Geo already knows appear straight away: the built-in mountains and any offline area you've downloaded. They show before the network answers and stay put if the search fails, so with no signal an offline area's peaks are there at once.
+• Your last good list of nearby peaks is remembered on your device for up to a week. Reopening Geo without signal still shows your peaks, marked "possibly outdated" until a fresh answer arrives.
+• The peak count now says how many peaks your minimum-altitude setting hides. If it hides them all, a pill says so and resets the setting in one tap. The slider also needs a deliberate drag now, so a stray tap can no longer hide every peak.
+• A failed offline-area download no longer saves an empty area that looks like "no peaks here". Nothing is saved, and Geo tells you why. A failed update keeps the area you already had.
+• The same summit no longer appears twice after a connection problem, and large offline areas no longer make the screen stall.
 
 ---
 
@@ -94,8 +81,9 @@ Nature tab, which is correct behaviour but looks broken.
 ```
 Geo names the mountain peaks in front of the camera, reads altitude from the
 barometer, and reports what a geomagnetic storm is doing to the compass and to
-aurora visibility. This update (1.2) rebuilds the
-Nature view around naming visible peaks and adds the Magnetic Conditions card.
+aurora visibility. This update (1.3) makes the nearby-peak list reliable: three
+OpenStreetMap servers instead of one, peaks from downloaded offline areas with no
+signal, and a clear message when the minimum-altitude setting hides every peak.
 
 1. ACCESS
 No account, sign-in, registration, in-app purchase or subscription. Every feature
@@ -124,10 +112,13 @@ Altitude comes from the barometric sensor; without one the app falls back to
 satellite altitude and says so on screen.
 
 3. WHERE THE NEW THINGS ARE
-Nature tab: peak labels, the minimum-altitude slider, horizontal drag to align
-the overlay, and the shutter button. Info tab: the Magnetic Conditions
-card (its "What this means" sheet holds the explainer and the opt-in aurora-alert
-switch) and "Manage offline areas".
+Nature tab: the peak count now shows how many peaks the minimum-altitude slider
+hides, e.g. "(3 hidden)"; when it hides every peak, a pill names the setting and
+resets it in one tap; "possibly outdated" marks a remembered list while the
+servers can't be reached. Info tab, "Manage offline areas": a download that no
+server answered now says why instead of saving an empty area. Everything else
+(peak labels, drag to align, the shutter button, the Magnetic Conditions card)
+is unchanged from 1.2.
 
 4. NETWORK
 There are no servers of ours. No analytics, advertising, tracking or third-party

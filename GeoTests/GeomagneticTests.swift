@@ -756,6 +756,7 @@ final class GeomagneticTests: XCTestCase {
     /// storm reads "Compass: Normal · GPS: Nominal" directly above a footer
     /// that says there is no space-weather data. Android gates the same three
     /// rows on the same value.
+    @MainActor
     func testStormDerivedRowsAreHiddenWithoutAKpButThePlaceRowsStay() throws {
         let offline = try londonConditions(nil)
         XCTAssertNil(offline.kpNow)
