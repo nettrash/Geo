@@ -1,11 +1,11 @@
 # Privacy Policy
 
-**Effective date:** 1 August 2026
+**Effective date:** 21 November 2026
 **Applies to:** Geo — the iOS app (with Apple Watch companion) published by nettrash on the App Store. This policy is versioned alongside the app's source code; the most recent commit on `master` is authoritative.
 
 ## TL;DR
 
-Geo doesn't collect any personal information about you, doesn't create accounts, and doesn't use analytics, advertising, or trackers. The only data that ever leaves your device is what's necessary to render the things you ask the app to render: a few network requests to display the map, an approximate-location query to OpenStreetMap when the app looks up nearby mountain peaks, and a parameterless request to NOAA for the planetary K index. Your own history — pressure, trips and summits — syncs through your private iCloud, and only there. Nothing is sent to servers operated by us — we have no servers.
+Geo doesn't collect any personal information about you, doesn't create accounts, and doesn't use analytics, advertising, or trackers. The only data that ever leaves your device is what's necessary to render the things you ask the app to render: a few network requests to display the map, an approximate-location query to public OpenStreetMap Overpass servers when the app looks up nearby mountain peaks, and a parameterless request to NOAA for the planetary K index. Your own history — pressure, trips and summits — syncs through your private iCloud, and only there. Nothing is sent to servers operated by us — we have no servers.
 
 ## What the app accesses, and what each access does
 
@@ -30,7 +30,7 @@ The Apple Watch companion app and Watch widget request only **Motion & Fitness**
 
 ## What goes over the network
 
-**OpenStreetMap Overpass API** (`https://overpass-api.de/api/interpreter`). When you open the Nature tab, the app sends an HTTPS request containing your approximate latitude/longitude and a search radius (5 km) to fetch the list of nodes tagged `natural=peak` near you. The radius is larger only when *you* ask for it: downloading an offline area uses the radius you pick yourself (5 / 10 / 50 / 100 km). The request body contains *only* those coordinates and the radius — no device identifiers, no IDFA, no account information. The Overpass API is a free, public service hosted by OpenStreetMap volunteers and governed by the [OpenStreetMap Foundation Privacy Policy](https://osmfoundation.org/wiki/Privacy_Policy).
+**OpenStreetMap Overpass API** (three public servers: `https://overpass-api.de`, `https://overpass.private.coffee` and `https://overpass.openstreetmap.fr`). When you open the Nature tab, the app sends an HTTPS request containing your approximate latitude/longitude and a search radius (5 km) to fetch the list of nodes tagged `natural=peak` near you. The radius is larger only when *you* ask for it: downloading an offline area uses the radius you pick yourself (5 / 10 / 50 / 100 km). The request body contains *only* those coordinates and the radius — no device identifiers, no IDFA, no account information. Each search asks *one* of the three servers, starting from a rotating position, and asks the next only if that one doesn't answer usably (for example a network error, an overloaded server, a timeout or a server-side runtime error) — so a single search can reach all three, and every server asked receives exactly the same request. Each is a free, public service run by an association, under its own terms: `overpass-api.de` by FOSSGIS e.V. in Germany ([terms of use](https://www.fossgis.de/arbeitsgruppen/osm-server/nutzungsbedingungen/), [privacy policy](https://www.fossgis.de/datenschutzerkl%C3%A4rung/)); `overpass.private.coffee` by Private.coffee, a non-profit association registered in Austria ([privacy policy](https://private.coffee/privacy.html), which says its web-server IP logs are kept for up to 48 hours); and `overpass.openstreetmap.fr` by OpenStreetMap France ([legal notice](https://www.openstreetmap.fr/mentions-legales/)).
 
 **Apple MapKit.** The Map view uses MapKit to render map tiles and your-location pin. Apple is the data controller for those requests; data flow and Apple's use of it are governed by the [Apple Privacy Policy](https://www.apple.com/legal/privacy/) and the on-device privacy preferences you control in *Settings → Privacy & Security → Location Services → Maps*. MapKit on iOS doesn't require an API key and routes all requests through Apple's privacy-preserving infrastructure — Apple does not share your queries with third parties for advertising.
 
@@ -44,6 +44,8 @@ That's the entire list. There are no other servers contacted. There is no teleme
 
 **Pressure history, trips and summit log** — the device's barometer is sampled periodically and the readings are stored in a local Core Data store inside the app's sandbox so the Stat tab and the home-screen widget can show altitude trends; the trip recorder and the summit log write to that same store. That store syncs through **your own private iCloud** (`NSPersistentCloudKitContainer`, container `iCloud.me.nettrash.Geo`), so your history follows you across the devices signed into your Apple Account. The sync is operated by Apple under [Apple's Privacy Policy](https://www.apple.com/legal/privacy/) and lands in your private CloudKit database — it is never sent to a server we run, and we cannot read it. Turn it off in *Settings → [your name] → iCloud → Apps Using iCloud*. Uninstalling the app removes the local copy; the iCloud copy is removed from *Settings → [your name] → iCloud → Manage Account Storage*.
 
+**Nearby-peaks cache** — after each successful peak search the app saves the peaks it found (name, coordinate and elevation — public peak data) plus the point the search was made from (your position at the time, rounded to about 1 km) in a small file, `NearbyPeaksCache.json`, in the app's Caches directory, so the Nature view can still show them after a restart, even while the Overpass servers can't be reached; they are then labelled "possibly outdated" unless an offline area you downloaded covers where you are. The next successful search replaces it, and it is ignored once it is more than 7 days old or you are more than 50 km from that point. It is not synced through iCloud, and like everything in Caches it is not included in iCloud or device backups; iOS may clear it when storage runs low, and uninstalling the app removes it.
+
 The Apple Watch companion stores its own pressure-history database locally on the Watch.
 
 ## App Tracking Transparency
@@ -55,7 +57,7 @@ Geo does not "track" you in the sense Apple's *App Tracking Transparency* framew
 | Service | What it sees | Whose policy applies |
 |---|---|---|
 | Apple MapKit | Coarse position + viewport requests for tile rendering | Apple's |
-| OpenStreetMap Overpass API | Approximate coordinates + search radius | OpenStreetMap Foundation's |
+| OpenStreetMap Overpass API (three public servers) | Approximate coordinates + search radius — the same request at each server asked | FOSSGIS e.V.'s (`overpass-api.de`), Private.coffee's (`overpass.private.coffee`) and OpenStreetMap France's (`overpass.openstreetmap.fr`), each for its own server |
 | Open-Meteo API | Approximate coordinates (~110 m grid) to look up peak / vantage-point ground elevation | Open-Meteo's |
 | NOAA Space Weather Prediction Center | **Nothing** — a fixed URL with no parameters, byte-identical for every user, returning space-weather indices and forecasts | Public domain (U.S. Government work); NOAA's |
 | Apple CloudKit | Your own pressure history, trips and summit log, in your private iCloud database | Apple's |
@@ -69,7 +71,7 @@ Geo is rated **4+** and is suitable for all ages. We do not knowingly collect pe
 
 ## International data transfers
 
-The Overpass API endpoint is a global service; requests may transit servers in any country. The data sent (coordinates + radius) does not contain personal data under GDPR Article 4(1) when used in this app — it's not combined with any identifier we hold. MapKit requests are routed through Apple's infrastructure under Apple's standard privacy controls.
+The three Overpass API servers are global services; requests may transit servers in any country. Their operators are associations based in Germany (FOSSGIS e.V.), Austria (Private.coffee) and France (OpenStreetMap France). The data sent (coordinates + radius) does not contain personal data under GDPR Article 4(1) when used in this app — it's not combined with any identifier we hold. MapKit requests are routed through Apple's infrastructure under Apple's standard privacy controls.
 
 ## Your rights
 

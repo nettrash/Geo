@@ -59,6 +59,14 @@ private struct OfflinePackCardBody: View {
                     .padding()
                 }
 
+                // A download or update that saved nothing says why here as
+                // well, the same row the sheet and the Map tab's bar show, and
+                // can be dismissed without opening the sheet.
+                if let error = manager.downloadError {
+                    OfflinePackErrorRow(message: error) { manager.clearDownloadError() }
+                        .padding(.horizontal)
+                }
+
                 Button {
                     showManager = true
                 } label: {
@@ -78,6 +86,30 @@ private struct OfflinePackCardBody: View {
         }
         .sheet(isPresented: $showManager) {
             OfflinePackManagerView(manager: manager, location: location)
+        }
+    }
+}
+
+/// Why a pack download or update saved nothing, with a dismiss button. Shared
+/// by the Info card, the management sheet and the Map tab's download bar; the
+/// manager also clears it when the next download / update starts.
+struct OfflinePackErrorRow: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Dismiss")
         }
     }
 }
@@ -132,6 +164,11 @@ struct OfflinePackManagerView: View {
                                 }
                             }
                         }
+                    }
+                    // A download or update that saved nothing says so here,
+                    // where its progress was shown.
+                    if let error = manager.downloadError {
+                        OfflinePackErrorRow(message: error) { manager.clearDownloadError() }
                     }
                 }
 

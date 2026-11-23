@@ -12,11 +12,12 @@
 //  skyline; that skyline was removed — the modelled ridge rarely matched
 //  the real one on camera — and the grid prefetch went with it. Peak
 //  altitudes are still DEM-resolved at download time inside
-//  `PeakFinder.fetchOSMPeaks`, which is one bounded lookup per peak.
+//  `PeakFinder.fetchPeakOutcome`, which is one bounded lookup per peak.
 //
 //  Download reuses the app's existing throttled, retry-backed public-API
-//  path (`PeakFinder.fetchOSMPeaks`), so the bounding-box prefetch is
-//  automatically polite to Overpass. Owned by `GeoAppDelegate`.
+//  path (`PeakFinder.fetchPeakOutcome`), so the bounding-box prefetch is
+//  automatically polite to Overpass. A download no peak server answered
+//  saves nothing and says so (`downloadError`). Owned by `GeoAppDelegate`.
 //
 
 import Foundation
@@ -39,6 +40,13 @@ final class OfflinePackManager: ObservableObject {
     /// The pack currently being re-downloaded by `updatePack`, or `nil`. Lets the
     /// management list show a per-row spinner on exactly the pack being refreshed.
     @Published private(set) var updatingPackID: UUID?
+
+    /// Why the last download or update saved nothing — no peak server
+    /// answered — or `nil`. Shown where the download progress is (the
+    /// offline-pack sheet and card, the Map tab's bar) until it is dismissed or
+    /// the next download / update starts. A server that answered "no peaks
+    /// here" is not an error: that pack is saved.
+    @Published private(set) var downloadError: String?
 
     /// Union of every pack's peaks, deduped — handed to `PeakFinder` so
     /// the area's peaks show offline. Distance/bearing are placeholders;
@@ -73,6 +81,7 @@ final class OfflinePackManager: ObservableObject {
     func createPack(name: String, center: CLLocationCoordinate2D, radiusKm: Double) async {
         guard !isDownloading else { return }
         isDownloading = true
+        downloadError = nil
         statusText = "Finding peaks…"
         defer {
             isDownloading = false
@@ -83,16 +92,25 @@ final class OfflinePackManager: ObservableObject {
         let packName = trimmed.isEmpty ? Self.defaultName(for: center) : trimmed
 
         // 1. Peaks across the whole radius (one throttled Overpass query).
-        let osmPeaks = await PeakFinder.fetchOSMPeaks(center: center,
-                                                      radiusMeters: radiusKm * 1000)
+        let outcome = await PeakFinder.fetchPeakOutcome(center: center,
+                                                        radiusMeters: radiusKm * 1000)
+        if Task.isCancelled { return }
+
+        // A FAILED fetch is not an empty area. Saving it registered a 0-peak
+        // pack that read as "no peaks in this area" — so save nothing and say
+        // why. A server that answered "no peaks" is `.success([])` and IS
+        // saved below: that is a real answer.
+        guard case .success(let osmPeaks) = outcome else {
+            AppLog.app.error("Offline pack download failed: \(outcome.failureSummary ?? "unknown")")
+            downloadError = "Couldn't download peaks — no peak server answered. Try again later."
+            return
+        }
         // Keep the CLOSEST peaks when capping — Overpass returns nodes in
         // arrival order, not by distance, so a naive prefix could drop nearby
         // peaks while keeping far ones. Mirrors the live PeakFinder path.
         let peaks = Array(osmPeaks.sorted { $0.distance < $1.distance }.prefix(maxPackPeaks))
 
-        if Task.isCancelled { return }
-
-        // Note: `fetchOSMPeaks` already resolves the altitude of every peak whose
+        // Note: `fetchPeakOutcome` already resolves the altitude of every peak whose
         // OSM node carries no `ele` tag, via one batched `TerrainElevationService`
         // lookup — that's a bounded number of DEM points (one per peak) and it
         // MUST stay, because a peak with no altitude gets dropped. What used to
@@ -141,13 +159,14 @@ final class OfflinePackManager: ObservableObject {
     /// its stored data in place (same id / name / created date). Use it to pick
     /// up new OpenStreetMap peaks, or to complete a download that was partial.
     ///
-    /// A failed or empty fetch (offline, Overpass down) is IGNORED — an empty
-    /// result almost always means the request didn't get through, not that a
-    /// once-populated area is suddenly peakless, so an update attempt can never
-    /// wipe a good pack.
+    /// A FAILED fetch (offline, no peak server answering) keeps the existing
+    /// pack and publishes `downloadError`. An answer with NO peaks is ignored
+    /// too — a once-populated area is not suddenly peakless — so an update
+    /// attempt can never wipe a good pack.
     func updatePack(_ pack: OfflinePack) async {
         guard !isDownloading else { return }
         isDownloading = true
+        downloadError = nil
         updatingPackID = pack.id
         statusText = "Updating…"
         defer {
@@ -156,10 +175,15 @@ final class OfflinePackManager: ObservableObject {
             statusText = ""
         }
 
-        let osmPeaks = await PeakFinder.fetchOSMPeaks(center: pack.center,
-                                                      radiusMeters: pack.radiusKm * 1000)
-        let peaks = Array(osmPeaks.sorted { $0.distance < $1.distance }.prefix(maxPackPeaks))
+        let outcome = await PeakFinder.fetchPeakOutcome(center: pack.center,
+                                                        radiusMeters: pack.radiusKm * 1000)
         if Task.isCancelled { return }
+        guard case .success(let osmPeaks) = outcome else {
+            AppLog.app.error("Offline pack update failed: \(outcome.failureSummary ?? "unknown")")
+            downloadError = "Couldn't update peaks — no peak server answered. Try again later."
+            return
+        }
+        let peaks = Array(osmPeaks.sorted { $0.distance < $1.distance }.prefix(maxPackPeaks))
         guard !peaks.isEmpty else { return }   // never overwrite a good pack with nothing
 
         let data = OfflinePackData(
@@ -176,6 +200,11 @@ final class OfflinePackManager: ObservableObject {
             store.saveIndex(packs)
         }
         await reseedConsumers()
+    }
+
+    /// Dismiss `downloadError`.
+    func clearDownloadError() {
+        downloadError = nil
     }
 
     /// Delete a saved pack and re-seed the live caches without it.

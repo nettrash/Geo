@@ -113,6 +113,7 @@
 		FACE000000000000000FB006 /* SpaceWeatherService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE000000000000000FA006 /* SpaceWeatherService.swift */; };
 		FACE000000000000000FB007 /* MagneticInformationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE000000000000000FA007 /* MagneticInformationView.swift */; };
 		FACE000000000000000FB008 /* GeomagneticTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE000000000000000FA008 /* GeomagneticTests.swift */; };
+		FACE000000000000000FB00C /* PeakFinderResilienceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE000000000000000FA00C /* PeakFinderResilienceTests.swift */; };
 		FACE000000000000000FB00B /* SpaceWeatherServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FACE000000000000000FA00B /* SpaceWeatherServiceTests.swift */; };
 		FACE000000000000000FB009 /* mlat_delta_2026.bin in Resources */ = {isa = PBXBuildFile; fileRef = FACE000000000000000FA009 /* mlat_delta_2026.bin */; };
 		F5F5F5012D4299650038B14D /* InformationToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = E592D5842D4299550038B14D /* InformationToken.swift */; };
@@ -309,6 +310,7 @@
 		FACE000000000000000FA006 /* SpaceWeatherService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceWeatherService.swift; sourceTree = "<group>"; };
 		FACE000000000000000FA007 /* MagneticInformationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagneticInformationView.swift; sourceTree = "<group>"; };
 		FACE000000000000000FA008 /* GeomagneticTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeomagneticTests.swift; sourceTree = "<group>"; };
+		FACE000000000000000FA00C /* PeakFinderResilienceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeakFinderResilienceTests.swift; sourceTree = "<group>"; };
 		FACE000000000000000FA00B /* SpaceWeatherServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpaceWeatherServiceTests.swift; sourceTree = "<group>"; };
 		FACE000000000000000FA009 /* mlat_delta_2026.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.binary; path = mlat_delta_2026.bin; sourceTree = "<group>"; };
 		F6F6F6012D4299550038B14D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -597,6 +599,7 @@
 				F3F3F3F92D4299550038B14D /* NearbyPeakTests.swift */,
 				FACE000000000000000FA004 /* OfflinePackTests.swift */,
 				FACE000000000000000FA008 /* GeomagneticTests.swift */,
+				FACE000000000000000FA00C /* PeakFinderResilienceTests.swift */,
 				FACE000000000000000FA00B /* SpaceWeatherServiceTests.swift */,
 			);
 			path = GeoTests;
@@ -1095,6 +1098,7 @@
 				F3F3F3FA2D4299650038B14D /* NearbyPeakTests.swift in Sources */,
 				FACE000000000000000FB004 /* OfflinePackTests.swift in Sources */,
 				FACE000000000000000FB008 /* GeomagneticTests.swift in Sources */,
+				FACE000000000000000FB00C /* PeakFinderResilienceTests.swift in Sources */,
 				FACE000000000000000FB00B /* SpaceWeatherServiceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

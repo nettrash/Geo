@@ -1,0 +1,1103 @@
+//
+//  PeakFinderResilienceTests.swift
+//  GeoTests
+//
+//  Covers what turned a loaded Overpass instance into a permanently empty
+//  Nature tab (#26), and what the tab shows while the network is down:
+//
+//  • `PeakFinderResilienceTests` — the pure rules: when a previous nearby-peak
+//    result may be reused, and the mirror list a search fails over across.
+//  • `PeakFinderOutageTests` — whole searches against a stubbed Overpass and an
+//    injected clock: local peaks shown at once and through an outage (and
+//    deduped by the 200 m rule), nothing aged out while nothing can be
+//    confirmed, the carried-over peaks a confirmed answer replaces, the
+//    "possibly outdated" flag, runtime-error answers, the retry backoff and
+//    the restored snapshot.
+//  • `NatureLabelTests` — the floor pill's wording and the English strings
+//    table the Nature labels are looked up in (#25).
+//
+//  NO test touches the real network: `OverpassStub` answers every Overpass
+//  request (and fails any elevation lookup), and every stubbed peak carries an
+//  `ele` tag, so no DEM lookup is needed in the first place.
+//
+
+import XCTest
+import Combine
+import CoreLocation
+@testable import Geo
+
+final class PeakFinderResilienceTests: XCTestCase {
+
+    /// Mirror the production tuning; if someone changes the constants in
+    /// `PeakFinder` these tests still describe the *rules*, not the numbers.
+    private let maxCacheAge: TimeInterval = 15 * 60
+    private let retryBackoff: TimeInterval = 60
+
+    private func canReuse(successAge: TimeInterval?, failureAge: TimeInterval?,
+                          now: Date = Date()) -> Bool {
+        PeakFinder.canReuseResult(now: now,
+                                  lastSuccessAt: successAge.map { now.addingTimeInterval($0) },
+                                  lastFailureAt: failureAge.map { now.addingTimeInterval($0) },
+                                  maxCacheAge: maxCacheAge,
+                                  retryBackoff: retryBackoff)
+    }
+
+    func testNothingSearchedYetIsNeverReused() {
+        XCTAssertFalse(canReuse(successAge: nil, failureAge: nil))
+    }
+
+    func testFreshResultIsReusedWithoutAskingTheNetwork() {
+        XCTAssertTrue(canReuse(successAge: -60, failureAge: nil))
+    }
+
+    /// The regression: the old guard only looked at distance, so a stationary
+    /// user (or one whose location stream iOS paused) never refetched.
+    func testStaleResultIsRefetchedEvenWithoutMovement() {
+        XCTAssertFalse(canReuse(successAge: -2 * maxCacheAge, failureAge: nil))
+    }
+
+    /// Once stale, the result is still shown while the backoff from a failed
+    /// attempt runs — so the peaks on screen are never dropped for nothing, and
+    /// a loaded endpoint is not hammered on every 5 s refresh tick.
+    func testStaleResultIsKeptWhileRetryBackoffRuns() {
+        XCTAssertTrue(canReuse(successAge: -2 * maxCacheAge, failureAge: -retryBackoff / 2))
+    }
+
+    func testStaleResultIsRefetchedOnceBackoffExpires() {
+        XCTAssertFalse(canReuse(successAge: -2 * maxCacheAge, failureAge: -2 * retryBackoff))
+    }
+
+    /// Nothing has ever loaded and the last attempt failed seconds ago: the
+    /// screen stays as it is instead of firing another request at a loaded
+    /// mirror on every 5 s tick. The next attempt happens when the backoff
+    /// expires — which is the only thing standing between an outage and a
+    /// client that DDoSes a shared public endpoint.
+    func testFailedSearchIsNotRetriedUntilBackoffExpiresWithNothingOnScreen() {
+        XCTAssertTrue(canReuse(successAge: nil, failureAge: -retryBackoff / 2))
+        XCTAssertFalse(canReuse(successAge: nil, failureAge: -2 * retryBackoff))
+    }
+
+    /// Exactly the instances that carry the GLOBAL planet. A regional instance
+    /// answers HTTP 200 with zero peaks outside its region — `overpass.osm.ch`
+    /// (Switzerland only) gave Mont Blanc 0 peaks instead of 83 and Fuji 0
+    /// instead of 11 — and an empty answer reads as "there are no peaks here".
+    func testMirrorListIsExactlyTheThreeGlobalInstances() {
+        XCTAssertEqual(PeakFinder.overpassEndpoints, [
+            "https://overpass-api.de/api/interpreter",
+            "https://overpass.private.coffee/api/interpreter",
+            "https://overpass.openstreetmap.fr/api/interpreter"
+        ])
+    }
+
+    func testRotationVisitsEveryMirrorExactlyOnce() {
+        let count = PeakFinder.overpassEndpoints.count
+        for start in [-4, -1, 0, 1, count, count + 7] {
+            let rotated = PeakFinder.rotatedEndpoints(startingAt: start)
+            XCTAssertEqual(rotated.count, count)
+            XCTAssertEqual(Set(rotated), Set(PeakFinder.overpassEndpoints),
+                           "rotation must cover every mirror, never duplicate one")
+        }
+        XCTAssertEqual(PeakFinder.rotatedEndpoints(startingAt: 1).first,
+                       PeakFinder.overpassEndpoints[1],
+                       "the cursor must actually change which mirror is tried first")
+    }
+}
+
+// MARK: - Whole searches against a stubbed Overpass
+
+final class PeakFinderOutageTests: XCTestCase {
+
+    /// A valley in the Pennine Alps. Every stubbed peak lies inside the live
+    /// 5 km query and above the horizon from the 2000 m observer.
+    private var here: CLLocation {
+        CLLocation(coordinate: CLLocationCoordinate2D(latitude: 45.9, longitude: 7.6),
+                   altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: Date())
+    }
+    private let observerAltitude: Double = 2000
+
+    private let alpha = StubPeak(name: "Stub Alpha", lat: 45.92, lon: 7.60, ele: 3100)
+    private let beta = StubPeak(name: "Stub Beta", lat: 45.90, lon: 7.63, ele: 2900)
+    private let gamma = StubPeak(name: "Stub Gamma", lat: 45.88, lon: 7.60, ele: 3300)
+
+    /// ~9 km from `here`: a downloaded pack that covers this spot.
+    private let packPeak = NearbyPeak(name: "Pack Peak",
+                                      coordinate: CLLocationCoordinate2D(latitude: 45.95, longitude: 7.70),
+                                      altitude: 3500, distance: 0, bearing: 0)
+    /// ~100 km away: beyond the 80 km render distance, so it covers nothing here.
+    private let farPackPeak = NearbyPeak(name: "Far Pack Peak",
+                                         coordinate: CLLocationCoordinate2D(latitude: 46.8, longitude: 7.6),
+                                         altitude: 3000, distance: 0, bearing: 0)
+
+    /// What a previous run would have left on disk around `here`.
+    private let snapshotEntries: [(name: String, lat: Double, lon: Double, alt: Double)] = [
+        ("Snap One", 45.93, 7.58, 3200),
+        ("Snap Two", 45.87, 7.65, 3000)
+    ]
+
+    /// Verified live on `overpass.openstreetmap.fr`: HTTP 200, JSON, no peaks.
+    private let outOfMemoryRemark = "runtime error: Query ran out of memory in \"query\" at line 1. It would need at least 2 MB of RAM to continue."
+
+    override func setUp() {
+        super.setUp()
+        Self.removeSnapshot()
+        OverpassStub.install()
+    }
+
+    override func tearDown() {
+        OverpassStub.uninstall()
+        Self.removeSnapshot()
+        XCTAssertEqual(OverpassStub.elevationRequestCount, 0,
+                       "a stubbed peak without `ele` sent a DEM lookup")
+        super.tearDown()
+    }
+
+    // MARK: Helpers
+
+    private static func removeSnapshot() {
+        if let url = PeakFinder.cacheURL { try? FileManager.default.removeItem(at: url) }
+    }
+
+    /// Write a snapshot in `PeakFinder`'s on-disk format, as a previous run would:
+    /// centred on `here`, holding `entries` (by default `snapshotEntries`).
+    private func writeSnapshot(savedAt: Date,
+                               entries: [(name: String, lat: Double, lon: Double, alt: Double)]? = nil) throws {
+        let url = try XCTUnwrap(PeakFinder.cacheURL)
+        let object: [String: Any] = [
+            "centerLatitude": 45.9,
+            "centerLongitude": 7.6,
+            // `JSONEncoder`'s default `Date` strategy: seconds since 2001-01-01.
+            "savedAt": savedAt.timeIntervalSinceReferenceDate,
+            "entries": (entries ?? snapshotEntries).map {
+                ["name": $0.name, "latitude": $0.lat, "longitude": $0.lon, "altitude": $0.alt] as [String: Any]
+            }
+        ]
+        try JSONSerialization.data(withJSONObject: object).write(to: url, options: .atomic)
+    }
+
+    private func readSnapshot() throws -> [String: Any] {
+        let data = try Data(contentsOf: try XCTUnwrap(PeakFinder.cacheURL))
+        return try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    /// Bundled-data stand-in: one famous summit ~13 km from `here`.
+    private func knownMountains() -> MountainData {
+        let coordinates = MountainCoordinates()
+        coordinates.latitude = 45.85
+        coordinates.longitude = 7.75
+        let mountain = MountainInfo()
+        mountain.name = "Known Summit"
+        mountain.height = 4000
+        mountain.coordinates = coordinates
+        let list = MountainList()
+        list.mountains = [mountain]
+        let data = MountainData()
+        data.highest = list
+        return data
+    }
+
+    /// Bundled-data stand-in holding exactly `peaks`, in order.
+    private func bundledMountains(_ peaks: [StubPeak]) -> MountainData {
+        let list = MountainList()
+        list.mountains = peaks.map { peak in
+            let coordinates = MountainCoordinates()
+            coordinates.latitude = peak.lat
+            coordinates.longitude = peak.lon
+            let mountain = MountainInfo()
+            mountain.name = peak.name
+            mountain.height = peak.ele
+            mountain.coordinates = coordinates
+            return mountain
+        }
+        let data = MountainData()
+        data.highest = list
+        return data
+    }
+
+    @MainActor
+    private func makeFinder(_ clock: TestClock) -> PeakFinder {
+        let finder = PeakFinder()
+        finder.now = { clock.now }
+        return finder
+    }
+
+    @MainActor
+    private func search(_ finder: PeakFinder, offline: [NearbyPeak] = [],
+                        known: MountainData? = nil, at location: CLLocation? = nil) async {
+        await finder.searchPeaks(near: location ?? here, mountainsData: known,
+                                 offlinePeaks: offline, observerAltitude: observerAltitude)
+    }
+
+    /// A search left running in the background, for "what is on screen while
+    /// the network is still being asked".
+    @MainActor
+    private func startSearch(_ finder: PeakFinder, offline: [NearbyPeak] = [],
+                             known: MountainData? = nil) -> Task<Void, Never> {
+        let location = here
+        let altitude = observerAltitude
+        return Task { @MainActor in
+            await finder.searchPeaks(near: location, mountainsData: known,
+                                     offlinePeaks: offline, observerAltitude: altitude)
+        }
+    }
+
+    @MainActor
+    private func names(_ finder: PeakFinder) -> [String] { finder.peaks.map(\.name).sorted() }
+
+    /// Never throws: a test that holds a request open must still release it and
+    /// await its search, or a later mirror attempt could outlive the stub.
+    @MainActor
+    private func waitUntil(_ what: String, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(10)
+        while !condition() {
+            guard Date() < deadline else { return XCTFail("timed out waiting until \(what)") }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    @MainActor
+    private func expectRealGeometry(_ peaks: [NearbyPeak], from location: CLLocation,
+                                    file: StaticString = #filePath, line: UInt = #line) {
+        for peak in peaks {
+            let summit = CLLocation(latitude: peak.coordinate.latitude, longitude: peak.coordinate.longitude)
+            XCTAssertEqual(peak.distance, location.distance(from: summit), accuracy: 1,
+                           "\(peak.name): the overlay fades and scales markers by distance",
+                           file: file, line: line)
+            XCTAssertEqual(peak.bearing, Geometry.bearing(from: location.coordinate, to: peak.coordinate),
+                           accuracy: 0.01, "\(peak.name)", file: file, line: line)
+        }
+    }
+
+    // MARK: Local peaks are always shown
+
+    /// The 1.2 promise: with NO signal the bundled summits and a downloaded
+    /// pack still name the mountains. The failure branch used to return before
+    /// either was merged, so a downloaded pack showed 0 peaks offline.
+    @MainActor
+    func testLocalPeaksAreShownWithNoSignal() async {
+        let finder = makeFinder(TestClock())
+        await search(finder, offline: [packPeak], known: knownMountains())
+
+        XCTAssertNotNil(finder.lastSearchError, "every mirror failed")
+        XCTAssertEqual(OverpassStub.requestCount, PeakFinder.overpassEndpoints.count)
+        XCTAssertEqual(names(finder), ["Known Summit", "Pack Peak"],
+                       "local sources must survive a failed search")
+        expectRealGeometry(finder.peaks, from: here)
+    }
+
+    /// Local peaks must not wait for the network: a failover across every
+    /// mirror can take ~25 s, and with no signal that wait used to end in
+    /// nothing at all.
+    @MainActor
+    func testLocalPeaksArePublishedBeforeTheNetworkAnswers() async {
+        OverpassStub.reply { _, index in index == 0 ? .hold : .failure(.notConnectedToInternet) }
+        let finder = makeFinder(TestClock())
+        let search = startSearch(finder, offline: [packPeak], known: knownMountains())
+        await waitUntil("the first mirror holds the request") { OverpassStub.heldCount == 1 }
+
+        // The search is still waiting on that first mirror.
+        XCTAssertEqual(names(finder), ["Known Summit", "Pack Peak"],
+                       "local peaks must be on screen while the mirrors are still being asked")
+        expectRealGeometry(finder.peaks, from: here)
+
+        OverpassStub.releaseHeld(with: .failure(.timedOut))
+        await search.value
+        XCTAssertEqual(names(finder), ["Known Summit", "Pack Peak"])
+    }
+
+    // MARK: The local merge's duplicate check
+
+    /// The merge before the `await` checks every pack peak (up to 4000 a pack,
+    /// on every network search) against everything merged before it through a
+    /// latitude-band index, not a scan of the whole set. It must keep exactly
+    /// what the 200 m rule, applied pair by pair, keeps: here a pack dense with
+    /// near duplicates that straddles the equator, where band numbers change
+    /// sign, after a second pack 111 km east that shares its bands.
+    @MainActor
+    func testTheLocalMergeKeepsExactlyWhatThe200mRuleKeeps() async {
+        var random = SplitMix64(seed: 26)
+        let origin = CLLocation(coordinate: CLLocationCoordinate2D(latitude: -0.0005, longitude: 37.0),
+                                altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: Date())
+        func scatter(_ prefix: String, _ count: Int, longitude: Double) -> [StubPeak] {
+            (0..<count).map { i in
+                StubPeak(name: "\(prefix) \(i)",
+                         lat: origin.coordinate.latitude + Double.random(in: -0.015...0.015, using: &random),
+                         lon: longitude + Double.random(in: -0.015...0.015, using: &random),
+                         ele: 3000)
+            }
+        }
+        let live = scatter("Current", 20, longitude: origin.coordinate.longitude)
+        let pack = (scatter("Far", 300, longitude: origin.coordinate.longitude + 1)
+                    + scatter("Near", 1500, longitude: origin.coordinate.longitude)).map {
+            NearbyPeak(name: $0.name, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon),
+                       altitude: Double($0.ele), distance: 0, bearing: 0)
+        }
+
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer(live)
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder, at: origin)
+        let current = finder.peaks               // as decoded, for the rule below
+        XCTAssertEqual(current.count, live.count)
+
+        OverpassStub.reply { _, _ in .failure(.notConnectedToInternet) }
+        clock.advance(by: 16 * 60)               // older than the cache age: ask again
+        await search(finder, offline: pack, at: origin)
+        XCTAssertNotNil(finder.lastSearchError, "every mirror failed")
+
+        func metres(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationDistance {
+            CLLocation(latitude: a.latitude, longitude: a.longitude)
+                .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        }
+        var kept = current.map { (name: $0.name, coordinate: $0.coordinate) }
+        for peak in pack where !kept.contains(where: { metres($0.coordinate, peak.coordinate) < 200 }) {
+            kept.append((name: peak.name, coordinate: peak.coordinate))
+        }
+        let expected = kept
+            .map { (name: $0.name, distance: metres(origin.coordinate, $0.coordinate)) }
+            .filter { $0.distance <= 80_000 }
+            .sorted { $0.distance < $1.distance }
+            .map(\.name)
+        // Dense enough that most of the pack is dropped, and under the 300 cap,
+        // so every peak the rule keeps is compared.
+        XCTAssertGreaterThanOrEqual(expected.count, 100)
+        XCTAssertLessThan(expected.count, 300)
+        XCTAssertEqual(finder.peaks.count, expected.count)
+        XCTAssertEqual(finder.peaks.map(\.name), expected)
+    }
+
+    /// The merge after a confirmed answer starts from the OSM nodes, which are
+    /// never deduped against each other, then adds every bundled summit and
+    /// every pack peak that lies 200 m or more from everything accepted before
+    /// it. It runs on the main actor after every answer, over every pack's
+    /// peaks, so it checks through the same latitude-band index as the merge
+    /// before the `await`. It must keep exactly what the 200 m rule, applied
+    /// pair by pair, keeps: here an answer, a bundled list and a pack, all
+    /// dense with near duplicates that straddle the equator, where band numbers
+    /// change sign, and a second pack 111 km east that shares their bands.
+    @MainActor
+    func testTheConfirmedMergeKeepsExactlyWhatThe200mRuleKeeps() async {
+        var random = SplitMix64(seed: 2611)
+        let origin = CLLocation(coordinate: CLLocationCoordinate2D(latitude: -0.0005, longitude: 37.0),
+                                altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: Date())
+        func scatter(_ prefix: String, _ count: Int, longitude: Double) -> [StubPeak] {
+            (0..<count).map { i in
+                StubPeak(name: "\(prefix) \(i)",
+                         lat: origin.coordinate.latitude + Double.random(in: -0.015...0.015, using: &random),
+                         lon: longitude + Double.random(in: -0.015...0.015, using: &random),
+                         ele: 3000)
+            }
+        }
+        func nearbyPeaks(_ stubs: [StubPeak]) -> [NearbyPeak] {
+            stubs.map {
+                NearbyPeak(name: $0.name, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon),
+                           altitude: Double($0.ele), distance: 0, bearing: 0)
+            }
+        }
+        let live = scatter("Live", 40, longitude: origin.coordinate.longitude)
+        let bundled = scatter("Bundled", 150, longitude: origin.coordinate.longitude)
+        let pack = nearbyPeaks(scatter("Far", 300, longitude: origin.coordinate.longitude + 1)
+                               + scatter("Near", 1500, longitude: origin.coordinate.longitude))
+
+        let answer = OverpassStub.answer(live)
+        OverpassStub.reply { _, _ in .body(answer) }
+        // The answer as a search decodes it, for the rule below.
+        let outcome = await PeakFinder.fetchPeakOutcome(center: origin.coordinate, radiusMeters: 5000)
+        guard case .success(let osm) = outcome else { return XCTFail("the stub's answer was refused: \(outcome)") }
+        XCTAssertEqual(osm.count, live.count, "every node lies inside the 5 km query")
+
+        let finder = makeFinder(TestClock())
+        await search(finder, offline: pack, known: bundledMountains(bundled), at: origin)
+        XCTAssertNil(finder.lastSearchError, "the search was answered")
+
+        func metres(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationDistance {
+            CLLocation(latitude: a.latitude, longitude: a.longitude)
+                .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        }
+        var kept = osm.map { (name: $0.name, coordinate: $0.coordinate) }
+        for peak in nearbyPeaks(bundled) + pack
+        where !kept.contains(where: { metres($0.coordinate, peak.coordinate) < 200 }) {
+            kept.append((name: peak.name, coordinate: peak.coordinate))
+        }
+        let expected = kept
+            .map { (name: $0.name, distance: metres(origin.coordinate, $0.coordinate)) }
+            .filter { $0.distance <= 80_000 }
+            .sorted { $0.distance < $1.distance }
+            .map(\.name)
+        // Dense enough that most of the bundled list and the pack is dropped,
+        // and under the 300 cap, so every peak the rule keeps is compared.
+        XCTAssertGreaterThanOrEqual(expected.count, 100)
+        XCTAssertLessThan(expected.count, 300)
+        XCTAssertGreaterThan(expected.filter { $0.hasPrefix("Bundled") }.count, 0, "a bundled summit is kept")
+        XCTAssertEqual(finder.peaks.count, expected.count)
+        XCTAssertEqual(finder.peaks.map(\.name), expected)
+    }
+
+    // MARK: Nothing expires during an outage
+
+    /// `peakTTL` (1 h) used to prune on every path, so an outage longer than an
+    /// hour emptied the horizon it was meant to keep. Nothing can be
+    /// re-confirmed during an outage, so nothing may expire.
+    @MainActor
+    func testCarriedOverPeaksSurviveAnOutageLongerThanTheTTL() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"])
+
+        OverpassStub.reply { _, _ in .failure(.notConnectedToInternet) }
+        for hour in 1...2 {
+            clock.advance(by: 61 * 60)   // past the TTL, the cache age and the backoff
+            let asked = OverpassStub.requestCount
+            await search(finder)
+            XCTAssertGreaterThan(OverpassStub.requestCount, asked, "hour \(hour): the retry went out")
+            XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"],
+                           "hour \(hour): an outage must not expire what it cannot re-confirm")
+            XCTAssertTrue(finder.peaksAreStale, "hour \(hour)")
+        }
+    }
+
+    @MainActor
+    func testRestoredSnapshotSurvivesAnOutageLongerThanTheTTL() async throws {
+        let clock = TestClock()
+        try writeSnapshot(savedAt: clock.now.addingTimeInterval(-10 * 60))
+        let finder = makeFinder(clock)
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Snap One", "Snap Two"])
+        XCTAssertTrue(finder.peaksAreStale)
+
+        clock.advance(by: 61 * 60)
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Snap One", "Snap Two"],
+                       "the restored snapshot is what an outage is supposed to show")
+        XCTAssertTrue(finder.peaksAreStale)
+    }
+
+    /// Most ticks of an outage never reach the network: inside the 60 s retry
+    /// backoff they take the reuse path. It confirms nothing, so it must expire
+    /// nothing either — also once the last answer is more than an hour old.
+    @MainActor
+    func testReuseTickPastTheTTLKeepsTheCarriedOverPeaks() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)                     // the last confirmed answer
+
+        OverpassStub.reply { _, _ in .failure(.notConnectedToInternet) }
+        clock.advance(by: 59 * 60 + 30)          // past the cache age, not yet the TTL
+        await search(finder)                     // fails: the retry backoff starts
+        XCTAssertNotNil(finder.lastSearchError)
+
+        let asked = OverpassStub.requestCount
+        clock.advance(by: 45)                    // past the TTL, still inside the backoff
+        await search(finder)
+        XCTAssertEqual(OverpassStub.requestCount, asked, "the tick took the reuse path")
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"],
+                       "a reuse tick confirms nothing, so it may expire nothing")
+    }
+
+    /// The same for a tick that lands while a search is still in flight: a
+    /// failover can take ~30 s, so one can straddle the TTL.
+    @MainActor
+    func testInFlightTickPastTheTTLKeepsTheCarriedOverPeaks() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)                     // the last confirmed answer
+
+        clock.advance(by: 59 * 60 + 30)          // past the cache age, not yet the TTL
+        let first = OverpassStub.requestCount
+        OverpassStub.reply { _, index in index == first ? .hold : .failure(.notConnectedToInternet) }
+        let retry = startSearch(finder)
+        await waitUntil("the retry holds a request") { OverpassStub.heldCount == 1 }
+
+        clock.advance(by: 45)                    // still in flight, now past the TTL
+        await search(finder)                     // a refresh tick lands mid-search
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"],
+                       "an in-flight tick confirms nothing, so it may expire nothing")
+
+        OverpassStub.releaseHeld(with: .failure(.timedOut))
+        await retry.value
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"])
+        XCTAssertTrue(finder.peaksAreStale)
+    }
+
+    /// The other half of the rule: a CONFIRMED answer still expires what it no
+    /// longer returns, so peaks do not accumulate for ever.
+    @MainActor
+    func testConfirmedAnswerStillExpiresPeaksItNoLongerReturns() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let first = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(first) }
+        await search(finder)
+
+        clock.advance(by: 61 * 60)
+        let second = OverpassStub.answer([gamma])
+        OverpassStub.reply { _, _ in .body(second) }
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Gamma"])
+        XCTAssertFalse(finder.peaksAreStale)
+    }
+
+    // MARK: What a confirmed answer replaces
+
+    /// A failed search leaves the bundled summit on screen. The next answer
+    /// brings the OSM node for the same mountain, ~68 m away under its OSM
+    /// name, so with another id. Carried over by id, the summit stood next to
+    /// the node until `peakTTL` dropped it, up to an hour; a confirmed answer
+    /// replaces any carried-over peak within 200 m of one it returns.
+    @MainActor
+    func testAConfirmedAnswerReplacesACarriedOverPeakWithin200m() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        // ~1.4 km from the bundled summit, so its OSM node is inside the 5 km query.
+        let belowTheSummit = CLLocation(coordinate: CLLocationCoordinate2D(latitude: 45.86, longitude: 7.74),
+                                        altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5,
+                                        timestamp: Date())
+        await search(finder, known: knownMountains(), at: belowTheSummit)
+        XCTAssertNotNil(finder.lastSearchError, "no signal")
+        XCTAssertEqual(names(finder), ["Known Summit"])
+
+        let node = StubPeak(name: "Known Summit (OSM)", lat: 45.8506, lon: 7.7502, ele: 4000)
+        let answer = OverpassStub.answer([node])
+        OverpassStub.reply { _, _ in .body(answer) }
+        clock.advance(by: 61)                    // the retry backoff has run out
+        await search(finder, known: knownMountains(), at: belowTheSummit)
+        XCTAssertNil(finder.lastSearchError, "the search was answered")
+        XCTAssertEqual(names(finder), ["Known Summit (OSM)"],
+                       "the node replaces the summit a failed search left on screen")
+
+        clock.advance(by: 16 * 60)               // older than the cache age: ask again
+        await search(finder, known: knownMountains(), at: belowTheSummit)
+        XCTAssertEqual(names(finder), ["Known Summit (OSM)"], "and the summit does not come back")
+    }
+
+    /// Only a fresh peak within 200 m replaces a carried-over one: one ~250 m
+    /// from everything the answer returns is still carried over.
+    @MainActor
+    func testAConfirmedAnswerCarriesOverAPeak250mFromEveryFreshPeak() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let first = OverpassStub.answer([alpha])
+        OverpassStub.reply { _, _ in .body(first) }
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha"])
+
+        let north = StubPeak(name: "Stub Alpha North", lat: alpha.lat + 0.00225, lon: alpha.lon, ele: 3050)
+        let second = OverpassStub.answer([north, beta])
+        OverpassStub.reply { _, _ in .body(second) }
+        clock.advance(by: 16 * 60)               // older than the cache age, well inside the TTL
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Alpha North", "Stub Beta"],
+                       "a peak ~250 m from every fresh one is carried over")
+    }
+
+    /// The nodes of one answer are never deduped against each other: two OSM
+    /// nodes ~150 m apart are two summits, also once both are carried over.
+    @MainActor
+    func testTwoNodes150mApartInOneAnswerAreBothKept() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let twin = StubPeak(name: "Stub Alpha Twin", lat: alpha.lat + 0.00135, lon: alpha.lon, ele: 3080)
+        let answer = OverpassStub.answer([alpha, twin])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Alpha Twin"])
+
+        clock.advance(by: 16 * 60)               // older than the cache age: ask again
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Alpha Twin"])
+    }
+
+    // MARK: The "possibly outdated" flag
+
+    @MainActor
+    func testStaleFlagAndErrorSurviveTheReuseTick() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)
+
+        clock.advance(by: 16 * 60)   // older than the 15 min cache age
+        OverpassStub.reply { _, _ in .failure(.notConnectedToInternet) }
+        await search(finder)
+        XCTAssertTrue(finder.peaksAreStale)
+        let error = finder.lastSearchError
+        XCTAssertNotNil(error)
+
+        let asked = OverpassStub.requestCount
+        clock.advance(by: 5)         // the next refresh tick, inside the 60 s backoff
+        await search(finder)
+        XCTAssertEqual(OverpassStub.requestCount, asked, "a tick inside the backoff must not ask again")
+        XCTAssertTrue(finder.peaksAreStale, "the reuse path confirms nothing, so the label stays")
+        XCTAssertEqual(finder.lastSearchError, error)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"])
+    }
+
+    @MainActor
+    func testInFlightTickKeepsTheStaleFlagAndSuccessClearsIt() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)
+
+        clock.advance(by: 16 * 60)
+        OverpassStub.reply { _, _ in .failure(.notConnectedToInternet) }
+        await search(finder)
+        XCTAssertTrue(finder.peaksAreStale)
+        let error = finder.lastSearchError
+        XCTAssertNotNil(error)
+
+        clock.advance(by: 61)        // the backoff has run out
+        let first = OverpassStub.requestCount
+        OverpassStub.reply { _, index in index == first ? .hold : .failure(.notConnectedToInternet) }
+        let retry = startSearch(finder)
+        await waitUntil("the retry holds a request") { OverpassStub.heldCount == 1 }
+
+        await search(finder)         // a refresh tick lands mid-search
+        XCTAssertTrue(finder.peaksAreStale, "an in-flight tick confirms nothing")
+        XCTAssertEqual(finder.lastSearchError, error)
+
+        OverpassStub.releaseHeld(with: .body(answer))
+        await retry.value
+        XCTAssertFalse(finder.peaksAreStale, "a confirmed answer clears the label")
+        XCTAssertNil(finder.lastSearchError)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"])
+    }
+
+    /// A downloaded pack is the explicit offline answer: labelling it "possibly
+    /// outdated" in the no-signal case it exists for would be wrong, and v1.3
+    /// never did.
+    @MainActor
+    func testOfflinePackCoveringHereIsNeverPossiblyOutdated() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder, offline: [packPeak])
+        XCTAssertFalse(finder.peaksAreStale)
+
+        OverpassStub.reply { _, _ in .failure(.notConnectedToInternet) }
+        clock.advance(by: 16 * 60)
+        await search(finder, offline: [packPeak])
+        XCTAssertNotNil(finder.lastSearchError, "the search did fail")
+        XCTAssertEqual(names(finder), ["Pack Peak", "Stub Alpha", "Stub Beta"])
+        XCTAssertFalse(finder.peaksAreStale, "a pack covers here")
+
+        // A pack whose peaks all lie beyond the 80 km render distance covers
+        // nothing here: the carried-over peaks are possibly outdated again.
+        clock.advance(by: 61)
+        await search(finder, offline: [farPackPeak])
+        XCTAssertTrue(finder.peaksAreStale)
+    }
+
+    /// Checked while the network is still being asked as well as after the
+    /// failover gives up: the restore itself must not raise the label, or it
+    /// would show under a covering pack for up to ~30 s.
+    @MainActor
+    func testRestoredSnapshotUnderAnOfflinePackIsNotPossiblyOutdated() async throws {
+        let clock = TestClock()
+        try writeSnapshot(savedAt: clock.now.addingTimeInterval(-10 * 60))
+        let finder = makeFinder(clock)
+        var flags: [Bool] = []
+        let subscription = finder.$peaksAreStale.sink { flags.append($0) }
+        OverpassStub.reply { _, index in index == 0 ? .hold : .failure(.notConnectedToInternet) }
+        let search = startSearch(finder, offline: [packPeak])
+        await waitUntil("the search reaches the network") { OverpassStub.heldCount == 1 }
+
+        XCTAssertEqual(names(finder), ["Pack Peak", "Snap One", "Snap Two"])
+        XCTAssertFalse(finder.peaksAreStale, "restored under a pack, the network not answered yet")
+
+        OverpassStub.releaseHeld(with: .failure(.notConnectedToInternet))
+        await search.value
+        subscription.cancel()
+        XCTAssertEqual(names(finder), ["Pack Peak", "Snap One", "Snap Two"])
+        XCTAssertFalse(finder.peaksAreStale)
+        XCTAssertFalse(flags.contains(true), "the label must never come on under a pack: \(flags)")
+    }
+
+    /// The label is about what is on screen. A restored snapshot whose only
+    /// entry lies beyond the 80 km render distance puts nothing there, so the
+    /// bundled summit published while the network is still being asked is not
+    /// "possibly outdated".
+    @MainActor
+    func testRestoredSnapshotWithNothingInRangeLeavesTheFirstPublishUnlabelled() async throws {
+        let clock = TestClock()
+        try writeSnapshot(savedAt: clock.now.addingTimeInterval(-10 * 60),
+                          entries: [("Snap Far", 46.7, 7.6, 3000)])   // ~89 km north of here
+        let finder = makeFinder(clock)
+        var published: [(names: [String], stale: Bool)] = []
+        let subscription = Publishers.CombineLatest(finder.$peaks, finder.$peaksAreStale)
+            .sink { published.append((names: $0.map(\.name).sorted(), stale: $1)) }
+        OverpassStub.reply { _, index in index == 0 ? .hold : .failure(.notConnectedToInternet) }
+        let search = startSearch(finder, known: knownMountains())
+        await waitUntil("the search reaches the network") { OverpassStub.heldCount == 1 }
+
+        let first = published.first { !$0.names.isEmpty }
+        XCTAssertEqual(first?.names, ["Known Summit"], "the far snapshot entry is not shown")
+        XCTAssertEqual(first?.stale, false, "nothing restored is on screen: \(published)")
+
+        OverpassStub.releaseHeld(with: .failure(.notConnectedToInternet))
+        await search.value
+        subscription.cancel()
+    }
+
+    // MARK: Overpass runtime errors are failures
+
+    /// Verified live: an overloaded instance answers HTTP 200 with
+    /// `"elements": []` and `"remark": "runtime error: …"`. That is the server
+    /// failing, not an empty area, so the next mirror must be asked.
+    @MainActor
+    func testRuntimeErrorRemarkFailsOverToTheNextMirror() async {
+        let finder = makeFinder(TestClock())
+        let refusal = OverpassStub.answer([], remark: outOfMemoryRemark)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, index in .body(index == 0 ? refusal : answer) }
+        await search(finder)
+
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"])
+        let hosts = OverpassStub.requestedHosts
+        XCTAssertEqual(hosts.count, 2, "the remarking mirror must not end the search")
+        XCTAssertNotEqual(hosts.first, hosts.last, "the answer came from another mirror")
+        XCTAssertNil(finder.lastSearchError)
+        XCTAssertFalse(finder.peaksAreStale)
+    }
+
+    /// No mirror answered: the peaks stay on screen, marked stale, and the
+    /// snapshot on disk stays exactly as the last answer wrote it.
+    @MainActor
+    func testRuntimeErrorsOnEveryMirrorKeepThePeaksAndMarkThemStale() async throws {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        let answer = OverpassStub.answer([alpha, beta])
+        OverpassStub.reply { _, _ in .body(answer) }
+        await search(finder)
+        let saved = try readSnapshot()
+        let savedEntries = try XCTUnwrap(saved["entries"] as? [[String: Any]])
+        XCTAssertEqual(savedEntries.compactMap { $0["name"] as? String }.sorted(), ["Stub Alpha", "Stub Beta"])
+
+        clock.advance(by: 16 * 60)
+        let refusal = OverpassStub.answer([], remark: outOfMemoryRemark)
+        OverpassStub.reply { _, _ in .body(refusal) }
+        await search(finder)
+        XCTAssertEqual(names(finder), ["Stub Alpha", "Stub Beta"])
+        XCTAssertTrue(finder.peaksAreStale, "no mirror confirmed anything")
+        XCTAssertTrue(finder.lastSearchError?.contains("runtime error: Query ran out of memory") == true,
+                      finder.lastSearchError ?? "no error recorded")
+
+        let after = try readSnapshot()
+        XCTAssertEqual(try XCTUnwrap(after["savedAt"] as? Double), try XCTUnwrap(saved["savedAt"] as? Double),
+                       "a failed search must not rewrite the snapshot")
+        XCTAssertEqual(after["entries"] as? NSArray, savedEntries as NSArray)
+    }
+
+    /// Capitalised here: the remark is matched whatever its case.
+    func testEveryMirrorRemarkingARuntimeErrorIsAFailure() async {
+        let remark = "Runtime error: Query timed out in \"query\" at line 2 after 10 seconds."
+        let refusal = OverpassStub.answer([], remark: remark)
+        OverpassStub.reply { _, _ in .body(refusal) }
+        let outcome = await PeakFinder.fetchPeakOutcome(center: here.coordinate, radiusMeters: 5000)
+        guard case .failure(let summary) = outcome else {
+            return XCTFail("a runtime error must never read as \"no peaks here\": \(outcome)")
+        }
+        XCTAssertEqual(OverpassStub.requestCount, PeakFinder.overpassEndpoints.count)
+        XCTAssertTrue(summary.contains(remark), summary)
+    }
+
+    func testRuntimeErrorReasonIsTrimmedTo120Characters() async {
+        let refusal = OverpassStub.answer([], remark: "  runtime error: " + String(repeating: "x", count: 300))
+        OverpassStub.reply { _, _ in .body(refusal) }
+        let outcome = await PeakFinder.fetchPeakOutcome(center: here.coordinate, radiusMeters: 5000)
+        guard case .failure(let summary) = outcome else {
+            return XCTFail("a runtime error must never read as \"no peaks here\": \(outcome)")
+        }
+        let segments = summary.components(separatedBy: "; ")
+        for host in PeakFinder.overpassEndpoints.compactMap({ URL(string: $0)?.host }) {
+            guard let segment = segments.first(where: { $0.hasPrefix("\(host): ") }) else {
+                XCTFail("\(host) is missing from \(summary)")
+                continue
+            }
+            let reason = segment.dropFirst(host.count + 2)
+            XCTAssertLessThanOrEqual(reason.count, 120, String(reason))
+            XCTAssertTrue(reason.hasPrefix("runtime error: xxx"), String(reason))
+        }
+    }
+
+    /// Only a runtime error is a refusal; any other remark is still an answer.
+    func testAnyOtherRemarkIsStillAnAnswer() async {
+        let answer = OverpassStub.answer([alpha], remark: "Notice: answered from a test fixture.")
+        OverpassStub.reply { _, _ in .body(answer) }
+        let outcome = await PeakFinder.fetchPeakOutcome(center: here.coordinate, radiusMeters: 5000)
+        guard case .success(let peaks) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(peaks.map(\.name), ["Stub Alpha"])
+        XCTAssertEqual(OverpassStub.requestCount, 1)
+    }
+
+    // MARK: The retry backoff runs from completion
+
+    @MainActor
+    func testRetryBackoffRunsFromWhenTheFailureArrived() async {
+        let clock = TestClock()
+        let finder = makeFinder(clock)
+        // Each mirror takes 10 s to give up, so the failure arrives 30 s after
+        // the search began.
+        OverpassStub.reply { _, _ in clock.advance(by: 10); return .failure(.timedOut) }
+        await search(finder)
+        let asked = OverpassStub.requestCount
+
+        clock.advance(by: 59)
+        await search(finder)
+        XCTAssertEqual(OverpassStub.requestCount, asked,
+                       "59 s after the failure arrived is still inside the 60 s backoff")
+
+        clock.advance(by: 2)
+        await search(finder)
+        XCTAssertGreaterThan(OverpassStub.requestCount, asked, "the backoff has run out")
+    }
+
+    // MARK: The persisted snapshot
+
+    @MainActor
+    func testRestoredSnapshotIsPublishedWithRealGeometry() async throws {
+        let clock = TestClock()
+        try writeSnapshot(savedAt: clock.now.addingTimeInterval(-60 * 60))
+        let finder = makeFinder(clock)
+        var published: [[NearbyPeak]] = []
+        let subscription = finder.$peaks.sink { published.append($0) }
+        OverpassStub.reply { _, index in index == 0 ? .hold : .failure(.notConnectedToInternet) }
+        let search = startSearch(finder)
+        await waitUntil("the search reaches the network") { OverpassStub.heldCount == 1 }
+
+        let first = published.first { !$0.isEmpty } ?? []
+        XCTAssertEqual(first.map(\.name).sorted(), ["Snap One", "Snap Two"],
+                       "the snapshot is on screen before the network answers")
+        expectRealGeometry(first, from: here)
+        XCTAssertTrue(finder.peaksAreStale, "restored from disk, nothing confirmed yet")
+
+        OverpassStub.releaseHeld(with: .failure(.notConnectedToInternet))
+        await search.value
+        subscription.cancel()
+    }
+
+    @MainActor
+    func testSnapshotCentreIsStoredRoundedToTwoDecimals() async throws {
+        let finder = makeFinder(TestClock())
+        let answer = OverpassStub.answer([alpha])
+        OverpassStub.reply { _, _ in .body(answer) }
+        let precise = CLLocation(coordinate: CLLocationCoordinate2D(latitude: 45.91234, longitude: 7.65678),
+                                 altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: Date())
+        await search(finder, at: precise)
+
+        let snapshot = try readSnapshot()
+        XCTAssertEqual(try XCTUnwrap(snapshot["centerLatitude"] as? Double), 45.91, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(snapshot["centerLongitude"] as? Double), 7.66, accuracy: 1e-9)
+        let entries = try XCTUnwrap(snapshot["entries"] as? [[String: Any]])
+        XCTAssertEqual(entries.compactMap { $0["latitude"] as? Double }, [45.92],
+                       "peak entries keep their exact position")
+
+        // A tie rounds away from zero, as Swift's `rounded()` does: -122.125
+        // is stored as -122.13, not -122.12.
+        let empty = OverpassStub.answer([])
+        OverpassStub.reply { _, _ in .body(empty) }
+        let tie = CLLocation(coordinate: CLLocationCoordinate2D(latitude: 46.85, longitude: -122.125),
+                             altitude: 2000, horizontalAccuracy: 5, verticalAccuracy: 5, timestamp: Date())
+        await search(finder, at: tie)
+
+        let tied = try readSnapshot()
+        XCTAssertEqual(try XCTUnwrap(tied["centerLatitude"] as? Double), 46.85, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(tied["centerLongitude"] as? Double), -122.13, accuracy: 1e-9)
+    }
+}
+
+// MARK: - Nature labels (#25)
+
+final class NatureLabelTests: XCTestCase {
+
+    func testFloorPillCountsOnePeakInTheSingular() {
+        XCTAssertEqual(minAltitudeFloorPillText(floorMetres: 600, hiddenCount: 1), "600 m floor hides 1 peak")
+        XCTAssertEqual(minAltitudeFloorPillText(floorMetres: 600, hiddenCount: 2), "600 m floor hides all 2 peaks")
+        XCTAssertEqual(minAltitudeFloorPillText(floorMetres: 2500, hiddenCount: 41), "2500 m floor hides all 41 peaks")
+    }
+
+    /// CoreFoundation's `.strings` parser stops at a `#` comment line and drops
+    /// every key after it (88 keys became 59) while `plutil -lint` still says
+    /// OK — so read the table the app actually ships.
+    func testEnglishStringsTableLoadsEveryKeyPastTheNatureSection() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "Localizable", withExtension: "strings",
+                                                subdirectory: nil, localization: "en"))
+        let table = try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+        for key in ["possibly outdated", "Show all", "Continue", "Open Settings",
+                    "Location access required", "Expedition pack", "Download here", "Dismiss", "Save"] {
+            XCTAssertEqual(table[key], key, "\"\(key)\" is missing from the shipped table")
+        }
+    }
+}
+
+// MARK: - Test doubles
+
+/// A peak as an Overpass `out body` node returns it; always with an `ele` tag.
+struct StubPeak: Sendable {
+    let name: String
+    let lat: Double
+    let lon: Double
+    let ele: Int
+}
+
+/// Stands in for every Overpass mirror, so a search runs with NO real network.
+/// `URLProtocol.registerClass` puts it in front of `URLSession.shared`, which
+/// is what `PeakFinder` fetches with. A test-installed handler picks each reply
+/// from the request (its host) and its 0-based index since `install()` — the
+/// index, not the host, is what identifies "the first mirror tried", because
+/// the mirror a search starts with rotates process-wide.
+final class OverpassStub: URLProtocol, @unchecked Sendable {
+
+    enum Reply: Sendable {
+        /// The transport never got an answer (no signal, DNS, timeout …).
+        case failure(URLError.Code)
+        /// An HTTP answer with a JSON body.
+        case body(String, status: Int = 200)
+        /// Held open until `releaseHeld(with:)`: a mirror slow to answer.
+        case hold
+    }
+
+    typealias Handler = @Sendable (_ request: URLRequest, _ index: Int) -> Reply
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var handler: Handler?
+    nonisolated(unsafe) private static var requests: [URLRequest] = []
+    nonisolated(unsafe) private static var held: [OverpassStub] = []
+    nonisolated(unsafe) private static var elevationRequests = 0
+
+    /// Start intercepting. Until `reply` says otherwise every request fails
+    /// the way it does with no signal.
+    static func install() {
+        lock.withLock {
+            handler = { _, _ in .failure(.notConnectedToInternet) }
+            requests = []
+            held = []
+            elevationRequests = 0
+        }
+        _ = URLProtocol.registerClass(OverpassStub.self)
+    }
+
+    static func reply(_ newHandler: @escaping Handler) {
+        lock.withLock { handler = newHandler }
+    }
+
+    /// Fail anything still held, then stop intercepting.
+    static func uninstall() {
+        reply { _, _ in .failure(.cancelled) }
+        releaseHeld(with: .failure(.cancelled))
+        URLProtocol.unregisterClass(OverpassStub.self)
+    }
+
+    static var requestCount: Int { lock.withLock { requests.count } }
+    static var requestedHosts: [String] { lock.withLock { requests.compactMap { $0.url?.host } } }
+    static var heldCount: Int { lock.withLock { held.count } }
+    static var elevationRequestCount: Int { lock.withLock { elevationRequests } }
+
+    /// Answer every held request with `reply`.
+    static func releaseHeld(with reply: Reply) {
+        let pending = lock.withLock { () -> [OverpassStub] in
+            defer { held = [] }
+            return held
+        }
+        pending.forEach { $0.respond(reply) }
+    }
+
+    /// An Overpass JSON answer for `peaks`, with an optional `remark` exactly
+    /// where Overpass puts one.
+    static func answer(_ peaks: [StubPeak], remark: String? = nil) -> String {
+        var object: [String: Any] = [
+            "version": 0.6,
+            "generator": "Overpass API (GeoTests stub)",
+            "elements": peaks.enumerated().map { index, peak in
+                ["type": "node", "id": index + 1, "lat": peak.lat, "lon": peak.lon,
+                 "tags": ["name": peak.name, "natural": "peak", "ele": String(peak.ele)]] as [String: Any]
+            }
+        ]
+        if let remark { object["remark"] = remark }
+        guard let data = try? JSONSerialization.data(withJSONObject: object) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        guard let url = request.url else { return false }
+        return url.path.hasSuffix("/interpreter") || url.host == "api.open-meteo.com"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        if request.url?.host == "api.open-meteo.com" {
+            // A DEM lookup means a stubbed peak lost its `ele` tag. Fail it
+            // rather than let it reach the network; `tearDown` reports it.
+            Self.lock.withLock { Self.elevationRequests += 1 }
+            respond(.failure(.notConnectedToInternet))
+            return
+        }
+        let (index, handler) = Self.lock.withLock { () -> (Int, Handler?) in
+            Self.requests.append(request)
+            return (Self.requests.count - 1, Self.handler)
+        }
+        respond(handler?(request, index) ?? .failure(.notConnectedToInternet))
+    }
+
+    override func stopLoading() {}
+
+    private func respond(_ reply: Reply) {
+        switch reply {
+        case .failure(let code):
+            client?.urlProtocol(self, didFailWithError: URLError(code))
+        case .body(let json, let status):
+            guard let url = request.url,
+                  let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1",
+                                                 headerFields: ["Content-Type": "application/json"]) else {
+                client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+                return
+            }
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data(json.utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        case .hold:
+            Self.lock.withLock { Self.held.append(self) }
+        }
+    }
+}
+
+/// A seeded generator, so a randomised test replays the same data every run.
+struct SplitMix64: RandomNumberGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) { state = seed }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
+}
+
+/// A controllable clock for `PeakFinder.now`. Thread-safe, because a stub reply
+/// (on a URL-loading thread) may advance it to model a slow failover.
+final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+
+    init(_ start: Date = Date()) { current = start }
+
+    var now: Date { lock.withLock { current } }
+
+    func advance(by seconds: TimeInterval) {
+        lock.withLock { current = current.addingTimeInterval(seconds) }
+    }
+}

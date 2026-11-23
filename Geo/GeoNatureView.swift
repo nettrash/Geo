@@ -130,6 +130,21 @@ struct GeoNatureView: View {
             : peakFinder.peaks.filter { $0.altitude >= minPeakAltitude }
     }
 
+    /// How many peaks the altitude floor is hiding right now. Shown next to the
+    /// count because a `0` produced by the floor and a `0` produced by a failed
+    /// search were indistinguishable — the reason a stray floor on the track
+    /// emptied the tab in flat country (every peak near Belgrade is ≤ 511 m)
+    /// with nothing on screen explaining it.
+    private var hiddenPeakCount: Int { peakFinder.peaks.count - visiblePeaks.count }
+
+    /// The floor, not the network, is why nothing is drawn.
+    private var filterHidesEverything: Bool {
+        minPeakAltitude >= 1 && !peakFinder.peaks.isEmpty && visiblePeaks.isEmpty
+    }
+
+    /// A manual compass offset is applied (≥0.5°, i.e. would display as ≥1°).
+    private var showsAlignmentChip: Bool { abs(sessionManager.headingAlignmentDeg) >= 0.5 }
+
     var body: some View {
         ZStack {
             if cameraPermissionGranted {
@@ -204,6 +219,21 @@ struct GeoNatureView: View {
                         Text(verbatim: "\(visiblePeaks.count)")
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.white)
+                        if hiddenPeakCount > 0 {
+                            // Say what the floor is hiding rather than leaving
+                            // `0` to be read as "no peaks found".
+                            Text(verbatim: "(\(hiddenPeakCount) hidden)")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.75))
+                        }
+                        if peakFinder.peaksAreStale && !peakFinder.peaks.isEmpty {
+                            // Peaks from disk or from before a failed refresh:
+                            // keep them, but never present them as current.
+                            Text("possibly outdated")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .italic()
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
 
                         Spacer()
 
@@ -222,33 +252,68 @@ struct GeoNatureView: View {
                 }
                 .allowsHitTesting(false)
 
-                // Manual compass-alignment chip — visible while an alignment
-                // offset is applied (≥0.5°, i.e. would display as ≥1°).
-                // Unobtrusive, matches the view's pill styling; tapping it
-                // (✕) resets the offset. Session-only state — deliberately
-                // never persisted, compass error differs every session.
-                if abs(sessionManager.headingAlignmentDeg) >= 0.5 {
-                    VStack {
-                        Button {
-                            sessionManager.headingAlignmentDeg = 0
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "arrow.left.and.right")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.orange)
-                                Text(verbatim: String(format: "Alignment %+.0f°",
-                                                      sessionManager.headingAlignmentDeg))
-                                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.white)
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.white.opacity(0.7))
+                // The pills under the top bar share ONE top-anchored stack —
+                // alignment chip first, then the floor pill — so the two never
+                // overlap when both show (each used to be its own overlay at
+                // the same 44 pt inset).
+                if showsAlignmentChip || filterHidesEverything {
+                    VStack(spacing: 6) {
+                        // Manual compass-alignment chip — visible while an alignment
+                        // offset is applied (≥0.5°, i.e. would display as ≥1°).
+                        // Unobtrusive, matches the view's pill styling; tapping it
+                        // (✕) resets the offset. Session-only state — deliberately
+                        // never persisted, compass error differs every session.
+                        if showsAlignmentChip {
+                            Button {
+                                sessionManager.headingAlignmentDeg = 0
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "arrow.left.and.right")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(.orange)
+                                    Text(verbatim: String(format: "Alignment %+.0f°",
+                                                          sessionManager.headingAlignmentDeg))
+                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white)
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.white.opacity(0.7))
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(.black.opacity(0.55), in: Capsule())
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(.black.opacity(0.55), in: Capsule())
+                            .accessibilityLabel("Reset compass alignment")
                         }
-                        .accessibilityLabel("Reset compass alignment")
+
+                        // The floor is hiding every peak we have. Same pill styling as
+                        // the alignment chip, one tap to get the horizon back — without
+                        // it the only way out was finding the thin track on the right
+                        // edge and dragging it down by hand.
+                        if filterHidesEverything {
+                            Button {
+                                minPeakAltitude = 0
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "eye.slash")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(.orange)
+                                    Text(verbatim: minAltitudeFloorPillText(
+                                        floorMetres: Int(minPeakAltitude.rounded()),
+                                        hiddenCount: peakFinder.peaks.count))
+                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white)
+                                    Text("Show all")
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.orange)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(.black.opacity(0.55), in: Capsule())
+                            }
+                            .accessibilityLabel("Show all peaks, removing the minimum altitude filter")
+                        }
+
                         Spacer()
                     }
                     .padding(.top, 44)
@@ -556,6 +621,14 @@ func alignmentOffsetDegrees(base: Double, panTranslationX: Double) -> Double {
             -alignmentMaxOffsetDeg), alignmentMaxOffsetDeg)
 }
 
+/// Text of the "the floor hides every peak" pill: exactly one peak is "hides
+/// 1 peak" ("hides all 1 peaks" read like a bug), any other count "hides all N
+/// peaks". Pure, so the wording is unit-testable.
+func minAltitudeFloorPillText(floorMetres: Int, hiddenCount: Int) -> String {
+    hiddenCount == 1 ? "\(floorMetres) m floor hides 1 peak"
+                     : "\(floorMetres) m floor hides all \(hiddenCount) peaks"
+}
+
 /// Everest — the top of the min-altitude filter's range.
 private let maxFilterAltitude: Double = 8848
 
@@ -598,7 +671,12 @@ private struct AltitudeFilterSlider: View {
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
-                    DragGesture(minimumDistance: 0)
+                    // A real drag only. With `minimumDistance: 0` a single tap
+                    // anywhere on the 44×200 track jumped the floor to whatever
+                    // height was tapped — up to Everest — and `@AppStorage`
+                    // remembered it forever, silently blanking the tab in flat
+                    // country until someone noticed the pill on the right edge.
+                    DragGesture(minimumDistance: 8)
                         .onChanged { value in
                             // y grows downward; invert so the top of the track is
                             // the maximum altitude. Round to a tidy 10 m step.

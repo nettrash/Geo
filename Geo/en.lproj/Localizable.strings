@@ -83,6 +83,10 @@
 // MARK: - AR Nature view
 "Scanning" = "Scanning";
 "About the Nature view" = "About the Nature view";
+// The peaks on screen came from disk or from before a failed refresh (#26).
+"possibly outdated" = "possibly outdated";
+// One-tap reset when the persisted minimum-altitude floor hides everything (#25).
+"Show all" = "Show all";
 "The Nature view shows nearby mountain peaks overlaid on the camera. Continue to choose whether to grant camera access." = "The Nature view shows nearby mountain peaks overlaid on the camera. Continue to choose whether to grant camera access.";
 "The Nature view shows nearby mountain peaks overlaid on the camera. Camera access is currently turned off for Geo. You can re-enable it in iOS Settings and return to this tab." = "The Nature view shows nearby mountain peaks overlaid on the camera. Camera access is currently turned off for Geo. You can re-enable it in iOS Settings and return to this tab.";
 "Continue" = "Continue";
@@ -113,9 +117,9 @@
 "Caches the area's named peaks and the terrain skyline so the AR Nature view works with no signal. Map tiles aren't included (provider licensing)." = "Caches the area's named peaks and the terrain skyline so the AR Nature view works with no signal. Map tiles aren't included (provider licensing).";
 "Download a region" = "Download a region";
 "Download here" = "Download here";
+"Dismiss" = "Dismiss";
 "Delete offline area?" = "Delete offline area?";
 "Rename" = "Rename";
 "Name this area" = "Name this area";
 "Rename area" = "Rename area";
 "Save" = "Save";
-"Name" = "Name";

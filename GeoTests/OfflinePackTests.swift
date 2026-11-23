@@ -2,13 +2,14 @@
 //  OfflinePackTests.swift
 //  GeoTests
 //
-//  Round-trip + seed-assembly tests for the offline expedition pack.
+//  Round-trip + seed-assembly tests for the offline expedition pack, and
+//  download / update against a stubbed Overpass (`OverpassStub`, no network).
 //
 //  Packs are PEAKS ONLY. The DEM-grid half (a ~110 m core plus far-terrain
 //  rings out to 200 km) existed to feed the terrain skyline; that skyline was
 //  removed from the Nature tab, so the grid prefetch, the pinned-cell seeding
 //  and their tests went with it. Peak altitudes are still DEM-resolved at
-//  download time inside `PeakFinder.fetchOSMPeaks` (one bounded lookup per
+//  download time inside `PeakFinder.fetchPeakOutcome` (one bounded lookup per
 //  peak), which is unaffected.
 //
 
@@ -105,5 +106,115 @@ final class OfflinePackTests: XCTestCase {
 
     func testAssembleSeedEmptyIsEmpty() {
         XCTAssertTrue(OfflinePackManager.assembleSeed(from: []).isEmpty)
+    }
+}
+
+// MARK: - Downloading a pack against a stubbed Overpass
+
+/// `createPack` / `updatePack` with every Overpass request answered by
+/// `OverpassStub` (no real network). A FAILED download is not an empty area:
+/// the old wrapper collapsed a failure into `[]`, so a download with no peak
+/// server reachable saved a 0-peak pack that read as "no peaks in this area".
+final class OfflinePackDownloadTests: XCTestCase {
+
+    /// Every pack these tests save carries this prefix, so `tearDown` can
+    /// remove exactly those from the store and nothing else.
+    private static let namePrefix = "GeoTests pack "
+    private let center = CLLocationCoordinate2D(latitude: 45.9, longitude: 7.6)
+
+    override func setUp() {
+        super.setUp()
+        Self.removeTestPacks()
+        OverpassStub.install()
+    }
+
+    override func tearDown() {
+        OverpassStub.uninstall()
+        Self.removeTestPacks()
+        super.tearDown()
+    }
+
+    private static func removeTestPacks() {
+        let store = OfflinePackStore()
+        let index = store.loadIndex()
+        let ours = index.filter { $0.name.hasPrefix(namePrefix) }
+        guard !ours.isEmpty else { return }
+        ours.forEach { store.deleteData($0.id) }
+        store.saveIndex(index.filter { !$0.name.hasPrefix(namePrefix) })
+    }
+
+    private func savedPack(named name: String) -> OfflinePack? {
+        OfflinePackStore().loadIndex().first { $0.name == name }
+    }
+
+    /// Never throws: a test that holds a request open must still release it and
+    /// await its download.
+    @MainActor
+    private func waitUntil(_ what: String, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(10)
+        while !condition() {
+            guard Date() < deadline else { return XCTFail("timed out waiting until \(what)") }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    @MainActor
+    func testFailedDownloadSavesNoPackAndSaysWhy() async {
+        let manager = OfflinePackManager()
+        let name = Self.namePrefix + UUID().uuidString
+        await manager.createPack(name: name, center: center, radiusKm: 5)
+
+        XCTAssertNil(savedPack(named: name), "a failed download must not register a 0-peak pack")
+        XCTAssertFalse(manager.packs.contains { $0.name == name })
+        XCTAssertEqual(manager.downloadError,
+                       "Couldn't download peaks — no peak server answered. Try again later.")
+    }
+
+    /// The next download's request is held open: the error is cleared when that
+    /// download STARTS, not when it succeeds.
+    @MainActor
+    func testConfirmedEmptyAreaIsSavedAndTheNextDownloadClearsTheError() async throws {
+        let manager = OfflinePackManager()
+        await manager.createPack(name: Self.namePrefix + "failed", center: center, radiusKm: 5)
+        XCTAssertNotNil(manager.downloadError)
+
+        let empty = OverpassStub.answer([])
+        let first = OverpassStub.requestCount
+        OverpassStub.reply { _, index in index == first ? .hold : .body(empty) }
+        let name = Self.namePrefix + UUID().uuidString
+        let areaCenter = center
+        let download = Task { @MainActor in
+            await manager.createPack(name: name, center: areaCenter, radiusKm: 5)
+        }
+        await waitUntil("the download holds its request") { OverpassStub.heldCount == 1 }
+        XCTAssertTrue(manager.isDownloading)
+        XCTAssertNil(manager.downloadError, "starting the next download clears the error")
+
+        OverpassStub.releaseHeld(with: .body(empty))
+        await download.value
+        let pack = try XCTUnwrap(savedPack(named: name), "a server that answered \"no peaks\" is a real answer")
+        XCTAssertEqual(pack.peakCount, 0)
+        XCTAssertTrue(manager.packs.contains { $0.id == pack.id })
+        XCTAssertNil(manager.downloadError)
+    }
+
+    @MainActor
+    func testFailedUpdateKeepsThePackAndSaysWhy() async throws {
+        let manager = OfflinePackManager()
+        let answer = OverpassStub.answer([StubPeak(name: "Stub Alpha", lat: 45.92, lon: 7.60, ele: 3100),
+                                          StubPeak(name: "Stub Beta", lat: 45.90, lon: 7.63, ele: 2900)])
+        OverpassStub.reply { _, _ in .body(answer) }
+        let name = Self.namePrefix + UUID().uuidString
+        await manager.createPack(name: name, center: center, radiusKm: 5)
+        let pack = try XCTUnwrap(manager.packs.first { $0.name == name })
+        XCTAssertEqual(pack.peakCount, 2)
+
+        OverpassStub.reply { _, _ in .failure(.notConnectedToInternet) }
+        await manager.updatePack(pack)
+
+        XCTAssertEqual(savedPack(named: name)?.peakCount, 2, "a failed update keeps the pack it was refreshing")
+        XCTAssertEqual(OfflinePackStore().loadData(pack.id)?.peaks.count, 2)
+        XCTAssertEqual(manager.downloadError,
+                       "Couldn't update peaks — no peak server answered. Try again later.")
     }
 }
